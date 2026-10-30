@@ -2,16 +2,15 @@ package presenter
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
-	"golang.org/x/term"
 
 	"mint/internal/bytesize"
 )
@@ -905,104 +904,25 @@ func (p *PrettyPresenter) Prompt(gate Gate) (Choice, error) {
 	return readChoice(reader, render, gate)
 }
 
-// singleKeyGate reports whether every key g declares is one character, so a single
-// keypress can name each choice.
-func singleKeyGate(g Gate) bool {
-	for _, key := range g.Keys() {
-		if utf8.RuneCountInString(string(key)) != 1 {
-			return false
-		}
-	}
-	return true
-}
-
-// rawKeyFile reports whether in can host the single-keypress read: a real
-// *os.File backed by a terminal. Anything else (the scripted readers tests
-// inject, a pipe) falls back to the shared line-read loop.
-func rawKeyFile(in io.Reader) (*os.File, bool) {
-	f, ok := in.(*os.File)
-	if !ok {
-		return nil, false
-	}
-	return f, term.IsTerminal(int(f.Fd()))
-}
-
-// readKeyChoice is the single-KEYPRESS gate read: render the bar once, put the
-// terminal in raw mode, and accept the first byte that resolves to a declared
-// choice — no Enter required. Enter (CR/LF) and Space select the gate's default;
-// Ctrl-C and Ctrl-D restore the terminal and return ErrInputClosed (a clean
-// abort — the engine owns its surfacing, exactly like a closed stream on the
-// line path); any other unrecognised key is IGNORED and the read continues.
-// Because raw mode echoes nothing, the chosen action's text is echoed after the
-// bar's "› " (terminal restored first), so the transcript records what was
-// pressed. If raw mode cannot be entered, the shared line-read loop takes over.
+// readKeyChoice is the single-KEYPRESS gate read: render the bar once and read the
+// answer as one keypress (readKeypress). A closed or stopped input (Ctrl-C, Ctrl-D)
+// ends the bar's line and returns ErrInputClosed, a clean abort the engine surfaces,
+// exactly like a closed stream on the line path. Because raw mode echoes nothing, the
+// chosen action's text is echoed after the bar's "› ", so the transcript records
+// what was pressed. If raw mode cannot be entered, the shared line-read loop takes
+// over.
 func (p *PrettyPresenter) readKeyChoice(f *os.File, g Gate) (Choice, error) {
 	p.renderGate(g)
-	fd := int(f.Fd())
-	old, err := term.MakeRaw(fd)
-	if err != nil {
+	choice, err := readKeypress(f, g)
+	switch {
+	case errors.Is(err, errNoRawMode):
 		return readChoice(bufferedReader(p.in, &p.reader), func() { p.renderGate(g) }, g)
+	case err != nil:
+		p.writef("\n")
+		return "", err
 	}
-
-	// Read a small chunk, not a single byte, so a bare Escape keypress (a lone 0x1b)
-	// is distinguishable from an escape SEQUENCE (an arrow/function key sends 0x1b
-	// followed by more bytes in the same read): a lone Esc declines, a sequence is
-	// ignored. In raw mode (VMIN=1) Read blocks for at least one byte and returns a
-	// whole sequence in one call on any real terminal.
-	buf := make([]byte, 8)
-	for {
-		n, rerr := f.Read(buf)
-		if rerr != nil || n == 0 {
-			_ = term.Restore(fd, old)
-			p.writef("\n")
-			return "", ErrInputClosed
-		}
-		b := buf[0]
-		if b == 0x1b {
-			if n == 1 {
-				// A lone Esc = decline, the same as the gate's "n" choice. If the gate
-				// declares no decline choice (e.g. an enumerated source/target gate), ignore.
-				if no, ok := declineChoice(g); ok {
-					_ = term.Restore(fd, old)
-					p.echoKeyChoice(g, no)
-					return no, nil
-				}
-				continue
-			}
-			// Esc + more bytes in the same read: an arrow/function-key sequence — ignore.
-			continue
-		}
-		switch b {
-		case 0x03, 0x04: // Ctrl-C / Ctrl-D: a deliberate stop, never a default-accept.
-			_ = term.Restore(fd, old)
-			p.writef("\n")
-			return "", ErrInputClosed
-		case '\r', '\n', ' ':
-			_ = term.Restore(fd, old)
-			p.echoKeyChoice(g, g.Default)
-			return g.Default, nil
-		default:
-			if choice, ok := parseChoice(string(rune(b)), g); ok {
-				_ = term.Restore(fd, old)
-				p.echoKeyChoice(g, choice)
-				return choice, nil
-			}
-			// Unrecognised key: ignore and keep reading — no re-render spam.
-		}
-	}
-}
-
-// declineChoice returns the gate's decline choice (ChoiceNo) when the gate declares
-// it, so the Escape key can map to the same "abort" the "n" key triggers. A gate
-// without a ChoiceNo (an enumerated source/target gate) has no decline, so Escape is
-// ignored there.
-func declineChoice(g Gate) (Choice, bool) {
-	for _, c := range g.Choices {
-		if c.Key == ChoiceNo {
-			return ChoiceNo, true
-		}
-	}
-	return "", false
+	p.echoKeyChoice(g, choice)
+	return choice, nil
 }
 
 // echoKeyChoice writes the chosen action after the bar's "› " cursor (raw mode

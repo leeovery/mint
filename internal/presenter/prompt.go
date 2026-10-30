@@ -116,13 +116,19 @@ func readChoice(reader *bufio.Reader, render func(), g Gate) (Choice, error) {
 // bytes does this return ErrInputClosed — a closed stream is never mistaken for a
 // deliberate empty answer.
 func readLine(reader *bufio.Reader) (string, error) {
-	line, err := reader.ReadString('\n')
+	line, _, err := readTypedLine(reader)
+	return line, err
+}
+
+// readTypedLine is readLine, and whether the line ended in a newline: one the input
+// closed on before an Enter has none.
+func readTypedLine(reader *bufio.Reader) (line string, ended bool, err error) {
+	line, err = reader.ReadString('\n')
 	if line == "" && err != nil {
-		return "", ErrInputClosed
+		return "", false, ErrInputClosed
 	}
-	line = strings.TrimSuffix(line, "\n")
-	line = strings.TrimSuffix(line, "\r")
-	return line, nil
+	line, ended = strings.CutSuffix(line, "\n")
+	return strings.TrimSuffix(line, "\r"), ended, nil
 }
 
 // plainKeyHint builds the slash-joined key hint (e.g. "y/n/e/r") from the gate's

@@ -57,7 +57,7 @@ func (r releasePlan) stages() presenter.Plan {
 		stages = append(stages, presenter.PlanStage{Key: stagePreTag, Name: stagePreTag, Detail: hookDetail(rel.Hooks.PreTag)})
 	}
 	if r.notes.checks {
-		stages = append(stages, presenter.PlanStage{Key: stageCheck, Name: stageCheck, Detail: "files that don't belong in the notes"})
+		stages = append(stages, presenter.PlanStage{Key: stageCheck, Name: stageCheck, Detail: "files that don't belong in the notes", Inside: true})
 	}
 	stages = append(stages,
 		presenter.PlanStage{Key: stageNotes, Name: stageNotes, Detail: r.notes.detail},

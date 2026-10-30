@@ -1,0 +1,83 @@
+ mint ─ release                       ~/Code/pigeo
+n · v0.1.2
+
+ ◇  v1.3.2
+ │  main @ 7c1e0b4
+ │
+ ?  Release v1.3.2 → v1.4.0 (minor)?   y yes   n n
+o
+ ●  version
+ │  v1.4.0 (minor bump)
+ ●  preflight
+ │  tree clean · on main · v1.4.0 free · in sync w
+ith origin
+ ⠋  pre_tag
+ ┆  running the pre_tag hook…
+ ●  pre_tag
+ │  npm ci && npm run build
+ │  committed as chore(release): pre-tag artifacts
+ ⠋  notes
+ ┆  writing the notes…
+ ⠋  check
+ ┆  files that don't belong in the notes
+ ●  check
+ │  files that don't belong in the notes
+ ?  Exclude docs/specs/** from the notes? (design
+ ┆  documents; 6 files, 48 kB)   e exclude   k kee
+p
+ ●  check
+ │  docs/specs/** excluded · design documents
+ ●  check
+ │  written to .mint.toml's [release] table and co
+mmitted
+ ?  Cached notes found for this diff — use them?
+ ┆  y use cached   r regenerate
+ ●  notes
+ │  the dry run's, from the cache · reused
+ │
+ │    Webhooks retry on their own now, so a flaky
+endpoint
+ │    no longer drops events.
+ │
+ │    ✨ Added
+ │    - Failed webhook deliveries retry with backo
+ff for up
+ │    to an hour.
+ │    - `pigeon replay <id>` resends any delivery
+from the
+ │    last 30 days.
+ │
+ │    🐛 Fixed
+ │    - The dashboard no longer shows a delivery t
+wice
+ │    after a reconnect.
+ │    - Signing secrets with a trailing newline ar
+e
+ │    accepted again.
+ │
+ ?  Release with these notes?   y release   n abor
+t   e edit
+ ┆  r regenerate
+ ●  review
+ │  accepted
+ ●  record
+ │  CHANGELOG.md · package.json → 🌿 Release v1.4.
+0
+ │
+ ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━
+ ⠋  push
+ ┆  pushing to origin…
+ ●  push
+ │  main + v1.4.0 → origin, atomic
+ ●  publish
+ │  GitHub release
+ ⠋  post_release
+ ┆  running the post_release hook…
+ ●  post_release
+ │  ./scripts/notify.sh
+ │
+ ◆  v1.4.0
+    released
+    https://github.com/acme/pigeon/releases/tag/v1
+.4.0

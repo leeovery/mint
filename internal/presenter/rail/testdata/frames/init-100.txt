@@ -1,0 +1,6 @@
+ mint ─ init                                                                  ~/Code/pigeon · v0.1.2
+
+ ●  .mint.toml    created
+ ○  release       already there · --force overwrites it
+ ●  .github/workflows/release.yml
+                  created

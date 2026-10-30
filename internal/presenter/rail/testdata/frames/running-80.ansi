@@ -1,0 +1,21 @@
+ [1;38;2;95;215;175mmint[22;39m [2m─[22m release                                           [2m~/Code/pigeon · v0.1.2[22m
+
+ [38;2;95;215;175m◇[39m  [1mv1.3.2[22m        [2mmain @ 7c1e0b4[22m
+ [38;2;95;215;175m│[39m
+ [38;2;95;215;175m●[39m  [1mversion[22m       v1.4.0 (minor bump)
+ [38;2;95;215;175m●[39m  [1mpreflight[22m     tree clean · on main · v1.4.0 free · in sync with origin
+ [38;2;95;215;175m●[39m  [1mpre_tag[22m       npm ci && npm run build                                   [2m4.1s[22m
+ [38;2;95;215;175m│[39m                [2mcommitted dist/ (3 files) as chore(release): pre-tag artifacts[22m
+ [38;2;95;215;175m●[39m  [1mcheck[22m         files that don't belong in the notes                      [2m6.2s[22m
+ [38;2;95;215;175m│[39m                [2mdocs/specs/** excluded · design documents[22m
+ [38;2;95;215;175m│[39m                [2mwritten to .mint.toml's [release] table and committed[22m
+ [38;2;95;215;175m⠹[39m  [1mnotes[22m         [2m3 of 4 parts done  [22m[38;2;95;215;175m━━━━━━━━━━━━━━━━━━[39m[2m──────[22m                [2m38s[22m
+ [2m┆[22m
+ [2m○[22m  [2mrecord[22m        [2mCHANGELOG.md · package.json[22m
+ [2m┆[22m
+ [2m┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[22m
+ [2m○[22m  [2mpush[22m          [2mmain + v1.4.0 → origin, atomic[22m
+ [2m○[22m  [2mpublish[22m       [2mGitHub release[22m
+ [2m○[22m  [2mpost_release[22m  [2m./scripts/notify.sh[22m
+ [2m┆[22m
+ [2m◇[22m  [2mv1.4.0[22m

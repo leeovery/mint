@@ -1,0 +1,28 @@
+ [1;38;2;95;215;175mmint[22;39m [2m─[22m release regenerate            [2m~/Code/pigeon · v0.1.2[22m
+
+ [38;2;95;215;175m◇[39m  [1m7 versions[22m
+ [38;2;95;215;175m│[39m  [2mfresh notes → GitHub releases, then CHANGELOG.md[22m
+ [38;2;95;215;175m│[39m
+ [38;2;95;215;175m●[39m  [1mv1.0.0[22m
+ [38;2;95;215;175m│[39m  GitHub release · Initial release.
+ [38;2;95;215;175m●[39m  [1mv1.1.0[22m
+ [38;2;95;215;175m│[39m  GitHub release
+ [33m![39m  [1mv1.2.0[22m
+ [38;2;95;215;175m│[39m  skipped · the AI returned empty notes
+ [38;2;95;215;175m●[39m  [1mv1.2.1[22m
+ [38;2;95;215;175m│[39m  GitHub release
+ [38;2;95;215;175m●[39m  [1mv1.3.0[22m
+ [38;2;95;215;175m│[39m  GitHub release
+ [38;2;95;215;175m●[39m  [1mv1.3.2[22m
+ [38;2;95;215;175m│[39m  GitHub release
+ [38;2;95;215;175m●[39m  [1mv1.4.0[22m
+ [38;2;95;215;175m│[39m  GitHub release
+ [38;2;95;215;175m●[39m  [1mCHANGELOG.md[22m
+ [38;2;95;215;175m│[39m  rebuilt, 7 entries · committed and pushed
+ [38;2;95;215;175m│[39m
+ [38;2;95;215;175m◆[39m  [1mdone[22m
+    6 of 7 versions regenerated · 1 skipped
+
+ [1;38;2;95;215;175mnext[22;39m
+   v1.2.0 kept its old notes. To try it again:
+     [38;2;95;215;175mmint release regenerate v1.2.0 --target both[39m

@@ -48,7 +48,9 @@ func writeNotesBody(w io.Writer, body string) {
 // The contract follows the event-payload principle: the engine supplies, in
 // each event's payload, every datum the rendering consumes. A Presenter renders
 // what it is handed and never re-derives engine knowledge — it holds no
-// hardcoded stage-name lists and times no stages.
+// hardcoded stage-name lists. The engine measures every elapsed time that
+// settles; the one clock a presenter runs is a running stage's, ticking for
+// display only and never settled.
 //
 // This started as the minimal event set for the walking skeleton (start-of-run,
 // the three per-stage transitions, end-of-run); the fuller vocabulary (Warn,
@@ -382,6 +384,9 @@ type PlanStage struct {
 	Key    string
 	Name   string
 	Detail string
+	// Inside marks a stage that runs inside the next planned stage, which starts
+	// first: the exclusion check, inside the notes. Plain ignores it.
+	Inside bool
 }
 
 // Notes is the ShowNotes payload: the generated release notes the engine is
@@ -714,8 +719,11 @@ type ExclusionSuggestion struct {
 	Line    string
 }
 
+// savedNotesLead leads the path of a failed chunked run's saved part notes.
+const savedNotesLead = "part notes saved to"
+
 func savedNotesText(path string) string {
-	return "part notes saved to " + path
+	return savedNotesLead + " " + path
 }
 
 // Warning carries the Warn payload: a structured, engine-supplied Label and
