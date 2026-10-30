@@ -2,7 +2,7 @@
 # not yet staged. The message the AI wrote, accepted, then everything staged,
 # committed and pushed.
 #
-# Record it, and make demo/out/art/commit.webp:
+# Record it, and make art/commit.webp:
 #   demo/record.sh commit
 
 Output "demo/out/commit/"

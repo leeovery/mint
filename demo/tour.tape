@@ -4,7 +4,7 @@
 # parts and merged, their review, answered release, then the record, the
 # push, the GitHub release and the post_release hook.
 #
-# Record it, and make demo/out/art/tour.webp and tour.mp4:
+# Record it, and make art/tour.webp and tour.mp4:
 #   demo/record.sh tour
 
 Output "demo/out/tour/"

@@ -4,7 +4,7 @@
 # moves, prints the exclusion check's suggestion, and unwinds the pre_tag
 # artifacts commit.
 #
-# Record it, and make demo/out/art/failed.webp:
+# Record it, and make art/failed.webp:
 #   demo/record.sh failed
 
 Output "demo/out/failed/"

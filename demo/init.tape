@@ -1,7 +1,7 @@
 # A still for init's section: mint init in an empty repo, creating
 # .mint.toml and the release shim.
 #
-# Record it, and make demo/out/art/init.webp:
+# Record it, and make art/init.webp:
 #   demo/record.sh init
 
 Output "demo/out/init/"

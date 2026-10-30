@@ -12,11 +12,11 @@
 # Usage:  demo/finalize.sh <name>...           a clip each, such as tour
 #         demo/finalize.sh --still <name>...   a still each, such as commit
 # Input:  demo/out/<name>/   the frames vhs demo/<name>.tape wrote
-# Output: demo/out/art/<name>.webp, and for a clip, demo/out/art/<name>.mp4
+# Output: art/<name>.webp, and for a clip, art/<name>.mp4
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-art="$here/out/art"
+art="$(dirname "$here")/art"
 fps=30 # the tapes' Framerate
 pad=40 # the margin round the screen, in px
 
@@ -54,13 +54,13 @@ for name in "$@"; do
 	if $still; then
 		shot=("$frames"/f*.png)
 		cwebp -quiet -lossless -m 6 "${shot[${#shot[@]} - 1]}" -o "$art/$name.webp"
-		printf "   %-30s %s\n" "demo/out/art/$name.webp" "$(du -h "$art/$name.webp" | cut -f1)"
+		printf "   %-30s %s\n" "art/$name.webp" "$(du -h "$art/$name.webp" | cut -f1)"
 		continue
 	fi
 	img2webp -loop 0 -lossless -q 80 -m 6 -d $((1000 / fps)) "$frames"/f*.png -o "$art/$name.webp" >/dev/null
 	ffmpeg -v error -y -framerate "$fps" -i "$frames/f%05d.png" \
 		-c:v libx264 -preset slow -crf 20 -pix_fmt yuv420p -movflags +faststart "$art/$name.mp4"
 	for f in "$name.webp" "$name.mp4"; do
-		printf "   %-30s %s\n" "demo/out/art/$f" "$(du -h "$art/$f" | cut -f1)"
+		printf "   %-30s %s\n" "art/$f" "$(du -h "$art/$f" | cut -f1)"
 	done
 done

@@ -3,7 +3,7 @@
 # is shown without being asked, and the notes, written in parts, are printed
 # with the plan.
 #
-# Record it, and make demo/out/art/dry-run.webp:
+# Record it, and make art/dry-run.webp:
 #   demo/record.sh dry-run
 
 Output "demo/out/dry-run/"
