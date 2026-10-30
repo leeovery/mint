@@ -107,3 +107,32 @@ func TestRegenerateAll_AVersionsTimeCountsOnlyMintsWork(t *testing.T) {
 		t.Errorf("the version's node took %v, want %v: its notes and the r's, none of the waits", settled.Elapsed, want)
 	}
 }
+
+// TestRegenerateAll_InputClosedAtAVersionsReviewFailsItWithItsTime pins that a
+// version whose input closes at its review fails with its node's time, as every
+// other failure of a version does, the wait on the question left out.
+func TestRegenerateAll_InputClosedAtAVersionsReviewFailsItWithItsTime(t *testing.T) {
+	t.Parallel()
+
+	const notesWork = 2 * time.Second
+	clock := &manualClock{now: time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)}
+	rec := &presentertest.RecordingPresenter{PromptResult: func(presenter.Gate) (presenter.Choice, error) {
+		clock.advance(30 * time.Second)
+		return "", presenter.ErrInputClosed
+	}}
+	deps := batchDeps(rec, runner.NewFakeRunner())
+	deps.Clock = clock.Now
+	req := batchReq(engine.RegenerateSourceFresh, []version.Resolution{{Tag: batchV2Tag, PreviousTag: batchV1Tag}}, false)
+	req.ProduceBody = func(context.Context, engine.RegenerateSource, version.Resolution, string, engine.NotesSinks) (string, error) {
+		clock.advance(notesWork)
+		return "## fresh\n", nil
+	}
+
+	_, err := engine.RegenerateAll(t.Context(), deps, newFakePublisher(), t.TempDir(), req)
+
+	want := presenter.StageFailure{Name: "review", Key: batchV2Tag, Message: presenter.ErrInputClosed.Error(), Elapsed: notesWork}
+	assertClosedOn(t, rec, err, 1, untimed(want))
+	if got := onlyStageFailureEvent(t, rec); got != want {
+		t.Errorf("StageFailed = %+v, want %+v: the node's time, none of the wait", got, want)
+	}
+}

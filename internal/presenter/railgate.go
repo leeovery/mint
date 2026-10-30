@@ -209,6 +209,11 @@ func (p *RailPresenter) answered(g Gate, q *part, c Choice, err error) error {
 	p.dismiss(q)
 	if err == nil {
 		p.answer(g, c, false, q)
+	} else {
+		// A node that went on past the question goes on no more, so the failure
+		// that says why draws under what the question showed, as one after an
+		// answer does, not in place above it.
+		p.run.rerun(g.Stage)
 	}
 	p.redraw()
 	return err

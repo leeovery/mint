@@ -3,8 +3,10 @@
  ◇  3 versions    fresh notes → GitHub releases
  │
  ●  v1.0.0        GitHub release · the first release's default · accepted                       2.8s
- ✗  v1.1.0        prompt: input closed before a choice was entered
+ ●  v1.1.0        notes generated
  │
  │    What changed in v1.1.0, in a line.
  │
- ◇  3 versions    1 GitHub release written · nothing committed · nothing pushed                 8.4s
+ ✗  v1.1.0        prompt: input closed before a choice was entered                              2.8s
+ │
+ ◇  3 versions    1 GitHub release written · nothing committed · nothing pushed                 9.1s

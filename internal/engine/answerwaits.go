@@ -22,10 +22,20 @@ func (w *answerWaits) timed(wait func()) {
 	w.total += w.now().Sub(start)
 }
 
-// waitingPresenter is a presenter whose questions are timed as waits.
+// waitingPresenter is a presenter whose questions are timed as waits the stage
+// leaves out of its time, and whose untimed failures on that stage carry its time, as
+// every failure of a --all version's node does: input closed at its question is one.
 type waitingPresenter struct {
 	presenter.Presenter
 	waits *answerWaits
+	stage *blockingStage
+}
+
+func (p waitingPresenter) StageFailed(f presenter.StageFailure) {
+	if f.Key == p.stage.step.key && f.Elapsed == 0 {
+		f.Elapsed = p.stage.elapsed()
+	}
+	p.Presenter.StageFailed(f)
 }
 
 func (p waitingPresenter) Prompt(g presenter.Gate) (c presenter.Choice, err error) {
@@ -51,12 +61,13 @@ func (e waitingEditor) Edit(ctx context.Context, current string) (body string, e
 
 // awaiting is deps whose questions and editor are timed as waits the stage s leaves
 // out of its time, for the questions asked while it goes on: a --all version's
-// review, which its node goes on past to write the release.
+// review, which its node goes on past to write the release. A failure on s it
+// narrates untimed is timed by s.
 func (s *blockingStage) awaiting(deps ReleaseDeps) ReleaseDeps {
 	if s.waits == nil {
 		s.waits = &answerWaits{now: s.now}
 	}
-	deps.Presenter = waitingPresenter{Presenter: deps.Presenter, waits: s.waits}
+	deps.Presenter = waitingPresenter{Presenter: deps.Presenter, waits: s.waits, stage: s}
 	if deps.Editor != nil {
 		deps.Editor = waitingEditor{Editor: deps.Editor, waits: s.waits}
 	}
