@@ -448,6 +448,7 @@ func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
 		p.failNotInteractive(gateFailLabel)
 		return "", ErrNotInteractive
 	}
+	discardTypedAhead(p.in, p.reader)
 	reader := bufferedReader(p.in, &p.reader)
 	render := func() {
 		p.writef("%s [%s]\n", gate.Question, plainKeyHint(gate))
@@ -475,6 +476,7 @@ func (p *PlainPresenter) AskLine(prompt string) (string, error) {
 		p.failNotInteractive(inputFailLabel)
 		return "", ErrNotInteractive
 	}
+	discardTypedAhead(p.in, p.reader)
 	p.writef("%s: ", prompt)
 	return readLine(bufferedReader(p.in, &p.reader))
 }

@@ -21,12 +21,17 @@ func Open(t *testing.T) (pty, tty *os.File) {
 	if err != nil {
 		t.Skipf("no pseudo-terminal: %v", err)
 	}
-	t.Cleanup(func() { _ = pty.Close() })
 	tty, err = os.OpenFile(name, os.O_RDWR, 0)
 	if err != nil {
+		_ = pty.Close()
 		t.Fatalf("open the terminal %s: %v", name, err)
 	}
-	t.Cleanup(func() { _ = tty.Close() })
+	// The pty closes first: a terminal closed with output nobody has read, the echo
+	// of what was typed, waits for it to drain.
+	t.Cleanup(func() {
+		_ = pty.Close()
+		_ = tty.Close()
+	})
 	return pty, tty
 }
 

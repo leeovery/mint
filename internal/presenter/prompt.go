@@ -154,3 +154,19 @@ func bufferedReader(in io.Reader, cached **bufio.Reader) *bufio.Reader {
 	}
 	return *cached
 }
+
+// discardTypedAhead drops, where in is a terminal, what was typed before a question
+// is asked: the input the terminal holds unread, and whatever the buffered reader
+// read past the last line, so a key pressed while mint worked, a stray Enter, never
+// answers a question it hadn't asked yet. Input that isn't a terminal, a pipe or a
+// script, is the answers themselves, kept whole.
+func discardTypedAhead(in io.Reader, reader *bufio.Reader) {
+	f, ok := rawKeyFile(in)
+	if !ok {
+		return
+	}
+	flushInput(f)
+	if reader != nil {
+		_, _ = reader.Discard(reader.Buffered())
+	}
+}

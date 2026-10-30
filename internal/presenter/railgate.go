@@ -22,12 +22,14 @@ const (
 // nothing is asked: the default is taken and the node it settles records it, the
 // auto-accept echo. Without an interactive stdin it fails loud, rendered, with
 // ErrNotInteractive. Otherwise a single keypress answers where the input is a
-// terminal and every key one character, and a typed line answers where not. Input closed before an answer returns ErrInputClosed, not
-// rendered.
+// terminal and every key one character, and a typed line answers where not, what
+// was typed before the question was asked discarded first. Input closed before an
+// answer returns ErrInputClosed, not rendered.
 func (p *RailPresenter) Prompt(g Gate) (Choice, error) {
 	if c, err, done := p.unasked(g); done {
 		return c, err
 	}
+	discardTypedAhead(p.in, p.reader)
 	f, keys := rawKeyFile(p.in)
 	keys = keys && singleKeyGate(g)
 	q := p.ask(g, !keys)
@@ -77,9 +79,10 @@ func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
 
 // AskLine asks prompt as a question node reading a typed line, the cursor on it, and
 // returns the line verbatim. What is typed is the terminal's echo, so nothing redraws
-// while the line is read, and the question and the line stay as typed. Without an
-// interactive stdin it fails loud, rendered, with ErrNotInteractive, -y or not;
-// input closed returns ErrInputClosed, not rendered.
+// while the line is read, and the question and the line stay as typed; what was
+// typed before it was asked is discarded first. Without an interactive stdin it fails
+// loud, rendered, with ErrNotInteractive, -y or not; input closed returns
+// ErrInputClosed, not rendered.
 func (p *RailPresenter) AskLine(prompt string) (string, error) {
 	p.mu.Lock()
 	if !p.stdinInteractive {
@@ -87,6 +90,7 @@ func (p *RailPresenter) AskLine(prompt string) (string, error) {
 		p.mu.Unlock()
 		return "", ErrNotInteractive
 	}
+	discardTypedAhead(p.in, p.reader)
 	q := p.open(&part{kind: questionPart, question: rail.Question{Text: prompt, Typing: true}}, "")
 	p.mu.Unlock()
 	line, ended, err := readTypedLine(bufferedReader(p.in, &p.reader))
