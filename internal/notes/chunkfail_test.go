@@ -29,12 +29,15 @@ func awaitFailure(t *testing.T, done <-chan generation) error {
 	}
 }
 
-// startGenerateIn is startGenerate on a context the test controls, telling recorded
-// (when non-nil) each time the wave records a chunk call's outcome.
-func (s chunkScenario) startGenerateIn(t *testing.T, ctx context.Context, transport notes.Transport, recorded func()) <-chan generation {
+// generator is the scenario's Generator over transport.
+func (s chunkScenario) generator(t *testing.T, transport notes.Transport) *notes.Generator {
 	t.Helper()
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, s.root).WithCallRecorded(recorded)
+	return notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, s.root)
+}
+
+// launch runs gen's generation of the scenario on ctx in the background.
+func (s chunkScenario) launch(ctx context.Context, gen *notes.Generator) <-chan generation {
 	done := make(chan generation, 1)
 	go func() {
 		body, err := gen.Generate(ctx, "v1.0.0", s.cfg)
@@ -43,20 +46,44 @@ func (s chunkScenario) startGenerateIn(t *testing.T, ctx context.Context, transp
 	return done
 }
 
-// afterRecords returns a hook for startGenerateIn and a channel it closes once the
-// wave has recorded n chunk calls' outcomes.
-func afterRecords(n int) (func(), <-chan struct{}) {
-	var mu sync.Mutex
-	recorded := 0
-	reached := make(chan struct{})
-	return func() {
-		mu.Lock()
-		defer mu.Unlock()
-		recorded++
-		if recorded == n {
-			close(reached)
+// recordedCalls counts the chunk calls' outcomes a wave has recorded, its record the
+// Generator's WithCallRecorded hook, so a test waits on the wave rather than on time.
+type recordedCalls struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (r *recordedCalls) record() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.n++
+}
+
+// reached waits until the wave has recorded n outcomes, failing once waitLimit
+// passes. It returns an error rather than failing the test, so a transport's own
+// goroutine can wait on it.
+func (r *recordedCalls) reached(n int) error {
+	deadline := time.Now().Add(waitLimit)
+	for {
+		r.mu.Lock()
+		recorded := r.n
+		r.mu.Unlock()
+		if recorded >= n {
+			return nil
 		}
-	}, reached
+		if time.Now().After(deadline) {
+			return fmt.Errorf("the wave recorded %d outcomes, never %d", recorded, n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// waitRecorded waits, in the test, until the wave has recorded n outcomes.
+func (r *recordedCalls) waitRecorded(t *testing.T, n int) {
+	t.Helper()
+	if err := r.reached(n); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func waitClosed(ch <-chan struct{}) error {
@@ -98,13 +125,11 @@ func TestGenerator_OverCap_OneChunkFails_NoMergeNoNewCallsAndRunningCallsFinish(
 
 			// Parts 1, 3 and 4 are held, so the first outcome the wave records is part
 			// 2's failure, and no held call frees its place in flight before it.
-			recorded, twoRecorded := afterRecords(1)
-			done := s.startGenerateIn(t, t.Context(), wt, recorded)
+			rec := &recordedCalls{}
+			done := s.launch(t.Context(), s.generator(t, wt).WithCallRecorded(rec.record))
 			wt.waitInFlight(t, 4)
 			close(fail)
-			if err := waitClosed(twoRecorded); err != nil {
-				t.Fatalf("part 2's failure was not recorded: %v", err)
-			}
+			rec.waitRecorded(t, 1)
 			close(release)
 			err := awaitFailure(t, done)
 
@@ -133,14 +158,14 @@ func TestGenerator_OverCap_TwoChunksFailInFlight_ErrorCarriesTheFirstToFail(t *t
 	s := capOneFilePerChunk(t, tenKBFiles(3))
 	// Part 1 is held until two outcomes are recorded, which can only be parts 2's
 	// and 3's.
-	recorded, threeRecorded := afterRecords(2)
+	rec := &recordedCalls{}
 	wt := &waveTransport{mergeBody: "merged"}
 	wt.gate = func(part int) error {
 		switch part {
 		case 3:
 			return &ai.GenerationError{Stdout: "part 3: usage limit reached", ExitCode: 1}
 		case 1:
-			if err := waitClosed(threeRecorded); err != nil {
+			if err := rec.reached(2); err != nil {
 				return err
 			}
 			return &ai.GenerationError{Stdout: "part 1: login expired", ExitCode: 1}
@@ -149,7 +174,7 @@ func TestGenerator_OverCap_TwoChunksFailInFlight_ErrorCarriesTheFirstToFail(t *t
 		}
 	}
 
-	done := s.startGenerateIn(t, t.Context(), wt, recorded)
+	done := s.launch(t.Context(), s.generator(t, wt).WithCallRecorded(rec.record))
 	err := awaitFailure(t, done)
 
 	var genErr *ai.GenerationError
@@ -246,7 +271,7 @@ func TestGenerator_OverCap_CancelledMidWave_CancelsCallsInFlightAndStartsNoMore(
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	done := s.startGenerateIn(t, ctx, ct, nil)
+	done := s.launch(ctx, s.generator(t, ct))
 	deadline := time.Now().Add(waitLimit)
 	for inFlight, _, _ := ct.counts(); inFlight != 4; inFlight, _, _ = ct.counts() {
 		if time.Now().After(deadline) {
@@ -329,13 +354,11 @@ func TestGenerator_OverCap_CancelledAfterAChunkFailed_ReturnsTheCancel(t *testin
 
 	// Every other call is held until the cancel, so the first outcome recorded is
 	// part 2's failure.
-	recorded, twoRecorded := afterRecords(1)
-	done := s.startGenerateIn(t, ctx, ft, recorded)
+	rec := &recordedCalls{}
+	done := s.launch(ctx, s.generator(t, ft).WithCallRecorded(rec.record))
 	ft.waitStarts(t, 4)
 	close(ft.fail)
-	if err := waitClosed(twoRecorded); err != nil {
-		t.Fatalf("part 2's failure was not recorded: %v", err)
-	}
+	rec.waitRecorded(t, 1)
 	cancel()
 	err := awaitFailure(t, done)
 
