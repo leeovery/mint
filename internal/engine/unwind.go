@@ -539,14 +539,7 @@ type unwindOutcome struct {
 // leads with a "Reverted:"-style prefix — the presenter prefixes the line with
 // "unwound", so a prefix here would double-label.
 func unwindEvent(tag string, made MadeState, outcome unwindOutcome) presenter.Unwind {
-	event := presenter.Unwind{
-		Undone: undone(tag, made, outcome),
-		Repo:   repoState(outcome.clean),
-		Key:    stageUnwind,
-		// A restore with no commit or tag behind it is the rail's alone: plain's log,
-		// pinned from before the unwind restored a tree, has no line for it.
-		Quiet: made.Commits == 0 && !made.TagCreated,
-	}
+	event := presenter.Unwind{Undone: undone(tag, made, outcome), Repo: repoState(outcome.clean), Key: stageUnwind}
 	if outcome.answersKept {
 		event.Kept = answersKept
 	}
@@ -556,21 +549,21 @@ func unwindEvent(tag string, made MadeState, outcome unwindOutcome) presenter.Un
 	return event
 }
 
-// undone names what the unwind undid: the commits reset and the tag deleted, or,
-// with neither, what it restored, each only where its step succeeded, so a step that
-// failed is never claimed; "" where none did.
+// undone names what the unwind undid: the commits reset, what it restored and the tag
+// deleted, each only where its step succeeded, so a step that failed is never
+// claimed; "" where none did.
 func undone(tag string, made MadeState, outcome unwindOutcome) string {
-	switch {
-	case outcome.reset && outcome.deleted:
-		return fmt.Sprintf("reset %s and deleted tag %s", commitsPhrase(made.Commits), tag)
-	case outcome.reset:
-		return "reset " + commitsPhrase(made.Commits)
-	case outcome.deleted:
-		return "deleted tag " + tag
-	case outcome.restored:
-		return joinAnd(restoredParts(made))
+	var parts []string
+	if outcome.reset {
+		parts = append(parts, "reset "+commitsPhrase(made.Commits))
 	}
-	return ""
+	if outcome.restored {
+		parts = append(parts, restoredParts(made)...)
+	}
+	if outcome.deleted {
+		parts = append(parts, "deleted tag "+tag)
+	}
+	return joinAnd(parts)
 }
 
 // restoredParts names what a reset took back of what mint wrote or staged and no

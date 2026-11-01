@@ -131,7 +131,7 @@ var (
 		changelogUnreadable: true,
 		fails:               func(restoreRepo) []gitStep { return nil },
 		undone:              "restored VERSION",
-		afterCommit:         "reset 1 commit",
+		afterCommit:         "reset 1 commit and restored VERSION",
 		end:                 "back where it started · nothing pushed",
 	}
 	stagedBookkeepingFails = treeFailure{
@@ -142,7 +142,7 @@ var (
 				r.commit(bookkeepingSubject, "CHANGELOG.md\x00VERSION\x00", gitFailing(commitStderr))...)
 		},
 		undone:      "restored VERSION and removed CHANGELOG.md",
-		afterCommit: "reset 1 commit",
+		afterCommit: "reset 1 commit, restored VERSION and removed CHANGELOG.md",
 		end:         "back where it started · nothing pushed",
 	}
 	bookkeepingStageFails = treeFailure{
@@ -152,7 +152,7 @@ var (
 			return []gitStep{{r.git("add CHANGELOG.md VERSION"), gitFailing(stageStderr)}}
 		},
 		undone:      "restored VERSION",
-		afterCommit: "reset 1 commit",
+		afterCommit: "reset 1 commit and restored VERSION",
 		end:         "back where it started · CHANGELOG.md left untracked · nothing pushed",
 	}
 	artifactsCommitFails = treeFailure{
@@ -301,10 +301,6 @@ func TestRelease_AFailureBeforeAnyCommit_ResetsTheTreeMintWroteOrStagedIn(t *tes
 
 			assertTreeRestored(t, rec, err, tf.undone, tf.end)
 			assertGitTail(t, f, commandLinesOf(run.tail()))
-			// No commit or tag behind it, the restore is the rail's row alone.
-			if !unwoundEvent(t, rec).Quiet {
-				t.Error("plain printed an unwound line for a restore with no commit or tag behind it")
-			}
 		})
 	}
 }
@@ -519,8 +515,31 @@ func TestRelease_ARestoreWithNoCommit_PlainTranscripts(t *testing.T) {
 	tests := []struct {
 		name    string
 		failure treeFailure
-		want    string
+		// reset is git's answers to the reset's steps, each succeeding where nil.
+		reset []runner.ScriptedCall
+		want  string
 	}{
+		{
+			name:    "pre_tag's changes, then a restore that fails",
+			failure: artifactsCommitFails,
+			reset:   []runner.ScriptedCall{gitFailing(resetStderr)},
+			want: "mint: releasing pigeon v0.0.1\n" +
+				"version: v0.0.1 (-y)\n" +
+				"preflight: tree clean, on main, v0.0.1 free, origin in sync, gh signed in\n" +
+				"pre_tag: running...\n" +
+				"pre_tag: FAILED - committing dirty tree \"chore(release): pre-tag artifacts for v0.0.1\": exit status 1\n" +
+				"--- output ---\n" +
+				commitStderr + "\n" +
+				"--- end output ---\n" +
+				"unwind incomplete: WARN - automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA + "`)\n" +
+				"--- output ---\n" +
+				resetStderr + "\n" +
+				"--- end output ---\n" +
+				"unwound: manual cleanup required\n" +
+				"--- stderr ---\n" +
+				"pre_tag: FAILED - committing dirty tree \"chore(release): pre-tag artifacts for v0.0.1\": exit status 1\n" +
+				"unwind incomplete: WARN - automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA + "`)\n",
+		},
 		{
 			name:    "the record's files",
 			failure: stagedBookkeepingFails,
@@ -538,6 +557,7 @@ func TestRelease_ARestoreWithNoCommit_PlainTranscripts(t *testing.T) {
 				"--- output ---\n" +
 				commitStderr + "\n" +
 				"--- end output ---\n" +
+				"unwound: restored VERSION and removed CHANGELOG.md; repo clean\n" +
 				"--- stderr ---\n" +
 				"record: FAILED - committing release bookkeeping \"🌿 Release v0.0.1\": exit status 1\n",
 		},
@@ -552,6 +572,7 @@ func TestRelease_ARestoreWithNoCommit_PlainTranscripts(t *testing.T) {
 				"--- output ---\n" +
 				commitStderr + "\n" +
 				"--- end output ---\n" +
+				"unwound: unstaged and removed pre_tag's changes; repo clean\n" +
 				"--- stderr ---\n" +
 				"pre_tag: FAILED - committing dirty tree \"chore(release): pre-tag artifacts for v0.0.1\": exit status 1\n",
 		},
@@ -565,7 +586,7 @@ func TestRelease_ARestoreWithNoCommit_PlainTranscripts(t *testing.T) {
 				t.Fatal(err)
 			}
 			p, read := plainUnderYes(t)
-			run := restoringRun{repo: restoreRepo{root: root}, failure: tt.failure}
+			run := restoringRun{repo: restoreRepo{root: root}, failure: tt.failure, resetAnswers: tt.reset}
 			_, err := run.releaseTo(t, p)
 
 			assertAbortNonZero(t, err)

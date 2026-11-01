@@ -586,14 +586,14 @@ func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 
 	unwound := rec.Events[indexOfKind(rec, presentertest.KindUnwound)].Unwound
 	want := presenter.Unwind{
-		Undone: "reset 2 commits", Kept: "kept your exclusion answers in .mint.toml",
+		Undone: "reset 2 commits and removed CHANGELOG.md", Kept: "kept your exclusion answers in .mint.toml",
 		KeptRow: "kept your exclusion answers in .mint.toml", Repo: "repo clean", Key: "unwind",
 	}
 	if unwound != want {
 		t.Errorf("Unwound = %+v, want %+v", unwound, want)
 	}
-	if unwound.Text() != keptSummary {
-		t.Errorf("Text() = %q, want plain's sentence %q", unwound.Text(), keptSummary)
+	if summary := "reset 2 commits and removed CHANGELOG.md; kept your exclusion answers in .mint.toml; repo clean"; unwound.Text() != summary {
+		t.Errorf("Text() = %q, want plain's sentence %q", unwound.Text(), summary)
 	}
 	fin := closingEvent(t, rec)
 	if want := "+ 1 commit (the .mint.toml answers) · nothing pushed"; fin.Outcome != presenter.OutcomeUnwound || fin.End.Detail != want {

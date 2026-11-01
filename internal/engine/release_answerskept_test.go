@@ -287,7 +287,7 @@ func TestRelease_FailuresBeforeThePushAfterAnswering_KeepTheAnswersCommit(t *tes
 		{
 			name:    "the bookkeeping commit fails",
 			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)},
-			summary: keptSummary,
+			summary: "reset 2 commits and removed CHANGELOG.md; kept your exclusion answers in .mint.toml; repo clean",
 		},
 		{
 			name: "the push is rejected after the tag",

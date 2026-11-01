@@ -206,7 +206,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			preTag:  true,
 			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)},
 			want:    preTagHookConfig + ignoredAnswered,
-			summary: "reset 1 commit; repo clean",
+			summary: "reset 1 commit and removed CHANGELOG.md; repo clean",
 			outcome: presenter.OutcomeUnwound,
 			end:     "back where it started · nothing pushed",
 		},
