@@ -79,7 +79,12 @@ type answeredAbort struct {
 // notes calls scripted. The caller scripts what follows the notes, then unwound.
 func newAnsweredAbort(t *testing.T, rec *presentertest.RecordingPresenter, config string) *answeredAbort {
 	t.Helper()
-	root := t.TempDir()
+	return newAnsweredAbortIn(t, t.TempDir(), rec, config)
+}
+
+// newAnsweredAbortIn is newAnsweredAbort in the repo at root.
+func newAnsweredAbortIn(t *testing.T, root string, rec *presentertest.RecordingPresenter, config string) *answeredAbort {
+	t.Helper()
 	writeConfig(t, root, config)
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")

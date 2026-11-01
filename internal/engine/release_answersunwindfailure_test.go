@@ -137,6 +137,31 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitFails_WarnsTheStepThatCommi
 	}
 }
 
+func TestRelease_UnwindAfterAnswering_WhenTheReCommitFailsInARootWithASpace_WarnsTheStepWithTheRootQuoted(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "My App")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatalf("creating %s: %v", root, err)
+	}
+	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, []presenter.Choice{presenter.ChoiceNo})
+	a := newAnsweredAbortIn(t, root, rec, preTagHookConfig)
+	a.f.SeedSequence("git", answersCommitRead, nothingStaged, ScriptedOut(""), ScriptedOut(""), gitFailing(commitStderr)) // the sha, the reset, the add, the commit
+
+	err := a.release(t.Context())
+
+	want := presenter.Warning{
+		Label:  "unwind incomplete",
+		Key:    "unwind",
+		Row:    "automatic recovery failed",
+		Failed: true,
+		Message: "automatic recovery failed; manually commit the exclusion answers mint wrote to .mint.toml (`git -C '" + root +
+			"' add .mint.toml` then `git -C '" + root + "' commit -m '" + answersSubject(minorTagV130) + "' -- .mint.toml`)",
+		Output: commitStderr,
+	}
+	assertUnwoundWithOneWarning(t, rec, err, want, "reset 2 commits; manual cleanup required")
+}
+
 // unreadableConfigRunner plays git's part in the unwind's reset, leaving .mint.toml
 // under root a directory the re-commit cannot read.
 type unreadableConfigRunner struct {
