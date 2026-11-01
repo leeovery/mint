@@ -11,7 +11,7 @@
  ◇  main          nothing changed                                                               2.1s
 
  next
-   Set an editor git can open, in GIT_EDITOR, core.editor, VISUAL or EDITOR (git falls back to vi),
+   Set an editor mint can run, in GIT_EDITOR, core.editor, VISUAL or EDITOR (git falls back to vi),
    then run it again:
      mint commit -a
    Or commit with a message of your own:

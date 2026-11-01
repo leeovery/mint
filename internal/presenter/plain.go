@@ -483,13 +483,31 @@ func (p *PlainPresenter) AskLine(prompt string) (string, error) {
 	}
 	p.input.discardTypedAhead()
 	p.writef("%s: ", prompt)
-	line, _, err := p.typedLine()
-	if !isTerminal(p.input.in) {
-		// No terminal echoed the answer and its Enter, so the prompt's row is ended
-		// here, or what plain writes next would join it.
+	line, ended, err := p.input.line()
+	if !ended || !echoesInto(p.input.in, p.out) {
+		// Only a terminal that is out as well as in ends the prompt's row, by echoing
+		// the answer's Enter there. Anywhere else (piped input, out piped through tee,
+		// a line Ctrl-C or Ctrl-D ended) the row is ended here, or what plain writes
+		// next would join it.
 		p.writef("\n")
 	}
 	return line, err
+}
+
+// echoesInto reports whether in is a terminal that echoes what is typed into out:
+// both are the same terminal.
+func echoesInto(in io.Reader, out io.Writer) bool {
+	inFile, ok := rawKeyFile(in)
+	if !ok {
+		return false
+	}
+	outFile, ok := out.(*os.File)
+	if !ok {
+		return false
+	}
+	inInfo, inErr := inFile.Stat()
+	outInfo, outErr := outFile.Stat()
+	return inErr == nil && outErr == nil && os.SameFile(inInfo, outInfo)
 }
 
 // failNotInteractive renders the FORBIDDEN-COMBINATION failure (non-TTY stdin

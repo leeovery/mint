@@ -16,7 +16,7 @@ import (
 
 // The ways on from an editor that could not be opened.
 const (
-	editorMoveLead = "Set an editor git can open, in GIT_EDITOR, core.editor, VISUAL or EDITOR (git falls back to vi), then run it again:"
+	editorMoveLead = "Set an editor mint can run, in GIT_EDITOR, core.editor, VISUAL or EDITOR (git falls back to vi), then run it again:"
 	ownMessageLead = "Or commit with a message of your own:"
 )
 
@@ -78,6 +78,9 @@ func TestRun_AIFailedAndEditorUnopenable_FailsLoudSayingWhy(t *testing.T) {
 		{name: "git names none", clause: "git names no editor to open"},
 		{name: "not found", editor: "nvim", launch: wrapNotFound("nvim"), clause: `the editor "nvim" could not be opened (not found)`, launches: 1},
 		{name: "never started", editor: "/opt/subl -w", launch: errNotStarted, clause: `the editor "/opt/subl" could not be opened (it failed to start)`, output: errNotStarted.Error(), launches: 1},
+		{name: "a malformed quote", editor: `'/opt/My Editor/edit -w`, clause: `the editor command "'/opt/My Editor/edit -w" could not be read (unterminated quote)`},
+		{name: "a ~ no shell expands", editor: "~/bin/edit", launch: wrapNotFound("~/bin/edit"), clause: `the editor "~/bin/edit" could not be opened (not found; mint runs it without a shell, so ~ and $VARS are not expanded)`, launches: 1},
+		{name: "a $VAR no shell expands", editor: "$HOME/bin/edit -w", launch: errNotStarted, clause: `the editor "$HOME/bin/edit" could not be opened (it failed to start; mint runs it without a shell, so ~ and $VARS are not expanded)`, output: errNotStarted.Error(), launches: 1},
 	}
 	for _, cause := range causes {
 		for _, ed := range editors {

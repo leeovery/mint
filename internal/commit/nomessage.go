@@ -51,7 +51,7 @@ func aiFailurePhrase(err error) string {
 // could not be opened: why the run has no AI message, why it has no editor, and the
 // ways on from there. A failed AI call's output is not repeated: the warn that said
 // the editor was opening showed it. mint commit has no -m, so the ways on are an
-// editor git can open, or git's own commit.
+// editor mint can run, or git's own commit.
 func failEditorUnopenable(p presenter.Presenter, deps Deps, missing noAIMessage, err error) error {
 	editor, output := unopenedEditor(err)
 	message := editor
@@ -60,24 +60,31 @@ func failEditorUnopenable(p presenter.Presenter, deps Deps, missing noAIMessage,
 	}
 	cause := surfaceFailure(p, presenter.StageFailure{Name: "editor", Message: message, Output: output}, fmt.Errorf("%s: %w", message, err))
 	p.NextMoves(presenter.NextMoves{Stage: "editor", Moves: []presenter.NextMove{
-		{Lead: "Set an editor git can open, in GIT_EDITOR, core.editor, VISUAL or EDITOR (git falls back to vi), then run it again:", Command: commitRerun(deps)},
+		{Lead: "Set an editor mint can run, in GIT_EDITOR, core.editor, VISUAL or EDITOR (git falls back to vi), then run it again:", Command: commitRerun(deps)},
 		{Lead: "Or commit with a message of your own:", Command: ownMessageCommit(deps)},
 	}})
 	return cause
 }
 
 // unopenedEditor says why err left no editor open, and what the launch said where it
-// never started.
+// never started. mint runs the editor itself with no shell, so a command that leans
+// on one is told so.
 func unopenedEditor(err error) (string, string) {
 	var unopened *editorOpenError
-	switch {
-	case !errors.As(err, &unopened):
+	if !errors.As(err, &unopened) {
 		return "git names no editor to open", ""
-	case errors.Is(err, runner.ErrNotStarted):
-		return fmt.Sprintf("the editor %q could not be opened (it failed to start)", unopened.editor), unopened.err.Error()
-	default:
-		return fmt.Sprintf("the editor %q could not be opened (not found)", unopened.editor), ""
 	}
+	if unopened.words == nil {
+		return fmt.Sprintf("the editor command %q could not be read (%v)", unopened.command, unopened.err), ""
+	}
+	why, output := "not found", ""
+	if errors.Is(err, runner.ErrNotStarted) {
+		why, output = "it failed to start", unopened.err.Error()
+	}
+	if unopened.shellOnly() {
+		why += "; mint runs it without a shell, so ~ and $VARS are not expanded"
+	}
+	return fmt.Sprintf("the editor %q could not be opened (%s)", unopened.words[0], why), output
 }
 
 // commitRerun is the command that runs this commit again.
