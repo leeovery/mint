@@ -10,11 +10,11 @@
  │                │ error: gpg failed to sign the data
  │                │ fatal: failed to write commit object
  ✗  unwind        automatic recovery failed
- │                │ fatal: Could not reset index file to revision 'startsha'.
+ │                │ fatal: Unable to write new index file
  │
  ◇  v1.2.3        manual cleanup required · CHANGELOG.md written, not committed · nothing       4.2s
                   pushed
 
  next
-   Reset HEAD back to startsha:
-     git reset --hard startsha
+   Restore CHANGELOG.md to HEAD:
+     git restore --source=HEAD --staged --worktree -- ':(top,literal)CHANGELOG.md'

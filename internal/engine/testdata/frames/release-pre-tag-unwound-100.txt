@@ -10,4 +10,4 @@
  │                │ fatal: failed to write commit object
  ↩  unwind        unstaged and removed pre_tag's changes
  │
- ◇  v1.2.3        back where it started · nothing pushed                                        2.1s
+ ◇  v1.2.3        nothing pushed                                                                2.1s

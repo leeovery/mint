@@ -578,7 +578,7 @@ func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
 	a := newAnsweredAbort(t, rec, preTagHookConfig)
-	a.f.SeedSequence("git", ScriptedOut(""), gitFailing(commitStderr))
+	a.f.SeedSequence("git", ScriptedOut(""), gitFailing(commitStderr), ScriptedOut("")) // add, commit, unwind: restore CHANGELOG.md
 	a.f.Seed("gh", runner.Result{}, nil)
 	a.unwound()
 

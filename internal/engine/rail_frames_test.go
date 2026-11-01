@@ -477,7 +477,7 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("git",
 			ScriptedOut(""),          // -C root add CHANGELOG.md
 			gitFailing(commitStderr), // -C root commit -m
-			ScriptedOut(""),          // unwind: reset --hard startsha
+			ScriptedOut(""),          // unwind: restore CHANGELOG.md
 		)
 		return w.release(t, nil)
 	}},
@@ -491,7 +491,7 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("git",
 			ScriptedOut(""),          // -C root add CHANGELOG.md
 			gitFailing(commitStderr), // -C root commit -m
-			gitFailing(resetStderr),  // unwind: reset --hard startsha
+			gitFailing(stageStderr),  // unwind: restore CHANGELOG.md
 		)
 		return w.release(t, nil)
 	}},
@@ -506,7 +506,8 @@ var railRuns = map[string]railRun{
 			ScriptedOut(" M bundle.js\n"), // -C root status --porcelain (post-hook: dirty)
 			ScriptedOut(""),               // -C root add -A
 			gitFailing(commitStderr),      // -C root commit -m chore(release): pre-tag artifacts
-			ScriptedOut(""),               // unwind: reset --hard startsha
+			ScriptedOut(stagedArtifacts),  // unwind: diff --cached --name-only
+			ScriptedOut(""),               // unwind: restore bundle.js
 		)
 		return w.release(t, nil)
 	}},

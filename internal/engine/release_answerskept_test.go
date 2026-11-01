@@ -286,7 +286,7 @@ func TestRelease_FailuresBeforeThePushAfterAnswering_KeepTheAnswersCommit(t *tes
 	}{
 		{
 			name:    "the bookkeeping commit fails",
-			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)},
+			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr), ScriptedOut("")}, // add, commit, unwind: restore CHANGELOG.md
 			summary: "reset 2 commits and removed CHANGELOG.md; kept your exclusion answers in .mint.toml; repo clean",
 		},
 		{

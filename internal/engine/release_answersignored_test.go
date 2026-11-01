@@ -204,7 +204,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			name:    "the bookkeeping commit failing",
 			config:  ptr(preTagHookConfig + ignoredStartConfig),
 			preTag:  true,
-			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)},
+			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr), ScriptedOut("")}, // add, commit, unwind: restore CHANGELOG.md
 			want:    preTagHookConfig + ignoredAnswered,
 			summary: "reset 1 commit and removed CHANGELOG.md; repo clean",
 			outcome: presenter.OutcomeUnwound,

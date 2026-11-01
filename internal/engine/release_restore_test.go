@@ -1,12 +1,12 @@
 package engine_test
 
-// This file pins the unwind's restore of a tree a release wrote or staged in before
-// any commit of its own held it: the version file projected, the changelog written,
-// pre_tag's changes staged. The unwind resets to the starting commit as it does once
-// mint has committed, a notes file inside the repo keeping its content and staged
-// state, and the autostash popping after it. The fake runner never moves git's tree,
-// so these runs pin the exact git steps the unwind takes and the bytes of what mint
-// must leave alone.
+// This file pins the unwind putting back what a release wrote or staged before any
+// commit of its own held it: the version file projected, the changelog written,
+// pre_tag's changes staged. It restores exactly those paths to HEAD and removes the
+// files mint created, naming every path it touches, so nothing else in the tree, a
+// notes file inside the repo or the user's own edits, is touched; with no commit it
+// moves no HEAD. The fake runner never moves git's tree, so these runs pin the exact
+// git steps the unwind takes and the files mint removes itself.
 
 import (
 	"os"
@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"mint/internal/cmdline"
 	"mint/internal/engine"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
@@ -89,16 +90,28 @@ func (r restoreRepo) artifacts(outcome runner.ScriptedCall) []gitStep {
 	}, r.commit(pretagArtifactSubject("v0.0.1"), stagedArtifacts, outcome)...)
 }
 
-// reset is the unwind's reset to the starting commit, around the notes file where one
-// is kept out.
-func (r restoreRepo) reset() []gitStep {
-	if r.notes == "" {
-		return []gitStep{{"git reset --hard " + startingSHA, ScriptedOut("")}}
+// restore is the unwind returning exactly paths to HEAD, git answering with outcome.
+func (r restoreRepo) restore(outcome runner.ScriptedCall, paths ...string) gitStep {
+	return gitStep{r.git("restore --source=HEAD --staged --worktree -- " + literalPathspecsOf(paths)), outcome}
+}
+
+// stagedRead is the unwind reading which paths mint staged, the notes file left out,
+// git answering staged.
+func (r restoreRepo) stagedRead(staged runner.ScriptedCall) gitStep {
+	return gitStep{r.git("diff --cached --name-only -z --no-renames" + r.keepingOut()), staged}
+}
+
+func literalPathspecsOf(paths []string) string {
+	specs := make([]string, len(paths))
+	for i, path := range paths {
+		specs[i] = ":(top,literal)" + path
 	}
-	return []gitStep{
-		{"git reset --soft " + startingSHA, ScriptedOut("")},
-		{"git restore --source=" + startingSHA + " --staged --worktree" + r.keepingOut(), ScriptedOut("")},
-	}
+	return strings.Join(specs, " ")
+}
+
+// resetCommits is the unwind's reset of the commits mint made.
+func resetCommits() []gitStep {
+	return []gitStep{{"git reset --hard " + startingSHA, ScriptedOut("")}}
 }
 
 const (
@@ -117,11 +130,16 @@ type treeFailure struct {
 	changelogUnreadable bool
 	// fails is the git steps from the stage's start to its failure.
 	fails func(restoreRepo) []gitStep
+	// restores is the unwind's steps putting back what mint wrote or staged, git
+	// answering its restore with outcome.
+	restores func(r restoreRepo, outcome runner.ScriptedCall) []gitStep
+	// created is a file mint created and never staged, which the unwind removes itself.
+	created string
 	// undone is what the unwind says it undid with no commit to reset, afterCommit
 	// once the pre_tag hook's artifacts were committed first.
 	undone, afterCommit string
-	// end is the close's detail.
-	end string
+	// end is the close's detail, and unrestored its detail where the restore fails.
+	end, unrestored string
 }
 
 var (
@@ -130,9 +148,13 @@ var (
 		config:              plainVersionFile,
 		changelogUnreadable: true,
 		fails:               func(restoreRepo) []gitStep { return nil },
-		undone:              "restored VERSION",
-		afterCommit:         "reset 1 commit and restored VERSION",
-		end:                 "back where it started · nothing pushed",
+		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
+			return []gitStep{r.restore(outcome, "VERSION")}
+		},
+		undone:      "restored VERSION",
+		afterCommit: "reset 1 commit and restored VERSION",
+		end:         "back where it started · nothing pushed",
+		unrestored:  "manual cleanup required · VERSION written, not committed · nothing pushed",
 	}
 	stagedBookkeepingFails = treeFailure{
 		name:   "the bookkeeping commit failing once its files are staged",
@@ -141,9 +163,13 @@ var (
 			return append([]gitStep{{r.git("add CHANGELOG.md VERSION"), ScriptedOut("")}},
 				r.commit(bookkeepingSubject, "CHANGELOG.md\x00VERSION\x00", gitFailing(commitStderr))...)
 		},
+		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
+			return []gitStep{r.restore(outcome, "VERSION", "CHANGELOG.md")}
+		},
 		undone:      "restored VERSION and removed CHANGELOG.md",
 		afterCommit: "reset 1 commit, restored VERSION and removed CHANGELOG.md",
 		end:         "back where it started · nothing pushed",
+		unrestored:  "manual cleanup required · VERSION + CHANGELOG.md written, not committed · nothing pushed",
 	}
 	bookkeepingStageFails = treeFailure{
 		name:   "the bookkeeping commit failing to stage its files",
@@ -151,42 +177,57 @@ var (
 		fails: func(r restoreRepo) []gitStep {
 			return []gitStep{{r.git("add CHANGELOG.md VERSION"), gitFailing(stageStderr)}}
 		},
-		undone:      "restored VERSION",
-		afterCommit: "reset 1 commit and restored VERSION",
-		end:         "back where it started · CHANGELOG.md left untracked · nothing pushed",
+		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
+			return []gitStep{r.restore(outcome, "VERSION")}
+		},
+		created:     "CHANGELOG.md",
+		undone:      "restored VERSION and removed CHANGELOG.md",
+		afterCommit: "reset 1 commit, restored VERSION and removed CHANGELOG.md",
+		end:         "back where it started · nothing pushed",
+		unrestored:  "manual cleanup required · VERSION + CHANGELOG.md written, not committed · nothing pushed",
 	}
 	artifactsCommitFails = treeFailure{
 		name:   "pre_tag's changes staged, then their commit failing",
 		config: preTagHookConfig,
 		fails:  func(r restoreRepo) []gitStep { return r.artifacts(gitFailing(commitStderr)) },
+		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
+			return []gitStep{r.stagedRead(ScriptedOut(stagedArtifacts)), r.restore(outcome, "bundle.js")}
+		},
 		undone: "unstaged and removed pre_tag's changes",
-		end:    "back where it started · nothing pushed",
+		// The pre_tag hook ran, and could have moved HEAD itself, so the close never
+		// claims the run is back where it started.
+		end:        "nothing pushed",
+		unrestored: "manual cleanup required · pre_tag's changes staged, not committed · nothing pushed",
 	}
 	treeFailures = []treeFailure{changelogWriteFails, stagedBookkeepingFails, bookkeepingStageFails, artifactsCommitFails}
 )
 
 // restoringRun is a first release from repo stopped by failure, the git steps from
-// the starting commit's capture on being before, then the failure's, then the reset,
-// then after. resetAnswers answers the reset's steps in place of success, and stash
-// scripts an autostash's push.
+// the starting commit's capture on being before, then the failure's, then the
+// unwind's restore, git answering it with restoreAnswer, then its reset of the
+// commits before made, then after. stash scripts an autostash's push.
 type restoringRun struct {
-	repo         restoreRepo
-	failure      treeFailure
-	config       string
-	before       []gitStep
-	after        []gitStep
-	resetAnswers []runner.ScriptedCall
-	stash        []runner.ScriptedCall
-	opts         func(*engine.ReleaseOptions)
+	repo          restoreRepo
+	failure       treeFailure
+	config        string
+	before        []gitStep
+	after         []gitStep
+	restoreAnswer *runner.ScriptedCall
+	stash         []runner.ScriptedCall
+	opts          func(*engine.ReleaseOptions)
 }
 
 // tail is every git step the run takes once it has captured its starting commit.
 func (r restoringRun) tail() []gitStep {
-	reset := r.repo.reset()
-	for i, answer := range r.resetAnswers {
-		reset[i].call = answer
+	answer := ScriptedOut("")
+	if r.restoreAnswer != nil {
+		answer = *r.restoreAnswer
 	}
-	return slices.Concat(r.before, r.failure.fails(r.repo), reset, r.after)
+	var reset []gitStep
+	if len(r.before) > 0 {
+		reset = resetCommits()
+	}
+	return slices.Concat(r.before, r.failure.fails(r.repo), r.failure.restores(r.repo, answer), reset, r.after)
 }
 
 // release runs r, returning what it recorded, its runner and its error.
@@ -248,7 +289,8 @@ func writeRepoFile(t *testing.T, root, name, contents string) {
 }
 
 // assertGitTail fails unless the git steps the run took after capturing its starting
-// commit are want, exactly and in order.
+// commit are want, exactly and in order: the unwind touched no path but those its
+// steps name.
 func assertGitTail(t *testing.T, f *runner.FakeRunner, want []string) {
 	t.Helper()
 	var got []string
@@ -262,6 +304,26 @@ func assertGitTail(t *testing.T, f *runner.FakeRunner, want []string) {
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("git after the start's capture =\n  %s\nwant\n  %s", strings.Join(got, "\n  "), strings.Join(want, "\n  "))
+	}
+}
+
+// assertNoReset fails if the run reset anything: with no commit of mint's, the unwind
+// moves no HEAD and rewrites no path beyond those it names.
+func assertNoReset(t *testing.T, f *runner.FakeRunner) {
+	t.Helper()
+	if got := argsOf(f, "reset"); len(got) != 0 {
+		t.Errorf("an unwind with no commit to reset ran git %q", got)
+	}
+}
+
+// assertCreatedRemoved fails unless the file mint created, if any, is gone.
+func assertCreatedRemoved(t *testing.T, root, created string) {
+	t.Helper()
+	if created == "" {
+		return
+	}
+	if _, err := os.Stat(filepath.Join(root, created)); !os.IsNotExist(err) {
+		t.Errorf("%s, which mint created, is still there (stat: %v)", created, err)
 	}
 }
 
@@ -289,7 +351,7 @@ func unwoundEvent(t *testing.T, rec *presentertest.RecordingPresenter) presenter
 	return rec.Events[n].Unwound
 }
 
-func TestRelease_AFailureBeforeAnyCommit_ResetsTheTreeMintWroteOrStagedIn(t *testing.T) {
+func TestRelease_AFailureBeforeAnyCommit_PutsBackExactlyWhatMintWroteOrStaged(t *testing.T) {
 	t.Parallel()
 
 	for _, tf := range treeFailures {
@@ -301,11 +363,13 @@ func TestRelease_AFailureBeforeAnyCommit_ResetsTheTreeMintWroteOrStagedIn(t *tes
 
 			assertTreeRestored(t, rec, err, tf.undone, tf.end)
 			assertGitTail(t, f, commandLinesOf(run.tail()))
+			assertNoReset(t, f)
+			assertCreatedRemoved(t, run.repo.root, tf.created)
 		})
 	}
 }
 
-func TestRelease_AFailureAfterAnArtifactsCommit_ResetsTheCommitAndTheTreeTogether(t *testing.T) {
+func TestRelease_AFailureAfterAnArtifactsCommit_PutsBackTheWritesThenResetsTheCommit(t *testing.T) {
 	t.Parallel()
 
 	for _, tf := range treeFailures {
@@ -322,11 +386,12 @@ func TestRelease_AFailureAfterAnArtifactsCommit_ResetsTheCommitAndTheTreeTogethe
 
 			assertTreeRestored(t, rec, err, tf.afterCommit, tf.end)
 			assertGitTail(t, f, commandLinesOf(run.tail()))
+			assertCreatedRemoved(t, repo.root, tf.created)
 		})
 	}
 }
 
-func TestRelease_AFailureBeforeAnyCommit_ResetsAroundAnInRepoNotesFile(t *testing.T) {
+func TestRelease_AFailureBeforeAnyCommit_LeavesAnInRepoNotesFileAlone(t *testing.T) {
 	t.Parallel()
 
 	for _, tf := range treeFailures {
@@ -341,14 +406,15 @@ func TestRelease_AFailureBeforeAnyCommit_ResetsAroundAnInRepoNotesFile(t *testin
 
 				assertTreeRestored(t, rec, err, tf.undone, tf.end)
 				assertGitTail(t, f, commandLinesOf(run.tail()))
-				assertResetKeptNotesFile(t, f, startingSHA, nc.file)
+				assertNoReset(t, f)
+				assertNotesFileOnlyExcluded(t, f, nc.file)
 				assertFileUnchanged(t, path, suppliedBody)
 			})
 		}
 	}
 }
 
-func TestRelease_AFailureBeforeAnyCommit_Autostash_PopsOntoTheRestoredTree(t *testing.T) {
+func TestRelease_AFailureBeforeAnyCommit_Autostash_PopsOntoThePutBackTree(t *testing.T) {
 	t.Parallel()
 
 	for _, tf := range treeFailures {
@@ -366,7 +432,7 @@ func TestRelease_AFailureBeforeAnyCommit_Autostash_PopsOntoTheRestoredTree(t *te
 
 			assertTreeRestored(t, rec, err, tf.undone, tf.end)
 			assertGitArgs(t, f, 2, []string{"stash", "push", "--include-untracked"})
-			// The tail ends reset then pop: the WIP goes back onto the restored tree.
+			// The tail ends restore then pop: the WIP goes back onto the put-back tree.
 			assertGitTail(t, f, commandLinesOf(run.tail()))
 		})
 	}
@@ -375,75 +441,58 @@ func TestRelease_AFailureBeforeAnyCommit_Autostash_PopsOntoTheRestoredTree(t *te
 func TestRelease_AFailureBeforeAnyCommit_ARestoreThatFails_SaysSoWithTheManualStep(t *testing.T) {
 	t.Parallel()
 
-	const (
-		hardReset = "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA + "`)"
-		softReset = "automatic recovery failed; manually restore the index and work tree to " + startingSHA +
-			", leaving NEXT_RELEASE.md as it is (`git restore --source=" + startingSHA +
-			" --staged --worktree -- ':(top,literal,exclude)NEXT_RELEASE.md'`)"
-	)
-
-	tests := []struct {
-		name    string
-		failure treeFailure
-		notes   string
-		// reset is git's answers to the reset's steps.
-		reset   []runner.ScriptedCall
-		warn    string
-		command string
-		end     string
-	}{
-		{
-			name:    "the record's files",
-			failure: stagedBookkeepingFails,
-			reset:   []runner.ScriptedCall{gitFailing(resetStderr)},
-			warn:    hardReset,
-			command: "git reset --hard " + startingSHA,
-			end:     "manual cleanup required · VERSION + CHANGELOG.md written, not committed · nothing pushed",
-		},
-		{
-			name:    "pre_tag's changes",
-			failure: artifactsCommitFails,
-			reset:   []runner.ScriptedCall{gitFailing(resetStderr)},
-			warn:    hardReset,
-			command: "git reset --hard " + startingSHA,
-			end:     "manual cleanup required · pre_tag's changes staged, not committed · nothing pushed",
-		},
-		{
-			name:    "the record's files, around an in-repo notes file",
-			failure: stagedBookkeepingFails,
-			notes:   "NEXT_RELEASE.md",
-			reset:   []runner.ScriptedCall{ScriptedOut(""), gitFailing(resetStderr)},
-			warn:    softReset,
-			command: "git restore --source=" + startingSHA + " --staged --worktree -- ':(top,literal,exclude)NEXT_RELEASE.md'",
-			end:     "manual cleanup required · VERSION + CHANGELOG.md written, not committed · nothing pushed",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tf := range []treeFailure{stagedBookkeepingFails, artifactsCommitFails} {
+		t.Run(tf.name, func(t *testing.T) {
 			t.Parallel()
 
-			repo := restoreRepo{root: t.TempDir(), notes: tt.notes}
-			if tt.notes != "" {
-				writeNotesFile(t, repo.root, tt.notes, suppliedBody)
-			}
-			run := restoringRun{repo: repo, failure: tt.failure, resetAnswers: tt.reset}
+			repo := restoreRepo{root: t.TempDir()}
+			failing := gitFailing(stageStderr)
+			run := restoringRun{repo: repo, failure: tf, restoreAnswer: &failing}
 			rec, f, err := run.release(t)
 
 			assertAbortNonZero(t, err)
+			restoring := tf.restores(repo, failing)
+			paths := strings.TrimPrefix(restoring[len(restoring)-1].line, repo.git("restore --source=HEAD --staged --worktree -- "))
+			names := strings.ReplaceAll(strings.ReplaceAll(paths, ":(top,literal)", ""), " ", " + ")
+			var quoted []string
+			for _, spec := range strings.Fields(paths) {
+				quoted = append(quoted, cmdline.Quote(spec))
+			}
+			command := "git restore --source=HEAD --staged --worktree -- " + strings.Join(quoted, " ")
 			warn := recoveryWarn(t, rec).Warn
-			if warn.Message != tt.warn || warn.Output != resetStderr || !warn.Failed {
-				t.Errorf("recovery warning = %+v, want the failed step %q with git's output", warn, tt.warn)
+			if want := "automatic recovery failed; manually restore " + names + " to HEAD (`" + command + "`)"; warn.Message != want || warn.Output != stageStderr || !warn.Failed {
+				t.Errorf("recovery warning = %+v, want %q with git's output", warn, want)
 			}
 			if got := unwoundEvent(t, rec); got.Undone != "" || got.Repo != "manual cleanup required" {
 				t.Errorf("Unwound = %+v, want nothing claimed undone and manual cleanup required", got)
 			}
-			if got := nextMoveCommands(rec); !slices.Equal(got, []string{tt.command}) {
-				t.Errorf("next moves' commands = %q, want the manual step %q", got, tt.command)
+			if got := nextMoveCommands(rec); !slices.Equal(got, []string{command}) {
+				t.Errorf("next moves' commands = %q, want the manual step %q", got, command)
 			}
-			assertClosesUnwound(t, rec, tt.end)
+			assertClosesUnwound(t, rec, tf.unrestored)
 			assertGitTail(t, f, commandLinesOf(run.tail()))
 		})
 	}
+}
+
+func TestRelease_PreTagsChangesStaged_AnUnreadableIndex_SaysSoAndTouchesNothing(t *testing.T) {
+	t.Parallel()
+
+	repo := restoreRepo{root: t.TempDir()}
+	failure := artifactsCommitFails
+	failure.restores = func(r restoreRepo, _ runner.ScriptedCall) []gitStep {
+		return []gitStep{r.stagedRead(gitFailing(stageStderr))}
+	}
+	run := restoringRun{repo: repo, failure: failure}
+	rec, f, err := run.release(t)
+
+	assertAbortNonZero(t, err)
+	warn := recoveryWarn(t, rec).Warn
+	if want := "automatic recovery failed; manually unstage and remove the pre_tag changes mint staged"; warn.Message != want || warn.Output != stageStderr {
+		t.Errorf("recovery warning = %+v, want %q with git's output", warn, want)
+	}
+	assertClosesUnwound(t, rec, failure.unrestored)
+	assertGitTail(t, f, commandLinesOf(run.tail()))
 }
 
 // nextMoveCommands is the command of every next move the run recorded.
@@ -500,7 +549,7 @@ func TestRelease_AFailureWithNothingWrittenOrStaged_IssuesNoResetAndNoUnwound(t 
 			if recorded(rec, presentertest.KindUnwound) {
 				t.Error("an unwind with nothing to take back emitted an Unwound")
 			}
-			for _, args := range [][]string{{"reset"}, {"restore"}} {
+			for _, args := range [][]string{{"reset"}, {"-C", root, "restore"}} {
 				if got := argsOf(f, args...); len(got) != 0 {
 					t.Errorf("an unwind with nothing to take back ran git %q", got)
 				}
@@ -512,17 +561,20 @@ func TestRelease_AFailureWithNothingWrittenOrStaged_IssuesNoResetAndNoUnwound(t 
 func TestRelease_ARestoreWithNoCommit_PlainTranscripts(t *testing.T) {
 	t.Parallel()
 
+	const restoreBundleIncomplete = "unwind incomplete: WARN - automatic recovery failed; manually restore bundle.js to HEAD " +
+		"(`git restore --source=HEAD --staged --worktree -- ':(top,literal)bundle.js'`)\n"
+	restoreFails := gitFailing(stageStderr)
 	tests := []struct {
 		name    string
 		failure treeFailure
-		// reset is git's answers to the reset's steps, each succeeding where nil.
-		reset []runner.ScriptedCall
-		want  string
+		// restore is git's answer to the restore, success where nil.
+		restore *runner.ScriptedCall
+		want    string
 	}{
 		{
 			name:    "pre_tag's changes, then a restore that fails",
 			failure: artifactsCommitFails,
-			reset:   []runner.ScriptedCall{gitFailing(resetStderr)},
+			restore: &restoreFails,
 			want: "mint: releasing pigeon v0.0.1\n" +
 				"version: v0.0.1 (-y)\n" +
 				"preflight: tree clean, on main, v0.0.1 free, origin in sync, gh signed in\n" +
@@ -531,14 +583,14 @@ func TestRelease_ARestoreWithNoCommit_PlainTranscripts(t *testing.T) {
 				"--- output ---\n" +
 				commitStderr + "\n" +
 				"--- end output ---\n" +
-				"unwind incomplete: WARN - automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA + "`)\n" +
+				restoreBundleIncomplete +
 				"--- output ---\n" +
-				resetStderr + "\n" +
+				stageStderr + "\n" +
 				"--- end output ---\n" +
 				"unwound: manual cleanup required\n" +
 				"--- stderr ---\n" +
 				"pre_tag: FAILED - committing dirty tree \"chore(release): pre-tag artifacts for v0.0.1\": exit status 1\n" +
-				"unwind incomplete: WARN - automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA + "`)\n",
+				restoreBundleIncomplete,
 		},
 		{
 			name:    "the record's files",
@@ -586,12 +638,12 @@ func TestRelease_ARestoreWithNoCommit_PlainTranscripts(t *testing.T) {
 				t.Fatal(err)
 			}
 			p, read := plainUnderYes(t)
-			run := restoringRun{repo: restoreRepo{root: root}, failure: tt.failure, resetAnswers: tt.reset}
+			run := restoringRun{repo: restoreRepo{root: root}, failure: tt.failure, restoreAnswer: tt.restore}
 			_, err := run.releaseTo(t, p)
 
 			assertAbortNonZero(t, err)
-			if got := read(); got != tt.want {
-				t.Errorf("plain transcript =\n%s\nwant\n%s", got, tt.want)
+			if got, want := read(), tt.want; got != want {
+				t.Errorf("plain transcript =\n%s\nwant\n%s", got, want)
 			}
 		})
 	}
