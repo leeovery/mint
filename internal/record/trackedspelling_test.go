@@ -104,6 +104,32 @@ func TestTrackedSpelling_TwoSpellingsOfOneFile_IsAnErrorNamingBoth(t *testing.T)
 	}
 }
 
+// Two spellings that are links to one target are two files, as git tracks them: a
+// version_file link of its own keeps its name beside git's link of another case.
+func TestTrackedSpelling_LinksOfTwoSpellingsToOneTarget_AreTwoFiles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if caseInsensitive(t, root) {
+		t.Skip("the disk takes the two spellings as one name")
+	}
+	if err := os.WriteFile(filepath.Join(root, "real"), []byte("0.0.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, link := range []string{"version", "VERSION"} {
+		if err := os.Symlink("real", filepath.Join(root, link)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git", runner.ScriptedCall{Result: runner.Result{Stdout: "VERSION\x00"}})
+
+	got, err := record.TrackedSpelling(t.Context(), mutator(r), root, "version")
+	if err != nil || got != "version" {
+		t.Fatalf("TrackedSpelling = %q, %v, want version kept", got, err)
+	}
+}
+
 func TestTrackedSpelling_NoVersionFile_ReadsNothing(t *testing.T) {
 	t.Parallel()
 

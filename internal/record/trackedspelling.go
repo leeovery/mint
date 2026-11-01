@@ -17,8 +17,9 @@ import (
 // VERSION.txt, and a literal pathspec of version.txt then matches nothing. The index
 // entries matching path in any case are read with icase magic. A path git tracks as
 // spelled, or tracks in no spelling the disk shares, comes back as it is. One the disk
-// shares with several entries is an error naming them, as no one spelling is git's. A
-// failed read's error carries git's stderr as a *GitError.
+// shares with several entries is an error naming them, as no one spelling is git's.
+// Links are compared as themselves, never their targets, as git tracks a link as a
+// file of its own. A failed read's error carries git's stderr as a *GitError.
 func TrackedSpelling(ctx context.Context, m *git.Mutator, root, path string) (string, error) {
 	if path == "" {
 		return "", nil
@@ -31,13 +32,13 @@ func TrackedSpelling(ctx context.Context, m *git.Mutator, root, path string) (st
 	if slices.Contains(listed, path) {
 		return path, nil
 	}
-	own, err := os.Stat(filepath.Join(root, path))
+	own, err := os.Lstat(filepath.Join(root, path))
 	if err != nil {
 		return path, nil
 	}
 	var same []string
 	for _, entry := range listed {
-		if info, err := os.Stat(filepath.Join(root, entry)); err == nil && os.SameFile(own, info) {
+		if info, err := os.Lstat(filepath.Join(root, entry)); err == nil && os.SameFile(own, info) {
 			same = append(same, entry)
 		}
 	}
