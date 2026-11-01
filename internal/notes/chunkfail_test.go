@@ -29,17 +29,34 @@ func awaitFailure(t *testing.T, done <-chan generation) error {
 	}
 }
 
-// startGenerateIn is startGenerate on a context the test controls.
-func (s chunkScenario) startGenerateIn(t *testing.T, ctx context.Context, transport notes.Transport) <-chan generation {
+// startGenerateIn is startGenerate on a context the test controls, telling recorded
+// (when non-nil) each time the wave records a chunk call's outcome.
+func (s chunkScenario) startGenerateIn(t *testing.T, ctx context.Context, transport notes.Transport, recorded func()) <-chan generation {
 	t.Helper()
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, s.root)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, s.root).WithCallRecorded(recorded)
 	done := make(chan generation, 1)
 	go func() {
 		body, err := gen.Generate(ctx, "v1.0.0", s.cfg)
 		done <- generation{body: body, err: err}
 	}()
 	return done
+}
+
+// afterRecords returns a hook for startGenerateIn and a channel it closes once the
+// wave has recorded n chunk calls' outcomes.
+func afterRecords(n int) (func(), <-chan struct{}) {
+	var mu sync.Mutex
+	recorded := 0
+	reached := make(chan struct{})
+	return func() {
+		mu.Lock()
+		defer mu.Unlock()
+		recorded++
+		if recorded == n {
+			close(reached)
+		}
+	}, reached
 }
 
 func waitClosed(ch <-chan struct{}) error {
@@ -67,13 +84,8 @@ func TestGenerator_OverCap_OneChunkFails_NoMergeNoNewCallsAndRunningCallsFinish(
 			t.Parallel()
 
 			s := capOneFilePerChunk(t, tenKBFiles(6))
-			fail, release, twoEnded := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			fail, release := make(chan struct{}), make(chan struct{})
 			wt := &waveTransport{mergeBody: "merged"}
-			wt.ended = func(part int) {
-				if part == 2 {
-					close(twoEnded)
-				}
-			}
 			wt.gate = func(part int) error {
 				if part == 2 {
 					if err := waitClosed(fail); err != nil {
@@ -84,15 +96,15 @@ func TestGenerator_OverCap_OneChunkFails_NoMergeNoNewCallsAndRunningCallsFinish(
 				return heldGate(release)(part)
 			}
 
-			done := s.startGenerate(t, wt)
+			// Parts 1, 3 and 4 are held, so the first outcome the wave records is part
+			// 2's failure, and no held call frees its place in flight before it.
+			recorded, twoRecorded := afterRecords(1)
+			done := s.startGenerateIn(t, t.Context(), wt, recorded)
 			wt.waitInFlight(t, 4)
 			close(fail)
-			if err := waitClosed(twoEnded); err != nil {
-				t.Fatalf("part 2 did not end: %v", err)
+			if err := waitClosed(twoRecorded); err != nil {
+				t.Fatalf("part 2's failure was not recorded: %v", err)
 			}
-			// Part 2 frees its slot just after it ends; the grace lets the wave see that
-			// free slot before any held call frees another.
-			time.Sleep(50 * time.Millisecond)
 			close(release)
 			err := awaitFailure(t, done)
 
@@ -119,30 +131,25 @@ func TestGenerator_OverCap_TwoChunksFailInFlight_ErrorCarriesTheFirstToFail(t *t
 	t.Parallel()
 
 	s := capOneFilePerChunk(t, tenKBFiles(3))
-	threeEnded := make(chan struct{})
+	// Part 1 is held until two outcomes are recorded, which can only be parts 2's
+	// and 3's.
+	recorded, threeRecorded := afterRecords(2)
 	wt := &waveTransport{mergeBody: "merged"}
-	wt.ended = func(part int) {
-		if part == 3 {
-			close(threeEnded)
-		}
-	}
 	wt.gate = func(part int) error {
 		switch part {
 		case 3:
 			return &ai.GenerationError{Stdout: "part 3: usage limit reached", ExitCode: 1}
 		case 1:
-			if err := waitClosed(threeEnded); err != nil {
+			if err := waitClosed(threeRecorded); err != nil {
 				return err
 			}
-			// Part 3's failure is recorded by the wave just after its call ends.
-			time.Sleep(50 * time.Millisecond)
 			return &ai.GenerationError{Stdout: "part 1: login expired", ExitCode: 1}
 		default:
 			return nil
 		}
 	}
 
-	done := s.startGenerate(t, wt)
+	done := s.startGenerateIn(t, t.Context(), wt, recorded)
 	err := awaitFailure(t, done)
 
 	var genErr *ai.GenerationError
@@ -239,7 +246,7 @@ func TestGenerator_OverCap_CancelledMidWave_CancelsCallsInFlightAndStartsNoMore(
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	done := s.startGenerateIn(t, ctx, ct)
+	done := s.startGenerateIn(t, ctx, ct, nil)
 	deadline := time.Now().Add(waitLimit)
 	for inFlight, _, _ := ct.counts(); inFlight != 4; inFlight, _, _ = ct.counts() {
 		if time.Now().After(deadline) {
@@ -262,8 +269,7 @@ func TestGenerator_OverCap_CancelledMidWave_CancelsCallsInFlightAndStartsNoMore(
 // failThenHoldTransport fails part 2 once fail is closed, holds every other chunk call
 // until its context is done and answers a classify call OTHER.
 type failThenHoldTransport struct {
-	fail      chan struct{}
-	twoFailed chan struct{}
+	fail chan struct{}
 
 	mu     sync.Mutex
 	starts int
@@ -283,7 +289,6 @@ func (ft *failThenHoldTransport) Generate(ctx context.Context, prompt string) (s
 	ft.starts++
 	ft.mu.Unlock()
 	if partNumber(prompt) == 2 {
-		defer close(ft.twoFailed)
 		if err := waitClosed(ft.fail); err != nil {
 			return "", err
 		}
@@ -318,18 +323,19 @@ func TestGenerator_OverCap_CancelledAfterAChunkFailed_ReturnsTheCancel(t *testin
 	t.Parallel()
 
 	s := capOneFilePerChunk(t, tenKBFiles(6))
-	ft := &failThenHoldTransport{fail: make(chan struct{}), twoFailed: make(chan struct{})}
+	ft := &failThenHoldTransport{fail: make(chan struct{})}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	done := s.startGenerateIn(t, ctx, ft)
+	// Every other call is held until the cancel, so the first outcome recorded is
+	// part 2's failure.
+	recorded, twoRecorded := afterRecords(1)
+	done := s.startGenerateIn(t, ctx, ft, recorded)
 	ft.waitStarts(t, 4)
 	close(ft.fail)
-	if err := waitClosed(ft.twoFailed); err != nil {
-		t.Fatalf("part 2 did not fail: %v", err)
+	if err := waitClosed(twoRecorded); err != nil {
+		t.Fatalf("part 2's failure was not recorded: %v", err)
 	}
-	// Part 2's failure is recorded by the wave just after its call returns.
-	time.Sleep(50 * time.Millisecond)
 	cancel()
 	err := awaitFailure(t, done)
 
