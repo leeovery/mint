@@ -53,8 +53,9 @@ import (
 // true. When the write nets NO change,
 // nothing is staged or committed and committed is false.
 //
-// A failed write or a failed `git add` is surfaced (so 5-9 can reset the local write);
-// a failed stage short-circuits before the commit so it can never produce a commit.
+// A failed write is surfaced; a failed `git add` or commit is surfaced as an
+// *uncommittedChangelog, which resetAndAbort puts back; a failed stage short-circuits
+// before the commit so it can never produce a commit.
 func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, tag string, date time.Time, body string, keepOut git.Exclusion) (committed bool, err error) {
 	writeResult, err := record.WriteChangelog(root, versionKey, date, body, true)
 	if err != nil {
@@ -66,15 +67,20 @@ func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, 
 		return false, nil
 	}
 
-	if err := stageAndCommitChangelog(ctx, m, root, regenerateChangelogSubject(tag), keepOut); err != nil {
-		return false, fmt.Errorf("regenerating changelog for %s: %w", tag, &uncommittedChangelog{err: err})
+	if err := stageAndCommitChangelog(ctx, m, root, regenerateChangelogSubject(tag), keepOut, writeResult.Created); err != nil {
+		return false, fmt.Errorf("regenerating changelog for %s: %w", tag, err)
 	}
 	return true, nil
 }
 
 // uncommittedChangelog is a failure to commit a CHANGELOG.md already rewritten, which
-// the rewrite is left as. Its message is the failure's own.
-type uncommittedChangelog struct{ err error }
+// the recovery puts back: whether the rewrite created the file, and whether it was
+// staged, so git holds it in the index. Its message is the failure's own.
+type uncommittedChangelog struct {
+	err     error
+	created bool
+	staged  bool
+}
 
 func (e *uncommittedChangelog) Error() string { return e.err.Error() }
 

@@ -972,13 +972,20 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 		end  string
 		// at is the station the run closes at, where it isn't its start.
 		at string
-		// unwound is a run whose reset ran, which closes as unwound.
+		// unwound is a run whose reset or put-back ran, which closes as unwound.
 		unwound bool
 	}{
 		{
-			name: "a commit that fails leaves the rewrite",
-			tail: []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)}, // add, commit
-			end:  "CHANGELOG.md written, not committed · nothing pushed",
+			name:    "a commit that fails puts back the rewrite",
+			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr), ScriptedOut("")}, // add, commit, the put-back
+			end:     "back where it started · nothing pushed",
+			unwound: true,
+		},
+		{
+			name:    "a put-back that fails leaves the rewrite",
+			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr), gitFailing(stageStderr)},
+			end:     "manual cleanup required · CHANGELOG.md written, not committed · nothing pushed",
+			unwound: true,
 		},
 		{
 			name:    "a rejected push resets the commit",

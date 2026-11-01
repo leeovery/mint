@@ -1,0 +1,195 @@
+package engine_test
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
+	"testing"
+
+	"mint/internal/engine"
+	"mint/internal/git"
+	"mint/internal/presenter/presentertest"
+	"mint/internal/runner"
+)
+
+// putBack is the recovery's return of CHANGELOG.md to HEAD in the repo at dir, and
+// nothing else.
+func putBack(dir string) string {
+	return "git -C " + dir + " restore --source=HEAD --staged --worktree -- :(top,literal)CHANGELOG.md"
+}
+
+// regenRestoreCase is a regenerate whose changelog rewrite no commit holds: CHANGELOG.md
+// there before it or created by it, its stage or its commit failing.
+type regenRestoreCase struct {
+	name string
+	// existed reports that CHANGELOG.md was there before the rewrite.
+	existed bool
+	// commitFails is the commit failing, the rewrite staged; else the stage fails.
+	commitFails bool
+	// restores reports that git is asked to put the file back; else it is removed from
+	// the disk, git never having held it.
+	restores bool
+	undone   string
+}
+
+var regenRestoreCases = []regenRestoreCase{
+	{name: "a stage that fails, the file there before", existed: true, restores: true, undone: "restored CHANGELOG.md"},
+	{name: "a commit that fails, the file there before", existed: true, commitFails: true, restores: true, undone: "restored CHANGELOG.md"},
+	{name: "a stage that fails, the file created", undone: "removed CHANGELOG.md"},
+	{name: "a commit that fails, the file created", commitFails: true, restores: true, undone: "removed CHANGELOG.md"},
+}
+
+// failingTail scripts the stage and commit, the one failing, then the put-back where
+// git is asked for it.
+func (tc regenRestoreCase) failingTail() []runner.ScriptedCall {
+	tail := []runner.ScriptedCall{gitFailing(stageStderr)}
+	if tc.commitFails {
+		tail = []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)}
+	}
+	if tc.restores {
+		tail = append(tail, ScriptedOut(""))
+	}
+	return tail
+}
+
+// wantTail is the git steps from the stage on: the stage, the commit where the stage
+// went through, then the put-back where git is asked for it, and no reset.
+func (tc regenRestoreCase) wantTail(dir string) []string {
+	want := []string{"git -C " + dir + " add CHANGELOG.md"}
+	if tc.commitFails {
+		want = append(want, "git -C "+dir+" commit -m docs(changelog): regenerate notes for "+regenWriteTag)
+	}
+	if tc.restores {
+		want = append(want, putBack(dir))
+	}
+	return want
+}
+
+// assertGitTailFrom fails unless the git steps from the first that is want's first are
+// exactly want.
+func assertGitTailFrom(t *testing.T, f *runner.FakeRunner, want []string) {
+	t.Helper()
+	got := commandLines(f.Invocations())
+	at := slices.Index(got, want[0])
+	if at == -1 || !slices.Equal(got[at:], want) {
+		t.Errorf("git steps = %q, want them to end %q", got, want)
+	}
+}
+
+func TestRegenerateWrite_AStageOrCommitThatFails_PutsBackExactlyTheRewrite(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range regenRestoreCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if tc.existed {
+				seedChangelog(t, dir, regenNotesStaleChangelog)
+			}
+			f := runner.NewFakeRunner()
+			f.SeedSequence("git", ScriptedOut("startHEAD"), ScriptedOut(regenWriteHistorical)) // rev-parse HEAD, for-each-ref
+			f.SeedSequence("git", tc.failingTail()...)
+			rec := &presentertest.RecordingPresenter{}
+
+			err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
+
+			assertAbortNonZero(t, err)
+			assertGitTailFrom(t, f, tc.wantTail(dir))
+			if got := unwoundText(t, rec); got != tc.undone {
+				t.Errorf("Unwound = %q, want %q", got, tc.undone)
+			}
+			_, statErr := os.Stat(filepath.Join(dir, "CHANGELOG.md"))
+			if gone := errors.Is(statErr, os.ErrNotExist); gone != (!tc.existed && !tc.restores) {
+				t.Errorf("CHANGELOG.md gone = %v, want removed only where the rewrite created it and git never held it", gone)
+			}
+		})
+	}
+}
+
+// A notes file kept out of the changelog commit is named by no step of the put-back:
+// its edits and staged state are the user's.
+func TestRegenerateWrite_ACommitThatFails_PutsBackTheRewriteLeavingTheNotesFile(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range notesResetCases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			seedChangelog(t, dir, regenNotesStaleChangelog)
+			path := writeNotesFile(t, dir, tt.file, suppliedBody)
+			f := runner.NewFakeRunner()
+			f.SeedSequence("git", regenChangelogWrite()...)
+			commit := keepOutCommit(tt.notesStaged, stagedChangelog)
+			commit[len(commit)-1] = gitFailing(commitStderr)
+			f.SeedSequence("git", commit...)
+			f.SeedSequence("git", ScriptedOut("")) // the put-back
+			rec := &presentertest.RecordingPresenter{}
+
+			req := freshWriteReq(engine.RegenerateTargetChangelog)
+			req.KeepOut = git.Exclusion(tt.file)
+			err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, req)
+
+			assertAbortNonZero(t, err)
+			if got := commandLines(f.Invocations()); got[len(got)-1] != putBack(dir) {
+				t.Errorf("git steps = %q, want them to end with the put-back %q", got, putBack(dir))
+			}
+			assertNoDiscard(t, f)
+			assertNotesFileOnlyExcluded(t, f, tt.file)
+			assertFileUnchanged(t, path, suppliedBody)
+		})
+	}
+}
+
+func TestRegenerateWrite_APutBackThatFails_SaysSoWithTheManualStep(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	seedChangelog(t, dir, regenNotesStaleChangelog)
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git", regenChangelogWrite()...)
+	f.SeedSequence("git", gitFailing(commitStderr), gitFailing(stageStderr)) // commit, the put-back
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
+
+	assertAbortNonZero(t, err)
+	step := "git restore --source=HEAD --staged --worktree -- ':(top,literal)CHANGELOG.md'"
+	onlyWarning(t, rec, unwindIncomplete("restore CHANGELOG.md to HEAD (`"+step+"`)", stageStderr))
+	if got := unwoundText(t, rec); got != "" {
+		t.Errorf("Unwound = %q, want nothing claimed undone", got)
+	}
+}
+
+func TestRegenerateAllValidated_Changelog_ACommitThatFails_PutsBackTheRebuild(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	seedChangelog(t, dir, kacPreamble+"\n## [1.0.0] - 2024-01-01\n\nstale v1\n")
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git", append(preflightCommitPushBucket(),
+		ScriptedOut("startHEAD"), // rev-parse HEAD (captured start)
+		ScriptedOut(batchV1Date), // for-each-ref creatordate:short v1
+		ScriptedOut(batchV2Date), // for-each-ref creatordate:short v2
+		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
+		ScriptedOut(""),          // add CHANGELOG.md
+		gitFailing(commitStderr), // commit
+		ScriptedOut(""),          // the put-back
+	)...)
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), newFakePublisher(), dir,
+		freshChangelogBatchReq(threeVersions(), engine.RegenerateTargetChangelog), true)
+
+	assertAbortNonZero(t, err)
+	got := commandLines(f.Invocations())
+	if got[len(got)-1] != putBack(dir) {
+		t.Errorf("git steps = %q, want them to end with the put-back %q", got, putBack(dir))
+	}
+	assertNoReset(t, f)
+	if got := unwoundText(t, rec); got != "restored CHANGELOG.md" {
+		t.Errorf("Unwound = %q, want %q", got, "restored CHANGELOG.md")
+	}
+}

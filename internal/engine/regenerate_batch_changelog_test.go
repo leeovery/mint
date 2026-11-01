@@ -326,6 +326,7 @@ func TestRegenerateAllValidated_Changelog_StageFailure_AbortsNoCommit(t *testing
 		ScriptedOut(batchV2Date), // for-each-ref creatordate:short v2
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 128}, Err: errors.New("fatal: pathspec error")}, // add fails
+		ScriptedOut(""), // the put-back of the rebuild
 	)...)
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}
@@ -341,6 +342,9 @@ func TestRegenerateAllValidated_Changelog_StageFailure_AbortsNoCommit(t *testing
 		if inv.Name == "git" && (slices.Contains(inv.Args, "commit") || slices.Contains(inv.Args, "push")) {
 			t.Errorf("a batch stage failure issued %v; no commit or push must follow a failed stage", inv.Args)
 		}
+	}
+	if got := commandLines(f.Invocations()); got[len(got)-1] != putBack(dir) {
+		t.Errorf("git steps = %q, want them to end with the put-back %q", got, putBack(dir))
 	}
 }
 

@@ -341,9 +341,8 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 	deps.run.Left(noClaim)
 	committed, err := RegenerateChangelog(ctx, deps.Mutator, root, req.VersionKey, req.Tag, date, body, req.KeepOut)
 	if err != nil {
-		// A failed write/stage/commit makes no commit, but a partial commit could have
-		// landed before a later step; reset iff one did, then abort. (RegenerateChangelog
-		// returns committed=false on a failed stage/commit, so the reset no-ops there.)
+		// A failed write, stage or commit makes no commit (committed is false): a failed
+		// stage or commit leaves the rewrite, which resetAndAbort puts back.
 		return false, resetAndAbort(ctx, deps, start, committed, stageFailure(stageRecord, err), err)
 	}
 	if !committed {
@@ -375,22 +374,23 @@ func startChangelogNode(deps ReleaseDeps, text string) *blockingStage {
 // index under subject through the lock-resilient Mutator, parameterised by subject so
 // each path keeps its own commit subject. A keepOut path is left out of the commit, any
 // staged edits to it still staged afterwards (record.CommitStaged). A failed step
-// short-circuits (a failed stage never reaches the commit) and the returned error names
-// which step failed (`staging …` / `committing …`) so each caller can apply its own
-// distinct error-recovery to the returned error — the single-version path wraps it with
-// the tag, the batch path routes it through resetAndAbort. Keeping the stage/commit
-// idiom here means the two regenerate paths can no longer drift on the stage/commit half
-// (the mirror of pushChangelogCommit owning the push/recovery half).
-func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject string, keepOut git.Exclusion) error {
+// short-circuits (a failed stage never reaches the commit) and the returned
+// *uncommittedChangelog names which step failed (`staging …` / `committing …`) and
+// carries what resetAndAbort needs to put the rewrite back: created, whether the
+// rewrite created the file, and whether the stage went through. Each caller wraps it
+// with its own context. Keeping the stage/commit idiom here means the two regenerate
+// paths can no longer drift on the stage/commit half (the mirror of
+// pushChangelogCommit owning the push/recovery half).
+func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject string, keepOut git.Exclusion, created bool) error {
 	if res, err := m.Mutate(ctx, nil, "git", "-C", root, "add", record.ChangelogFileName); err != nil {
-		return fmt.Errorf("staging %s: %w", record.ChangelogFileName, record.NewGitError(res.Stderr, err))
+		return &uncommittedChangelog{err: fmt.Errorf("staging %s: %w", record.ChangelogFileName, record.NewGitError(res.Stderr, err)), created: created}
 	}
 	committed, err := record.CommitStaged(ctx, m, root, subject, keepOut)
-	if err != nil {
-		return fmt.Errorf("committing %q: %w", subject, err)
+	if err == nil && !committed {
+		err = record.ErrNothingStaged
 	}
-	if !committed {
-		return fmt.Errorf("committing %q: %w", subject, record.ErrNothingStaged)
+	if err != nil {
+		return &uncommittedChangelog{err: fmt.Errorf("committing %q: %w", subject, err), created: created, staged: true}
 	}
 	return nil
 }
@@ -424,20 +424,45 @@ func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarge
 // local CHANGELOG commit back to start when a commit landed (resetTo — no tag,
 // best-effort), narrates the reset as the rail's unwind, Quiet as plain has no line
 // for it, tells the run's close where that left the repo, and returns the abort on
-// cause. With no commit made the reset is skipped, and a CHANGELOG.md rewritten but
-// not committed is what the run leaves; a write that failed before that leaves the
-// close claiming nothing. The ✗ line carries the failure's message, the failing git
-// step's stderr verbatim beneath it.
+// cause. With no commit made there is no reset: a CHANGELOG.md rewritten but not
+// committed is put back (putBackChangelog), and a write that failed before that leaves
+// the close claiming nothing. The ✗ line carries the failure's message, the failing
+// git step's stderr verbatim beneath it.
 func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, committed bool, failure presenter.StageFailure, cause error) error {
 	deps.Presenter.StageFailed(failure)
 	var uncommitted *uncommittedChangelog
-	if errors.As(cause, &uncommitted) {
-		deps.run.Left(record.ChangelogFileName + notCommitted + " · " + nothingPushed)
-	}
-	if committed {
+	switch {
+	case committed:
 		resetChangelogCommit(ctx, deps, start)
+	case errors.As(cause, &uncommitted):
+		putBackChangelog(ctx, deps, start.Root, uncommitted)
 	}
 	return abort(cause)
+}
+
+// putBackChangelog returns a CHANGELOG.md the regenerate rewrote and never committed
+// to HEAD's content, in the index and the work tree, or removes it where the rewrite
+// created it, touching no other path and leaving HEAD where it stands. Like the reset
+// it runs as recovery past a cancellation, and is narrated as the rail's unwind,
+// Quiet as plain has no line for it. A failure warns with the manual step, and the
+// close says the rewrite is still there.
+func putBackChangelog(ctx context.Context, deps ReleaseDeps, root string, left *uncommittedChangelog) {
+	ctx = context.WithoutCancel(ctx)
+	file := []string{record.ChangelogFileName}
+	tracked, untracked, undone := file, []string(nil), "restored "+record.ChangelogFileName
+	if left.created {
+		undone = "removed " + record.ChangelogFileName
+		if !left.staged {
+			tracked, untracked = nil, file
+		}
+	}
+	if !restoreFiles(ctx, deps, root, tracked, untracked) {
+		deps.Presenter.Unwound(presenter.Unwind{Key: stageUnwind, Quiet: true})
+		deps.run.Unwound(manualCleanup + " · " + record.ChangelogFileName + notCommitted + " · " + nothingPushed)
+		return
+	}
+	deps.Presenter.Unwound(presenter.Unwind{Undone: undone, Key: stageUnwind, Quiet: true})
+	deps.run.Unwound(backWhereItStarted + " · " + nothingPushed)
 }
 
 // resetChangelogCommit resets the changelog commit a failure left back to start.

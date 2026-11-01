@@ -85,7 +85,7 @@ func rebuildBatchChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 		return nil
 	}
 
-	if err := commitAndPushRebuild(ctx, deps, root, startingHEAD, node); err != nil {
+	if err := commitAndPushRebuild(ctx, deps, root, startingHEAD, result.Created, node); err != nil {
 		return err
 	}
 	node.succeeded(presenter.StageSuccess{Detail: rebuilt + " · committed and pushed", Commit: batchRebuildSubject})
@@ -159,11 +159,12 @@ func regeneratedByTag(collected []RegeneratedVersion) map[string]string {
 // rebuilt CHANGELOG.md in ONE commit at the end of the batch, on the CHANGELOG.md
 // node, resetting the local commit back to startingHEAD on any pre-push failure — the
 // same recovery the single-version 5-9 path uses, run once for the whole batch. A
-// failed commit leaves the rebuilt file as it is. The push is the point of no return.
-func commitAndPushRebuild(ctx context.Context, deps ReleaseDeps, root, startingHEAD string, node *blockingStage) error {
+// failed commit puts the rebuilt file back, removing it where the rebuild created it
+// (created). The push is the point of no return.
+func commitAndPushRebuild(ctx context.Context, deps ReleaseDeps, root, startingHEAD string, created bool, node *blockingStage) error {
 	start := resetTarget{HEAD: startingHEAD, Root: root}
-	if err := stageAndCommitChangelog(ctx, deps.Mutator, root, batchRebuildSubject, ""); err != nil {
-		cause := fmt.Errorf("batch rebuild: %w", &uncommittedChangelog{err: err})
+	if err := stageAndCommitChangelog(ctx, deps.Mutator, root, batchRebuildSubject, "", created); err != nil {
+		cause := fmt.Errorf("batch rebuild: %w", err)
 		return resetAndAbort(ctx, deps, start, false, stageFailure(stageRecord, cause), cause)
 	}
 	// The rebuild commit landed: push it (the end-of-batch point of no return) via the
