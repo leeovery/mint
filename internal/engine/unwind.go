@@ -421,7 +421,7 @@ func resetIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made M
 	if made.Commits <= 0 {
 		return false, true, stagedIndex{}
 	}
-	staged, manual, output, err := resetTo(ctx, deps.Mutator, resetTarget{HEAD: start.HEAD, Root: start.Root})
+	staged, manual, output, err := resetTo(ctx, deps.Mutator, resetTarget{HEAD: start.HEAD, Root: start.Root}, "")
 	if err != nil {
 		// The manual reset drops the answers commit along with mint's other commits.
 		warnUnwindIncomplete(deps.Presenter, output, append(manual, restore...)...)
@@ -726,14 +726,14 @@ func readIndex(ctx context.Context, m *git.Mutator, root string) (index stagedIn
 // intent-to-add marks, what the index holds is read first (readIndex), the index
 // written as a tree where it stages content, and the returned stagedIndex restages it
 // all. On failure HEAD has not moved, and it returns the manual steps that finish the
-// reset (keepSteps) and the failing git step's own output.
-func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (index stagedIndex, manual []manualStep, output string, err error) {
+// reset (keepSteps, the reset's step saying why) and the failing git step's own output.
+func resetTo(ctx context.Context, m *git.Mutator, target resetTarget, why string) (index stagedIndex, manual []manualStep, output string, err error) {
 	sha := target.HEAD
-	keep := keepSteps(sha)
 	index, output, err = readIndex(ctx, m, target.Root)
 	if err != nil {
-		return stagedIndex{}, keep, output, err
+		return stagedIndex{}, keepSteps(sha, why, nil), output, err
 	}
+	keep := keepSteps(sha, why, index.intents)
 	if len(index.staged) > 0 {
 		res, err := m.Mutate(ctx, nil, "git", "write-tree")
 		if err != nil {
@@ -748,16 +748,32 @@ func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (index sta
 }
 
 // keepSteps are the manual steps that reset HEAD back to sha keeping the user's
-// changes: stash those to the files git names, as a refused reset --keep names them,
-// reset, and pop the stash. The pop is offered only for a stash the user made, as a
-// reset that failed for another reason names no file, and a pop then would apply some
-// older stash. The files are left to git's own message, which plain prints after the
-// step and the rail before it.
-func keepSteps(sha string) []manualStep {
-	return []manualStep{
-		{does: "stash your changes to any file git names, then reset HEAD back to " + sha, commands: []string{"git reset --keep " + sha}},
-		{does: "pop that stash, if you made one, to bring your changes back", commands: []string{"git stash pop"}},
+// changes, the reset's step saying why: stash them, reset, then pop the stash with
+// --index, which brings back what was staged, a staged deletion included, as it was.
+// The pop is offered only for a stash that saved something, as a reset that failed
+// for another reason may leave nothing to stash, and a pop then would apply some older
+// stash. git can't stash a file marked intent-to-add, so intents, the files the index
+// read found marked, are unmarked first and marked again last.
+func keepSteps(sha, why string, intents []string) []manualStep {
+	var steps []manualStep
+	if len(intents) > 0 {
+		steps = append(steps, manualStep{
+			does:     "unmark " + strings.Join(intents, " + ") + ", which git can't stash",
+			commands: []string{"git rm --cached -q -- " + quoteAll(literalPathspecs(intents))},
+		})
 	}
+	steps = append(steps,
+		manualStep{does: "stash your changes", commands: []string{"git stash"}},
+		manualStep{does: "reset HEAD back to " + sha, commands: []string{"git reset --keep " + sha}, why: why},
+		manualStep{does: "bring your changes back, staged as they were, if the stash saved any", commands: []string{"git stash pop --index"}},
+	)
+	if len(intents) > 0 {
+		steps = append(steps, manualStep{
+			does:     "mark " + strings.Join(intents, " + ") + " as intended to add again",
+			commands: []string{"git add --intent-to-add -- " + quoteAll(literalPathspecs(intents))},
+		})
+	}
+	return steps
 }
 
 // restageStep is one git step of a restage: the paths it names on stdin, its args, and

@@ -3,6 +3,7 @@ package engine_test
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 
 	"mint/internal/engine"
@@ -68,6 +69,30 @@ func TestUnwind_ResetLockedPastTheRetries_ShowsGitsLockStderrBeneathTheWarning(t
 	if got, want := unwoundText(t, rec), "deleted tag v0.0.1; manual cleanup required"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
+}
+
+// git can't stash a file marked intent-to-add, so a reset refused with one in the index
+// leaves steps that unmark it before the stash and mark it again after the pop.
+func TestUnwind_ResetRefusedWithAFileMarkedIntentToAdd_UnmarksItBeforeTheStashAndMarksItAfter(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git", ScriptedOut(""), indexHolds(".A", "next.go"), gitFailing(keepRefusalStderr)) // tag -d, the index read, the reset
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Unwind(t.Context(), newDeps(rec, f), startState(startingSHA, "v0.0.1"), engine.MadeState{Commits: 2, TagCreated: true}, errUnwindReason)
+
+	assertAbortNonZero(t, err)
+	const unmark = "git rm --cached -q -- ':(top,literal)next.go'"
+	onlyWarning(t, rec, unwindIncomplete(
+		"unmark next.go, which git can't stash (`"+unmark+"`), then "+keepSteps+
+			", then mark next.go as intended to add again (`"+remarkIntent+"`)",
+		keepRefusalStderr))
+	assertManualSteps(t, rec, slices.Concat(
+		[]presenter.NextMove{{Lead: "Unmark next.go, which git can't stash:", Command: unmark}},
+		keepMoves,
+		[]presenter.NextMove{{Lead: "Mark next.go as intended to add again:", Command: remarkIntent}},
+	)...)
 }
 
 // restageStep is the manual step a failed restage of NEXT_RELEASE.md leaves.
@@ -194,7 +219,7 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 	t.Parallel()
 
-	reset := keepStepsTo("startHEAD", " to drop the leftover changelog commit")
+	reset := keepStepsTo("startHEAD", "to drop the leftover changelog commit")
 	pushRejected := runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}
 	tests := []struct {
 		name string

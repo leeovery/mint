@@ -483,9 +483,8 @@ func putBackChangelog(ctx context.Context, deps ReleaseDeps, root string, left *
 // back as it held the user's changes warns the same way, HEAD back at the start.
 func resetChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarget) {
 	ctx = context.WithoutCancel(ctx)
-	staged, manual, output, err := resetTo(ctx, deps.Mutator, start)
+	staged, manual, output, err := resetTo(ctx, deps.Mutator, start, "to drop the leftover changelog commit")
 	if err != nil {
-		manual[0].why = "to drop the leftover changelog commit"
 		warnUnwindIncomplete(deps.Presenter, output, manual...)
 		deps.Presenter.Unwound(presenter.Unwind{Key: stageUnwind, Quiet: true})
 		strandedAt(ctx, deps, "the changelog commit not reset", manualCleanup+" · "+nothingPushed)
