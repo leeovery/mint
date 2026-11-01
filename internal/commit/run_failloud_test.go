@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"testing"
 
 	"mint/internal/ai"
 	"mint/internal/commit"
 	"mint/internal/git"
+	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 )
@@ -257,19 +259,23 @@ func TestRun_FallbackNonTTYStdin_NeverReachesEditorResolution(t *testing.T) {
 
 // TestRun_FallbackOnTTY_NoLaunchableEditor_FailsLoud proves a fallback on a TTY
 // (StdinInteractive=true, Yes=false) where NO editor in git's chain is launchable fails
-// loud with the SAME spec message — there is no message to fall back to. The not-
-// launchable signal is consumed from 3-1 (ErrNoEditor via a failed `git var GIT_EDITOR`).
+// loud, saying why no editor opened — there is no message to fall back to — with the
+// ways on. The not-launchable signal is consumed from 3-1 (ErrNoEditor via a failed
+// `git var GIT_EDITOR`). --no-ai asked for no AI message, so the failure gives no
+// reason for its absence.
 func TestRun_FallbackOnTTY_NoLaunchableEditor_FailsLoud(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		seed func() *runner.FakeRunner
-		deps func(rec *presentertest.RecordingPresenter, er *editorRunner, root string) commit.Deps
-		root func(t *testing.T) string
+		name    string
+		message string
+		seed    func() *runner.FakeRunner
+		deps    func(rec *presentertest.RecordingPresenter, er *editorRunner, root string) commit.Deps
+		root    func(t *testing.T) string
 	}{
 		{
-			name: "NoAI_ErrNoEditor",
+			name:    "NoAI_ErrNoEditor",
+			message: "git names no editor to open",
 			seed: func() *runner.FakeRunner {
 				f := runner.NewFakeRunner()
 				f.SeedSequence("git",
@@ -285,7 +291,8 @@ func TestRun_FallbackOnTTY_NoLaunchableEditor_FailsLoud(t *testing.T) {
 			},
 		},
 		{
-			name: "NoAI_CommandNotFoundOnLaunch",
+			name:    "NoAI_CommandNotFoundOnLaunch",
+			message: `the editor "ghost-editor" could not be opened (not found)`,
 			seed: func() *runner.FakeRunner {
 				f := runner.NewFakeRunner()
 				f.SeedSequence("git",
@@ -320,12 +327,16 @@ func TestRun_FallbackOnTTY_NoLaunchableEditor_FailsLoud(t *testing.T) {
 			if err == nil {
 				t.Fatal("Run returned nil for a no-launchable-editor fallback; want a non-zero fail-loud abort")
 			}
-			if err.Error() != failLoudMessage {
-				t.Errorf("error = %q, want the exact spec message %q", err.Error(), failLoudMessage)
-			}
 			msgs := stageFailedMessages(rec)
-			if len(msgs) != 1 || msgs[0] != failLoudMessage {
-				t.Errorf("StageFailed messages = %v, want exactly one %q", msgs, failLoudMessage)
+			if len(msgs) != 1 || msgs[0] != tt.message {
+				t.Errorf("StageFailed messages = %v, want exactly one %q", msgs, tt.message)
+			}
+			wantMoves := []presenter.NextMove{
+				{Lead: editorMoveLead, Command: "mint commit --no-ai"},
+				{Lead: ownMessageLead, Command: `git commit -m "<message>"`},
+			}
+			if got := nextMoves(rec); !slices.Equal(got, wantMoves) {
+				t.Errorf("next moves = %+v, want %+v", got, wantMoves)
 			}
 			if adds := editorAddInvocations(er); len(adds) != 0 {
 				t.Errorf("fail-loud ran `git add` %v; nothing must be staged", adds)

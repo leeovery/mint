@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -281,6 +282,16 @@ var commitRuns = map[string]commitRun{
 		w.editor(runEditedMessage)
 		w.f.SeedSequence("git", out("")) // add -u
 		w.committed()
+		return w.commit(t, func(d *commit.Deps) { d.Staging = commit.All })
+	}},
+	// commit -a with the AI failing on a usage limit and git's editor missing: the run
+	// fails on the message, saying why, with the ways on, and nothing staged.
+	"commit-no-editor-100": {aborted: true, run: func(t *testing.T, w *commitWorld) error {
+		w.started()
+		w.trackedDiff()
+		w.messages(aiAnswer{err: &ai.GenerationError{Stdout: runUsageLimit, ExitCode: 1}})
+		w.f.SeedSequence("git", out("nvim\n")) // var GIT_EDITOR
+		w.er.launchErr = fmt.Errorf("running %q: %w", "nvim", runner.ErrCommandNotFound)
 		return w.commit(t, func(d *commit.Deps) { d.Staging = commit.All })
 	}},
 	// commit -p whose push is rejected: the commit stays, and the run exits non-zero.

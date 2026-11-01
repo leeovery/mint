@@ -151,6 +151,13 @@ func (r *ExecRunner) RunInteractive(ctx context.Context, name string, args ...st
 		return fmt.Errorf("running %q: %w", name, ErrCommandNotFound)
 	}
 
+	// A child that never started, with ctx still live, is not an exit: the launcher
+	// tells it apart from a quit.
+	var exitErr *exec.ExitError
+	if !errors.As(runErr, &exitErr) && ctx.Err() == nil {
+		return fmt.Errorf("running %q: %w: %w", name, ErrNotStarted, runErr)
+	}
+
 	// Any other failure (non-zero exit, context cancellation) propagates wrapped.
 	return fmt.Errorf("running %q: %w", name, runErr)
 }

@@ -126,17 +126,17 @@ var errGateAborted = errors.New("commit aborted at review gate")
 // telling a caller the commit did not happen.
 var errEditorNoOp = errors.New("commit aborted: editor closed with no message")
 
-// errNoMessageSource is the fail-loud cause when the editor fallback has no way to
-// produce a message: an unattended run (-y), a non-TTY stdin (the startup-resolved
-// StdinInteractive signal is false), or no launchable editor in git's chain on a TTY.
-// The fallback is inherently interactive, so without a human at a terminal there is
-// nothing to commit with — mint fails loud rather than hang or commit an empty message.
-// It extends the gate's forbidden-combo philosophy to the editor path and applies
-// IDENTICALLY across all three converging triggers (--no-ai, AI-failure, oversized),
-// which all reach runEditorFallback. The message is the spec string VERBATIM (lowercase,
-// no trailing punctuation); it is surfaced (StageFailed) so the cmd layer maps it to a
-// non-zero exit. There is NO -m/--message escape — unattended-with-own-message uses
-// plain `git commit`.
+// errNoMessageSource is the fail-loud cause when the editor fallback has no human to
+// write a message: an unattended run (-y) or a non-TTY stdin (the startup-resolved
+// StdinInteractive signal is false). The fallback is inherently interactive, so
+// without a human at a terminal there is nothing to commit with — mint fails loud
+// rather than hang or commit an empty message. It extends the gate's forbidden-combo
+// philosophy to the editor path and applies IDENTICALLY across all the converging
+// triggers (--no-ai, AI-failure, oversized), which all reach runEditorFallback. The
+// message is the spec string VERBATIM (lowercase, no trailing punctuation); it is
+// surfaced (StageFailed) so the cmd layer maps it to a non-zero exit. There is NO
+// -m/--message escape — unattended-with-own-message uses plain `git commit`. An editor
+// that can't be opened at a terminal fails with failEditorUnopenable instead.
 var errNoMessageSource = errors.New("no AI message and no interactive editor available")
 
 // errPushFailed is the internal sentinel for a FAILED auto-push under warn-don't-unwind.
@@ -162,16 +162,22 @@ const (
 	pushFailWarnMessage = "commit is in place; re-run the push to retry"
 )
 
-// errRegenerateFallback is an INTERNAL routing sentinel — never user-facing. When the
-// gate's `r` regeneration fails after the engine's one retry (an isAITransportFailure),
-// or its composed prompt goes over max_prompt_bytes, reviewLoop returns this cause so
-// Run routes to the SAME empty $EDITOR fallback a first-generation AI failure takes,
-// never re-showing the pre-r message. The regeneration happens INSIDE reviewLoop, but
-// the fallback must be owned by Run (the same entry point first-generation failures
-// use) so a successful fallback commit exits 0 rather than being turned into
-// errGateAborted, and never double-stages/commits. Run INTERCEPTS this sentinel before
-// it can surface — it carries no user-facing message.
-var errRegenerateFallback = errors.New("commit: regenerate failed, routing to editor fallback")
+// regenerateFallback is an INTERNAL routing cause — never user-facing. When the gate's
+// `r` regeneration fails after the engine's one retry (an isAITransportFailure), or its
+// composed prompt goes over max_prompt_bytes, reviewLoop returns it, carrying why there
+// is no message, so Run routes to the SAME empty $EDITOR fallback a first-generation AI
+// failure takes, never re-showing the pre-r message. The regeneration happens INSIDE
+// reviewLoop, but the fallback must be owned by Run (the same entry point
+// first-generation failures use) so a successful fallback commit exits 0 rather than
+// being turned into errGateAborted, and never double-stages/commits. Run INTERCEPTS it
+// before it can surface.
+type regenerateFallback struct {
+	missing noAIMessage
+}
+
+func (*regenerateFallback) Error() string {
+	return "commit: regenerate failed, routing to editor fallback"
+}
 
 // Mutator is commit's git-mutation SINK seam: EVERY git mutation commit makes flows
 // through it so each is lock-resilient (git_safe), NEVER the raw runner. Three distinct
@@ -396,7 +402,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 	// empty/aborted editor is a true no-op. mint opens the editor itself (staging is
 	// deferred until the save event), against an EMPTY buffer (no synthetic stub).
 	if deps.NoAI {
-		return runEditorFallback(ctx, deps, root, "")
+		return runEditorFallback(ctx, deps, root, noAIAsked)
 	}
 
 	// A first commit is proposed git's conventional message with no AI call: its diff is
@@ -430,7 +436,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 			if !deps.editorUnavailable() {
 				p.Warn(presenter.Warning{Key: stageMessage, Label: oversizedNoteLabel, Message: oversizedNoteMessage, Elapsed: generated.elapsed()})
 			}
-			return runEditorFallback(ctx, deps, root, "")
+			return runEditorFallback(ctx, deps, root, diffTooLarge)
 		}
 		// An all-excluded diff is a generate-SKIP, NOT a failure: the tree is dirty (the
 		// preflight, which is diff_exclude-blind, let it through) but diff_exclude removed
@@ -445,7 +451,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 			if !deps.editorUnavailable() {
 				p.Warn(presenter.Warning{Key: stageMessage, Label: excludedNoteLabel, Message: excludedNoteMessage, Elapsed: generated.elapsed()})
 			}
-			return runEditorFallback(ctx, deps, root, "")
+			return runEditorFallback(ctx, deps, root, changesExcluded)
 		}
 		// An AI transport failure (bad content after the transport's one retry, a timeout,
 		// or a missing binary) is NOT an abort for a routine local commit — it routes to the
@@ -458,11 +464,11 @@ func mintCommit(ctx context.Context, deps Deps) error {
 		// fail-loud on an unattended one. The transport's own bad-content retry is consumed
 		// here, never re-run. Any OTHER generate error keeps the surface abort.
 		if isAITransportFailure(err) {
-			output := aiFailureOutput(err)
+			missing := aiFailed(err)
 			if !deps.editorUnavailable() {
-				p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: output, Elapsed: generated.elapsed()})
+				p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: missing.output, Elapsed: generated.elapsed()})
 			}
-			return runEditorFallback(ctx, deps, root, output)
+			return runEditorFallback(ctx, deps, root, missing)
 		}
 		return surfaceTimed(p, "generate", err, generated.elapsed())
 	}
@@ -485,8 +491,9 @@ func reviewAndCommit(ctx context.Context, deps Deps, cfg config.Config, root, bo
 		// commit exits per the accept tail (0 on commit success, non-zero only on a failed -p
 		// push), is NOT turned into errGateAborted, and never double-stages. The editor opens
 		// EMPTY/template (no re-show of the pre-r message), exactly like 3-3.
-		if errors.Is(err, errRegenerateFallback) {
-			return runEditorFallback(ctx, deps, root, "")
+		var fallback *regenerateFallback
+		if errors.As(err, &fallback) {
+			return runEditorFallback(ctx, deps, root, fallback.missing)
 		}
 		return err
 	}
@@ -509,20 +516,22 @@ func reviewAndCommit(ctx context.Context, deps Deps, cfg config.Config, root, bo
 
 // runEditorFallback is the shared $EDITOR degradation path for a run with no AI message.
 // It opens the editor via OpenEditor against an EMPTY buffer and treats the SAVE as the
-// accept event. aiOutput, a failed AI call's captured output, renders only beneath the
-// unattended fail-loud: an attended caller shows it in its own warn.
+// accept event. missing says why there is no AI message; a failed AI call's captured
+// output renders only beneath the unattended fail-loud: an attended caller shows it in
+// its own warn.
 //
 // The no-message-source guard runs FIRST, BEFORE any editor launch, so a run with no
 // way to produce a message fails loud rather than hangs or commits empty. It fires when:
 //
 //   - deps.Yes — an unattended -y run has no human to write a message; OR
 //   - !deps.StdinInteractive — a non-TTY stdin (the startup-resolved signal) cannot host
-//     the inherently-interactive editor; OR
-//   - OpenEditor reports no launchable editor in git's chain (ErrNoEditor from 3-1, or
-//     runner.ErrCommandNotFound at launch) on a TTY — there is no message to fall back to.
+//     the inherently-interactive editor.
 //
-// All three collapse to errNoMessageSource ("no AI message and no interactive editor
-// available"), surfaced and aborted. There is NO -m/--message escape.
+// Both collapse to errNoMessageSource ("no AI message and no interactive editor
+// available"), surfaced and aborted. At a terminal, an editor OpenEditor can't open
+// (editorUnopenable: git names none, or the one it names is missing or never started)
+// fails loud through failEditorUnopenable, saying why there is no AI message and no
+// editor, with the ways on. There is NO -m/--message escape.
 //
 // Past the guard, the SAVE is the accept event:
 //
@@ -537,7 +546,7 @@ func reviewAndCommit(ctx context.Context, deps Deps, cfg config.Config, root, bo
 //     so a non-empty save is a full accept: `mint commit -Ap --no-ai` stages, commits,
 //     AND pushes. The push fires strictly after the stage→commit ordering completes and
 //     is a no-op when push is disarmed.
-func runEditorFallback(ctx context.Context, deps Deps, root, aiOutput string) error {
+func runEditorFallback(ctx context.Context, deps Deps, root string, missing noAIMessage) error {
 	p := deps.Presenter
 
 	// No-message-source guard, BEFORE any editor launch: an unattended -y run or a non-TTY
@@ -548,17 +557,15 @@ func runEditorFallback(ctx context.Context, deps Deps, root, aiOutput string) er
 	// editorUnavailable predicate is the SINGLE definition of this condition, shared with the
 	// oversized note gate so "will the editor open?" cannot drift between them.
 	if deps.editorUnavailable() {
-		return surfaceOutput(p, "editor", errNoMessageSource, aiOutput)
+		return surfaceOutput(p, "editor", errNoMessageSource, missing.output)
 	}
 
 	saved, ok, err := OpenEditor(ctx, deps.Runner, p, "")
 	if err != nil {
-		// No launchable editor in git's chain on a TTY (ErrNoEditor from 3-1, or
-		// runner.ErrCommandNotFound at launch) is the no-message-source case too — there is
-		// no message to fall back to, so fail loud with the SAME spec message rather than
-		// surface the raw resolution/launch error.
-		if errors.Is(err, ErrNoEditor) || errors.Is(err, runner.ErrCommandNotFound) {
-			return surface(p, "editor", errNoMessageSource)
+		// No editor git's chain can open on a TTY leaves no message to fall back to: fail
+		// loud, saying why, rather than surface the raw resolution/launch error.
+		if editorUnopenable(err) {
+			return failEditorUnopenable(p, deps, missing, err)
 		}
 		// Any OTHER launch error (a genuine IO failure, etc.) keeps the existing surface.
 		return surface(p, "editor", err)
@@ -641,7 +648,7 @@ func isEmptyEditorBuffer(saved string) bool {
 //     ErrInputClosed (EOF) and any other AskLine error are surfaced by the engine. A
 //     regeneration FAILURE (after the transport's one retry — an isAITransportFailure)
 //     is — per the spec — routed to the SAME $EDITOR fallback as any other AI failure
-//     (3-3): the loop returns the internal errRegenerateFallback sentinel and Run owns
+//     (3-3): the loop returns the internal regenerateFallback cause and Run owns
 //     the runEditorFallback call (the editor opens EMPTY/template, no re-show of the
 //     pre-r message). A nudge that pushes the regeneration's composed prompt over
 //     max_prompt_bytes sends no call and takes the same route under the oversized
@@ -690,7 +697,7 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 				// same y/n/e gate, so `e` is treated as a no-op. `e` is a refinement step that can
 				// never produce an empty commit, so a non-launchable editor simply preserves the
 				// existing message.
-				if errors.Is(oerr, ErrNoEditor) || errors.Is(oerr, runner.ErrCommandNotFound) {
+				if editorUnopenable(oerr) {
 					p.Warn(presenter.Warning{Key: stageMessage, Label: editorNoLaunchWarnLabel, Message: editorNoLaunchWarnMessage})
 					continue
 				}
@@ -751,14 +758,15 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 				// sentinel so Run owns the fallback call (the same entry point first-generation
 				// failures use): a successful fallback commit exits 0 and never double-stages.
 				if isAITransportFailure(gerr) {
-					p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: aiFailureOutput(gerr), Elapsed: regenerating.elapsed()})
-					return false, body, errRegenerateFallback
+					missing := aiFailed(gerr)
+					p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: missing.output, Elapsed: regenerating.elapsed()})
+					return false, body, &regenerateFallback{missing: missing}
 				}
 				// A nudge that pushes the regeneration's composed prompt over max_prompt_bytes
 				// sends no call and takes the same empty-editor route, under the oversized note.
 				if errors.Is(gerr, notes.ErrDiffTooLarge) {
 					p.Warn(presenter.Warning{Key: stageMessage, Label: oversizedNoteLabel, Message: oversizedNoteMessage, Elapsed: regenerating.elapsed()})
-					return false, body, errRegenerateFallback
+					return false, body, &regenerateFallback{missing: diffTooLarge}
 				}
 				// Any OTHER regeneration error keeps the defensive surface-abort — it is
 				// unexpected and must fail loud rather than route to the editor.

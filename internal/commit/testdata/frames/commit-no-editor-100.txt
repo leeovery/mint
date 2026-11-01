@@ -1,0 +1,18 @@
+ mint ─ commit                                                                ~/Code/pigeon · v0.1.2
+
+ ◇  main          7c1e0b4
+ │
+ ●  diff          2 files · +56 −12 · tracked changes, staged when you accept
+ !  message       could not generate a message, opening editor                                  0.7s
+ │                │ Claude AI usage limit reached|1761742800
+ ✗  message       the AI could not write the message (its call failed), and the editor "nvim" could
+ │                not be opened (not found)
+ │
+ ◇  main          nothing changed                                                               2.1s
+
+ next
+   Set an editor git can open, in GIT_EDITOR, core.editor, VISUAL or EDITOR (git falls back to vi),
+   then run it again:
+     mint commit -a
+   Or commit with a message of your own:
+     git commit -a -m "<message>"

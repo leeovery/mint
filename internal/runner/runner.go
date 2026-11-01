@@ -20,6 +20,13 @@ import (
 // whereas gh ran-and-failed is a different condition).
 var ErrCommandNotFound = errors.New("command not found")
 
+// ErrNotStarted is the sentinel RunInteractive returns (wrapped, beside the cause)
+// when the child never started for any reason but a missing binary: a path that
+// names nothing, a file that is not executable. It tells "the editor could not be
+// opened" apart from "the editor ran and exited non-zero", which a user's own quit
+// (vim's :cq) also is.
+var ErrNotStarted = errors.New("command could not be started")
+
 // Result is the outcome of running an external command. Stdout and Stderr are
 // captured separately (never interleaved) and ExitCode carries the process exit
 // status. On a non-zero exit the Result is still fully populated alongside a
@@ -50,7 +57,7 @@ type Result struct {
 // only an error. Like Run, a missing binary is reported as an error matching
 // ErrCommandNotFound (via errors.Is) so the editor launcher can tell "no editor
 // to launch" (return to the gate) apart from "the editor ran and failed"
-// (surface and abort).
+// (surface and abort); any other child that never started matches ErrNotStarted.
 //
 // RunInDir is the WORKING-DIRECTORY + ENV seam: it runs name with args from the
 // directory dir and with env — a slice of "KEY=VALUE" entries — layered ON TOP OF
