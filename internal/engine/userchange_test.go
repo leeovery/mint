@@ -67,7 +67,7 @@ func TestRelease_AChangeOfTheUsersToAFileTheRecordWrites_StopsItBeforeAnyWrite(t
 			writeRepoFile(t, root, "CHANGELOG.md", "# mine\n")
 			f := runner.NewFakeRunner()
 			seedHappyGitThroughGate(f, root, "main", "v0.0.1")
-			f.SeedSequence("git", tt.answer)
+			f.SeedSequence("git", ScriptedOut("VERSION\x00"), tt.answer) // how git spells VERSION, then the read
 			rec := &presentertest.RecordingPresenter{}
 
 			err := engine.Release(t.Context(), newDeps(rec, f), engine.ReleaseOptions{Now: fixedClock})

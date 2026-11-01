@@ -31,6 +31,7 @@ func seedVersionFileFold(f *runner.FakeRunner, root, releaseBranch, tag, version
 		ScriptedOut("0\t1"),                  // rev-list left-right count (ahead only)
 		ScriptedOut(""),                      // ls-remote --tags (tag free remote)
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
+		noOtherSpelling,                      // the read of how git spells the version file
 		unchangedFiles,                       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                      // -C root add CHANGELOG.md {versionFile} (folded)
 		ScriptedOut(""),                      // -C root commit -m {commit_prefix} Release {tag}
@@ -130,9 +131,9 @@ func TestRelease_VersionFile_VersionUnchangedChangelogChanges_OneCommit(t *testi
 	seedFile(t, root, "release.txt", "0.0.1\n")
 
 	f := runner.NewFakeRunner()
-	// Version no-op → only CHANGELOG.md is staged, so the timeline matches the plain
-	// changelog-only happy path.
-	seedHappyGit(f, root, "main", "v0.0.1")
+	// Version no-op → only CHANGELOG.md is staged, so the timeline matches the
+	// changelog-only happy path but for the read of how git spells the version file.
+	seedVersionFileFold(f, root, "main", "v0.0.1", "release.txt")
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -188,6 +189,7 @@ func TestRelease_VersionFile_NothingNetChanged_NoCommit(t *testing.T) {
 		ScriptedOut("0\t1"),        // rev-list left-right count (ahead only)
 		ScriptedOut(""),            // ls-remote --tags (tag free remote)
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
+		noOtherSpelling,            // the read of how git spells the version file
 		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // tag -a v0.0.1 -F - (no commit precedes it)
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1

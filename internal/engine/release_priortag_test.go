@@ -10,6 +10,9 @@ package engine_test
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"mint/internal/engine"
@@ -75,8 +78,13 @@ func seedNormalAINotes(f *runner.FakeRunner) {
 
 // seedRecordTagPush scripts the mutation tail shared by the prior-tag happy paths:
 // the bookkeeping commit, the annotated tag, and the atomic push. The gh auth +
-// release create are seeded by the caller on the "gh" timeline.
+// release create are seeded by the caller on the "gh" timeline. Where root's config,
+// written first, sets a version_file, the record stage reads how git spells it ahead
+// of the rest.
 func seedRecordTagPush(f *runner.FakeRunner, root string) {
+	if config, err := os.ReadFile(filepath.Join(root, ".mint.toml")); err == nil && strings.Contains(string(config), "version_file") {
+		f.SeedSequence("git", noOtherSpelling)
+	}
 	f.SeedSequence("git",
 		unchangedFiles,  // the read of whether the user changed the files mint writes
 		ScriptedOut(""), // -C root add CHANGELOG.md

@@ -67,6 +67,15 @@ var committedPaths = ScriptedOut("")
 // write hold a change it did not make: none, so the write goes ahead.
 var unchangedFiles = ScriptedOut("")
 
+// noOtherSpelling is git's answer to the read of how it spells the version file in any
+// case: no entry, so the file keeps the name the config gives it.
+var noOtherSpelling = ScriptedOut("")
+
+// spellingRead is the read noOtherSpelling answers for path, in the repo at root.
+func spellingRead(root, path string) string {
+	return "git -C " + root + " ls-files -z -- :(top,icase,literal)" + path
+}
+
 // userChangesRead is the read unchangedFiles answers for paths, in the repo at root.
 func userChangesRead(root string, paths ...string) string {
 	return "git -C " + root + " --no-optional-locks status --porcelain -z --untracked-files=all --no-renames -- " + literalPathspecsOf(paths)

@@ -774,8 +774,11 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// running.
 	showRunning(p, stageRecord, "recording the release…")
 	// Named as git names it from here on, so the commit's and the unwind's literal
-	// pathspecs match the file.
-	versionFile := record.RepoPath(root, cfg.Release.VersionFile)
+	// pathspecs match the file, in git's own case where the filesystem ignores it.
+	versionFile, err := record.TrackedSpelling(ctx, deps.Mutator, root, record.RepoPath(root, cfg.Release.VersionFile))
+	if err != nil {
+		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
+	}
 	if err := refuseUserChanges(ctx, deps.Mutator, root, recordPaths(versionFile, cfg.Release.Changelog)...); err != nil {
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}

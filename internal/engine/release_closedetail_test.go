@@ -189,7 +189,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			name:   "the record's writes, a version file among them, staged with no commit to reset, then a restore that fails",
 			config: plainVersionFile,
 			git: [][]runner.ScriptedCall{{
-				unchangedFiles, ScriptedOut(""), gitFailing(commitStderr), // the user-change read, add CHANGELOG.md VERSION, commit
+				noOtherSpelling, unchangedFiles, ScriptedOut(""), gitFailing(commitStderr), // the spelling read, the user-change read, add CHANGELOG.md VERSION, commit
 				scriptedMutateFailure(), // unwind: restore VERSION CHANGELOG.md
 			}},
 			outcome: presenter.OutcomeUnwound,
@@ -200,7 +200,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			// needed.
 			name:    "files the record created, never staged, with no commit to reset",
 			config:  plainVersionFile,
-			git:     [][]runner.ScriptedCall{{unchangedFiles, gitFailing(stageStderr), ScriptedOut("")}}, // the user-change read, add CHANGELOG.md VERSION, unwind: unstage them
+			git:     [][]runner.ScriptedCall{{noOtherSpelling, unchangedFiles, gitFailing(stageStderr), ScriptedOut("")}}, // the spelling read, the user-change read, add CHANGELOG.md VERSION, unwind: unstage them
 			outcome: presenter.OutcomeUnwound,
 			detail:  "back where it started · nothing pushed",
 		},
@@ -209,6 +209,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			config: preTagHookConfig + plainVersionFile,
 			git: [][]runner.ScriptedCall{{
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
+				noOtherSpelling,         // the spelling read
 				unchangedFiles,          // the user-change read
 				gitFailing(stageStderr), // add VERSION CHANGELOG.md
 				ScriptedOut(""),         // unwind: unstage the files mint created
@@ -223,7 +224,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			config: preTagHookConfig + plainVersionFile,
 			git: [][]runner.ScriptedCall{{
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
-				unchangedFiles, ScriptedOut(""), gitFailing(commitStderr), // the user-change read, add VERSION CHANGELOG.md, commit
+				noOtherSpelling, unchangedFiles, ScriptedOut(""), gitFailing(commitStderr), // the spelling read, the user-change read, add VERSION CHANGELOG.md, commit
 				ScriptedOut(""), // unwind: restore VERSION CHANGELOG.md
 				ScriptedOut(""), // unwind: status (nothing staged)
 				ScriptedOut(""), // unwind: reset --keep
@@ -236,6 +237,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			config: preTagHookConfig + plainVersionFile,
 			git: [][]runner.ScriptedCall{{
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
+				noOtherSpelling,                 // the spelling read
 				unchangedFiles,                  // the user-change read
 				gitFailing(stageStderr),         // add VERSION CHANGELOG.md
 				ScriptedOut(""),                 // unwind: unstage the files mint created
