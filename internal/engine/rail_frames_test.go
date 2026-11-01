@@ -466,6 +466,50 @@ var railRuns = map[string]railRun{
 		)
 		return w.release(t, nil)
 	}},
+	// A release whose bookkeeping commit fails once CHANGELOG.md is staged, before any
+	// commit of mint's: the unwind restores the changelog it wrote over.
+	"release-record-unwound-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "", true)
+		writeRepoFile(t, w.root, "CHANGELOG.md", "# Changelog\n")
+		w.readGates(false)
+		w.notes()
+		w.f.SeedSequence("gh", ScriptedOut("")) // auth status
+		w.f.SeedSequence("git",
+			ScriptedOut(""),          // -C root add CHANGELOG.md
+			gitFailing(commitStderr), // -C root commit -m
+			ScriptedOut(""),          // unwind: reset --hard startsha
+		)
+		return w.release(t, nil)
+	}},
+	// The same failure, its unwind unable to restore the changelog.
+	"release-restore-incomplete-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "", true)
+		writeRepoFile(t, w.root, "CHANGELOG.md", "# Changelog\n")
+		w.readGates(false)
+		w.notes()
+		w.f.SeedSequence("gh", ScriptedOut("")) // auth status
+		w.f.SeedSequence("git",
+			ScriptedOut(""),          // -C root add CHANGELOG.md
+			gitFailing(commitStderr), // -C root commit -m
+			gitFailing(resetStderr),  // unwind: reset --hard startsha
+		)
+		return w.release(t, nil)
+	}},
+	// A release whose pre_tag hook dirtied the tree and whose commit of it fails once
+	// staged: the unwind takes back what mint staged.
+	"release-pre-tag-unwound-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preTagHookConfig, "", true)
+		w.readGates(false)
+		w.f.SeedSequence("gh", ScriptedOut("")) // auth status
+		w.f.Seed("sh", runner.Result{}, nil)
+		w.f.SeedSequence("git",
+			ScriptedOut(" M bundle.js\n"), // -C root status --porcelain (post-hook: dirty)
+			ScriptedOut(""),               // -C root add -A
+			gitFailing(commitStderr),      // -C root commit -m chore(release): pre-tag artifacts
+			ScriptedOut(""),               // unwind: reset --hard startsha
+		)
+		return w.release(t, nil)
+	}},
 	// The version answered and preflight fetching: preflight runs on the rail while
 	// its gates go over the network, the plan not yet known.
 	"release-preflight-running-100": {aborted: true, run: func(t *testing.T) (string, error) {

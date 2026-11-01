@@ -1,0 +1,14 @@
+ mint ─ release                                                               ~/Code/pigeon · v0.1.2
+
+ ◇  v1.2.3        main @ 4f9c2e1
+ │
+ ●  version       v1.3.0 (minor bump) · accepted (-y)
+ ●  preflight     tree clean, on main, v1.3.0 free, origin in sync, gh signed in
+ ●  check         nothing to leave out                                                          0.7s
+ ●  notes         generated · accepted (-y)                                                     0.7s
+ ✗  record        committing release bookkeeping "🌿 Release v1.3.0": exit status 1
+ │                │ error: gpg failed to sign the data
+ │                │ fatal: failed to write commit object
+ ↩  unwind        restored CHANGELOG.md
+ │
+ ◇  v1.2.3        back where it started · nothing pushed                                        4.2s

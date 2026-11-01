@@ -18,10 +18,11 @@ package engine
 // and TRACKS the MadeState as it proceeds (the count of commits mint made — an
 // optional pre_tag artifact commit, answers commit and bookkeeping commit — and whether
 // the annotated tag was created). On a gate-no or any pre-push failure it hands those
-// captured inputs to Unwind, which resets EXACTLY the commits mint made and deletes the
-// tag iff mint created it — no HEAD probe, no inference — then re-commits the exclusion
-// answers on the starting commit when their commit had landed, and leaves their
-// uncommitted write to a .mint.toml git ignores in place.
+// captured inputs to Unwind, which resets EXACTLY the commits mint made, and what it
+// wrote or staged that no commit holds, and deletes the tag iff mint created it — no
+// HEAD probe, no inference — then re-commits the exclusion answers on the starting
+// commit when their commit had landed, and leaves their uncommitted write to a
+// .mint.toml git ignores in place.
 // The two triggers are deliberately identical: a declined gate and a rejected push with
 // the same MadeState produce a byte-identical state and Unwound summary. With nothing made the
 // surgical unwind no-ops (no reset, no Unwound). The PRE-mutation / preflight failures
@@ -642,9 +643,10 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// at the post-hook HEAD. An absent or empty hook is a no-op (no prep, no artifact
 	// commit); a non-zero exit aborts cleanly before any notes/tag/push — routed
 	// through the surgical unwind so mint's OWN artifact commit (when one landed before
-	// the hook step failed) is reset back to startingHEAD. The committed signal is
-	// folded into made.Commits the moment the artifact commit lands, so it is tracked
-	// even if a LATER stage fails.
+	// the hook step failed) is reset back to startingHEAD, as is what mint staged of the
+	// hook's changes when their commit failed. The committed signal is folded into
+	// made.Commits the moment the artifact commit lands, so it is tracked even if a
+	// LATER stage fails.
 	made.hookRan = made.hookRan || hookRuns(cfg.Release.Hooks.PreTag, opts.DryRun)
 	artifactCommitted, err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun, keepOut)
 	if artifactCommitted {
@@ -769,11 +771,9 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	showRunning(p, stageRecord, "recording the release…")
 	projection, err := record.ProjectVersionFile(root, cfg.Release.VersionFile, cfg.Release.VersionPattern, versionKey)
 	if err != nil {
-		// Post-mutation, pre-PONR: route through the surgical unwind so any pre_tag
-		// artifact commit already in made is reset back to the clean start. The
-		// version-file projection is a filesystem write that made no commit, so made is
-		// unchanged here; the unwind's reset (when made.Commits>0) discards the projection
-		// along with the artifact commit. No tag exists yet (made.TagCreated false).
+		// Post-mutation, pre-PONR: route through the surgical unwind so any commit
+		// already in made is reset back to the clean start. A failed projection writes
+		// nothing, so made is unchanged here. No tag exists yet (made.TagCreated false).
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}
 	versionChanged := projection.Changed
@@ -785,9 +785,9 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// is lost.
 	writeResult, err := record.WriteChangelog(root, versionKey, opts.Now, body, cfg.Release.Changelog)
 	if err != nil {
-		// Post-mutation, pre-PONR: route through the surgical unwind so any artifact commit
-		// (and a half-written changelog discarded by the reset) is rolled back to the clean
-		// start — the abort path is identical to the pre-push failure path. No tag yet.
+		// Post-mutation, pre-PONR: route through the surgical unwind so any commit and
+		// the version file the projection rewrote are reset back to the clean start —
+		// the abort path is identical to the pre-push failure path. No tag yet.
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}
 	made.recordWrite(record.ChangelogFileName, writeResult.Changed, writeResult.Created)
@@ -802,10 +802,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	bookkeepingCommitted := record.BookkeepingWillCommit(cfg.Release.VersionFile, writeResult.Changed, versionChanged)
 	if err := record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, cfg.Release.VersionFile, writeResult.Changed, versionChanged, keepOut); err != nil {
 		var uncommitted *record.UncommittedError
-		if errors.As(err, &uncommitted) {
-			// Staged, the files the record created are tracked, so a reset removes them.
-			made.created = nil
-		}
+		made.recordStaged = errors.As(err, &uncommitted)
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}
 	if bookkeepingCommitted {
