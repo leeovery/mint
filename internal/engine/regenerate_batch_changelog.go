@@ -161,7 +161,7 @@ func regeneratedByTag(collected []RegeneratedVersion) map[string]string {
 // same recovery the single-version 5-9 path uses, run once for the whole batch. A
 // failed commit leaves the rebuilt file as it is. The push is the point of no return.
 func commitAndPushRebuild(ctx context.Context, deps ReleaseDeps, root, startingHEAD string, node *blockingStage) error {
-	start := resetTarget{HEAD: startingHEAD}
+	start := resetTarget{HEAD: startingHEAD, Root: root}
 	if err := stageAndCommitChangelog(ctx, deps.Mutator, root, batchRebuildSubject, ""); err != nil {
 		cause := fmt.Errorf("batch rebuild: %w", &uncommittedChangelog{err: err})
 		return resetAndAbort(ctx, deps, start, false, stageFailure(stageRecord, cause), cause)

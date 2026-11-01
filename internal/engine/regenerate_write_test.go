@@ -203,14 +203,15 @@ func TestRegenerateWrite_PrePushFailure_ResetsCommit(t *testing.T) {
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit (the changelog commit lands)
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
-		ScriptedOut(""), // reset --hard startHEAD (recovery)
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // reset --keep startHEAD (recovery)
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
 	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
 
 	assertAbortNonZero(t, err)
-	if !invokedWith(f, "git", "reset", "--hard", "startHEAD") {
+	if !invokedWith(f, "git", "reset", "--keep", "startHEAD") {
 		t.Errorf("pre-push failure did not reset the CHANGELOG commit to the captured start; got %v", commandLines(f.Invocations()))
 	}
 	// No tag is ever involved in the regenerate recovery.
@@ -222,7 +223,7 @@ func TestRegenerateWrite_PrePushFailure_ResetsCommit(t *testing.T) {
 }
 
 // TestRegenerateWrite_RecoveryResetFails_WarnsManualCleanup proves that when the
-// pre-push recovery `git reset --hard` ITSELF fails after a push rejection, the run no
+// pre-push recovery `git reset --keep` ITSELF fails after a push rejection, the run no
 // longer silently swallows the reset error: it emits a Warn naming the manual cleanup
 // (the reset back to the captured starting HEAD) so the user knows the leftover
 // CHANGELOG commit must be undone by hand. The run still aborts non-zero (the original
@@ -239,15 +240,16 @@ func TestRegenerateWrite_RecoveryResetFails_WarnsManualCleanup(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit (the changelog commit lands)
-		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")},       // push fails
-		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("reset --hard exploded")}, // reset recovery FAILS
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
+		nothingStaged, // the reset's read of what is staged
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("reset --keep exploded")}, // reset recovery FAILS
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
 	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
 
 	assertAbortNonZero(t, err)
-	if !invokedWith(f, "git", "reset", "--hard", "startHEAD") {
+	if !invokedWith(f, "git", "reset", "--keep", "startHEAD") {
 		t.Fatalf("recovery did not attempt the reset; got %v", commandLines(f.Invocations()))
 	}
 

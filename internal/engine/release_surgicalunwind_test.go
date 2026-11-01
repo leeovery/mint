@@ -59,7 +59,8 @@ func TestRelease_GateNo_Surgical_ResetsTrackedCommit(t *testing.T) {
 		ScriptedOut(" M bundle.js\n"), // -C root status --porcelain (post-hook: DIRTY)
 		ScriptedOut(""),               // -C root add -A
 		ScriptedOut(""),               // -C root commit -m chore(release): pre-tag artifacts
-		ScriptedOut(""),               // unwind: reset --hard startingSHA
+		ScriptedOut(""),               // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),               // unwind: reset --keep startingSHA
 	)
 	f.Seed("sh", runner.Result{}, nil)
 	f.Seed("gh", runner.Result{}, nil)
@@ -72,7 +73,7 @@ func TestRelease_GateNo_Surgical_ResetsTrackedCommit(t *testing.T) {
 
 	assertAbortNonZero(t, err)
 	// The surgical unwind resets the one tracked commit to the captured starting sha.
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("gate-n surgical unwind did not reset the tracked commit; got %v", commandLines(f.Invocations()))
 	}
 	// It NEVER probes HEAD — the reset is driven by MadeState, not a rev-parse compare.
@@ -103,7 +104,8 @@ func TestRelease_TagCreationFailure_Surgical_ResetsCommitNoTagDelete(t *testing.
 	// gh auth passes; the annotated tag CREATION fails (not a push rejection).
 	f.SeedSequence("git",
 		tagCreationFailed(), // tag -a v0.0.1 -F - (creation fails)
-		ScriptedOut(""),     // unwind: reset --hard startingSHA
+		ScriptedOut(""),     // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),     // unwind: reset --keep startingSHA
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -111,7 +113,7 @@ func TestRelease_TagCreationFailure_Surgical_ResetsCommitNoTagDelete(t *testing.
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
 
 	assertAbortNonZero(t, err)
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("tag-creation-failure unwind did not reset the tracked commit; got %v", commandLines(f.Invocations()))
 	}
 	if invokedWith(f, "git", "tag", "-d", "v0.0.1") {
@@ -141,7 +143,8 @@ func TestRelease_PushRejected_Surgical_ResetsCommitAndDeletesTag(t *testing.T) {
 	f.SeedSequence("git",
 		pushRejected(),  // push --atomic origin HEAD v0.0.1 (rejected)
 		ScriptedOut(""), // unwind: tag -d v0.0.1
-		ScriptedOut(""), // unwind: reset --hard startingSHA
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: reset --keep startingSHA
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -149,7 +152,7 @@ func TestRelease_PushRejected_Surgical_ResetsCommitAndDeletesTag(t *testing.T) {
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
 
 	assertAbortNonZero(t, err)
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("push-rejection unwind did not reset the tracked commit; got %v", commandLines(f.Invocations()))
 	}
 	if !invokedWith(f, "git", "tag", "-d", "v0.0.1") {
@@ -169,7 +172,7 @@ func TestRelease_PushRejected_Surgical_ResetsCommitAndDeletesTag(t *testing.T) {
 // invariant at the heart of 4-3: a gate-`n` abort and a pre-push failure with the SAME
 // tracked MadeState produce IDENTICAL clean-state results AND identical Unwound
 // summaries. Both scenarios make exactly one commit and create no tag, so the surgical
-// unwind issues the identical `git reset --hard {startingSHA}`, issues no `git tag -d`,
+// unwind issues the identical `git reset --keep {startingSHA}`, issues no `git tag -d`,
 // and authors the byte-identical summary.
 func TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary(t *testing.T) {
 	t.Parallel()
@@ -194,7 +197,8 @@ func TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary(t *testin
 		ScriptedOut(" M bundle.js\n"), // -C root status --porcelain (post-hook: DIRTY)
 		ScriptedOut(""),               // -C root add -A
 		ScriptedOut(""),               // -C root commit -m chore(release): pre-tag artifacts
-		ScriptedOut(""),               // unwind: reset --hard startingSHA
+		ScriptedOut(""),               // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),               // unwind: reset --keep startingSHA
 	)
 	gateRunner.Seed("sh", runner.Result{}, nil)
 	gateRunner.Seed("gh", runner.Result{}, nil)
@@ -211,7 +215,8 @@ func TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary(t *testin
 	seedHappyGitThroughCommit(pushRunner, pushRoot, "main", "v0.0.1")
 	pushRunner.SeedSequence("git",
 		tagCreationFailed(), // tag -a v0.0.1 -F - (creation fails → no tag)
-		ScriptedOut(""),     // unwind: reset --hard startingSHA
+		ScriptedOut(""),     // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),     // unwind: reset --keep startingSHA
 	)
 	pushRunner.Seed("gh", runner.Result{}, nil)
 	pushRec := &presentertest.RecordingPresenter{}
@@ -222,10 +227,10 @@ func TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary(t *testin
 	assertAbortNonZero(t, pushErr)
 
 	// IDENTICAL clean-state result: both issue the same reset, neither deletes a tag.
-	if !invokedWith(gateRunner, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(gateRunner, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("gate-n did not issue the shared reset to the starting sha")
 	}
-	if !invokedWith(pushRunner, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(pushRunner, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("pre-push failure did not issue the shared reset to the starting sha")
 	}
 	if invokedWith(gateRunner, "git", "tag", "-d", "v0.0.1") {
@@ -274,14 +279,14 @@ func TestRelease_NotesFailure_AfterArtifactCommit_SurgicalResets(t *testing.T) {
 	seedNormalAINotes(f)
 	f.Seed("claude", runner.Result{Stdout: ""}, nil)
 	// The surgical unwind then resets the one tracked artifact commit.
-	f.SeedSequence("git", ScriptedOut("")) // unwind: reset --hard startingSHA
+	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: diff --cached (nothing staged), reset --keep startingSHA
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions())
 
 	assertAbortNonZero(t, err)
 	// The tracked artifact commit is reset back to the clean start through the surgical unwind.
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("notes failure after an artifact commit did not reset it; got %v", commandLines(f.Invocations()))
 	}
 	if invokedWith(f, "git", "tag", "-d", nextTag) {
@@ -319,7 +324,7 @@ func TestRelease_PublishFailsAfterPush_NeverUnwinds_Surgical(t *testing.T) {
 	}
 
 	// The push crossed the PONR; the tag is public, so the surgical unwind must NOT run.
-	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("post-PONR publish failure issued a `git reset`; it must never unwind a public tag")
 	}
 	if invokedWith(f, "git", "tag", "-d", "v0.0.1") {

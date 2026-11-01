@@ -52,6 +52,10 @@ const (
 	pushRejectedStderr = " ! [rejected]        main -> main (fetch first)\n" +
 		"error: failed to push some refs to 'https://github.com/acme/pigeon'\n"
 	ghFailure = "HTTP 502: Bad Gateway (https://api.github.com/repos/acme/pigeon/releases)\n"
+	// changelogRefusalStderr is git refusing a reset --keep over the user's own edit to
+	// CHANGELOG.md, which mint's commit changed.
+	changelogRefusalStderr = "error: Entry 'CHANGELOG.md' not uptodate. Cannot merge.\n" +
+		"fatal: Could not reset index file to revision 'startsha'.\n"
 )
 
 // railEpoch is when every golden run starts.
@@ -359,7 +363,7 @@ var railRuns = map[string]railRun{
 		w.readGates(false)
 		seedPreTagArtifactCommit(w.f)
 		singlePassNotesAndRegen(w.f)
-		w.f.SeedSequence("git", ScriptedOut("")) // unwind: reset --hard startsha
+		w.f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: diff --cached (nothing staged), reset --keep startsha
 		return w.release(t, nil)
 	}},
 	// A release whose pre_tag hook committed artifacts, its AI notes failing at a
@@ -447,11 +451,13 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("git",
 			gitRejected(pushRejectedStderr), // push --atomic origin HEAD v1.3.0
 			ScriptedOut(""),                 // unwind: tag -d v1.3.0
-			ScriptedOut(""),                 // unwind: reset --hard startsha
+			ScriptedOut(""),                 // unwind: diff --cached --name-only (nothing staged)
+			ScriptedOut(""),                 // unwind: reset --keep startsha
 		)
 		return w.release(t, nil)
 	}},
-	// The same rejected push, its unwind unable to reset the commit it made.
+	// The same rejected push, git refusing the unwind's reset of the commit it made, as the
+	// user changed CHANGELOG.md, which that commit changed, while the run was under way.
 	"release-unwind-incomplete-100": {aborted: true, run: func(t *testing.T) (string, error) {
 		w := newRailWorld(t, "", "", true)
 		w.readGates(false)
@@ -459,10 +465,11 @@ var railRuns = map[string]railRun{
 		w.recorded()
 		w.f.SeedSequence("gh", ScriptedOut("")) // auth status
 		w.f.SeedSequence("git",
-			gitRejected(pushRejectedStderr), // push --atomic origin HEAD v1.3.0
-			ScriptedOut(""),                 // unwind: tag -d v1.3.0
-			gitFailing(resetStderr),         // unwind: reset --hard startsha
-			ScriptedOut("9f3e2a1c4b\nmain"), // where HEAD stands, never reset
+			gitRejected(pushRejectedStderr),    // push --atomic origin HEAD v1.3.0
+			ScriptedOut(""),                    // unwind: tag -d v1.3.0
+			ScriptedOut(""),                    // unwind: diff --cached --name-only (nothing staged)
+			gitFailing(changelogRefusalStderr), // unwind: reset --keep startsha, refused
+			ScriptedOut("9f3e2a1c4b\nmain"),    // where HEAD stands, never reset
 		)
 		return w.release(t, nil)
 	}},
@@ -644,7 +651,8 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("claude", ScriptedOut(designDocAnswer), ScriptedOut(railNotes))
 		w.f.SeedSequence("git",
 			ScriptedOut(answersSHA+"\n"), // rev-parse HEAD, the answers commit
-			ScriptedOut(""),              // unwind: reset --hard startsha
+			ScriptedOut(""),              // unwind: diff --cached --name-only (nothing staged)
+			ScriptedOut(""),              // unwind: reset --keep startsha
 			ScriptedOut(""),              // unwind: -C root add .mint.toml
 			ScriptedOut(""),              // unwind: -C root commit -m
 		)
@@ -704,7 +712,8 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("git",
 			gitRejected(pushRejectedStderr), // push --atomic origin HEAD v1.3.0
 			ScriptedOut(""),                 // unwind: tag -d v1.3.0
-			ScriptedOut(""),                 // unwind: reset --hard startsha
+			ScriptedOut(""),                 // unwind: diff --cached --name-only (nothing staged)
+			ScriptedOut(""),                 // unwind: reset --keep startsha
 		)
 		return w.release(t, nil)
 	}},

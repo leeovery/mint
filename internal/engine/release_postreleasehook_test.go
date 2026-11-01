@@ -121,7 +121,7 @@ func TestRelease_PostReleaseHook_NonZeroWarnsOnly(t *testing.T) {
 
 // TestRelease_PostReleaseHook_NonZeroDoesNotUnwind proves a non-zero post_release
 // hook does NOT unwind the published release: after the failing hook there is no
-// `git reset --hard`, no `git tag -d`, and no Unwound event — the tag stays public.
+// `git reset`, no `git tag -d`, and no Unwound event — the tag stays public.
 func TestRelease_PostReleaseHook_NonZeroDoesNotUnwind(t *testing.T) {
 	t.Parallel()
 
@@ -139,8 +139,8 @@ func TestRelease_PostReleaseHook_NonZeroDoesNotUnwind(t *testing.T) {
 	}
 
 	// No reset and no tag deletion: the published release is never unwound.
-	if firstIndexWithPrefix(f, "git reset --hard") != -1 {
-		t.Errorf("a `git reset --hard` ran after a failing post_release hook; the public tag must not unwind")
+	if firstIndexWithPrefix(f, "git reset") != -1 {
+		t.Errorf("a `git reset` ran after a failing post_release hook; the public tag must not unwind")
 	}
 	if firstIndexWithPrefix(f, "git tag -d") != -1 {
 		t.Errorf("a `git tag -d` ran after a failing post_release hook; the public tag must not unwind")

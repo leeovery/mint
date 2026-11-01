@@ -21,7 +21,7 @@ import (
 
 const minorTagV130 = "v1.3.0"
 
-// startResettingRunner plays git's part in `git reset --hard {startingSHA}` that the
+// startResettingRunner plays git's part in `git reset --keep {startingSHA}` that the
 // fake cannot: it returns root's .mint.toml to its content at the starting commit.
 type startResettingRunner struct {
 	*runner.FakeRunner
@@ -30,7 +30,7 @@ type startResettingRunner struct {
 }
 
 func (r *startResettingRunner) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
-	if name == "git" && slices.Equal(args, []string{"reset", "--hard", startingSHA}) {
+	if name == "git" && slices.Equal(args, []string{"reset", "--keep", startingSHA}) {
 		if err := os.WriteFile(filepath.Join(r.root, config.FileName), []byte(r.atStart), 0o644); err != nil {
 			return runner.Result{ExitCode: 1}, err
 		}
@@ -97,9 +97,16 @@ func newAnsweredAbort(t *testing.T, rec *presentertest.RecordingPresenter, confi
 const answersSHA = "answerssha"
 
 // unwound scripts the unwind's read of the answers commit's sha, beforeReset, then the
-// reset and its re-commit of the answers.
+// reset, nothing staged, and its re-commit of the answers.
 func (a *answeredAbort) unwound(beforeReset ...runner.ScriptedCall) *answeredAbort {
-	a.f.SeedSequence("git", append(append([]runner.ScriptedCall{ScriptedOut(answersSHA + "\n")}, beforeReset...), ScriptedOut(""), ScriptedOut(""), ScriptedOut(""))...)
+	a.f.SeedSequence("git", ScriptedOut(answersSHA+"\n"))
+	a.f.SeedSequence("git", beforeReset...)
+	a.f.SeedSequence("git",
+		ScriptedOut(""), // diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // reset --keep startsha
+		ScriptedOut(""), // -C root add .mint.toml
+		ScriptedOut(""), // -C root commit -m answers
+	)
 	return a
 }
 
@@ -119,7 +126,7 @@ func assertAnswersKept(t *testing.T, rec *presentertest.RecordingPresenter, a *a
 	if !errors.As(err, &abort) || abort.ExitCode != 1 {
 		t.Fatalf("err = %v, want an abort exiting 1", err)
 	}
-	reset := indexOfCmd(a.f, "git", "reset", "--hard", startingSHA)
+	reset := indexOfCmd(a.f, "git", "reset", "--keep", startingSHA)
 	if reset == -1 {
 		t.Fatalf("no reset to the starting commit; got %v", commandLines(a.f.Invocations()))
 	}

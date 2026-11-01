@@ -287,7 +287,8 @@ func TestRegenerateAllValidated_Changelog_PrePushFailure_ResetsCommit(t *testing
 		ScriptedOut(""),          // add CHANGELOG.md
 		ScriptedOut(""),          // commit (the rebuild commit lands)
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
-		ScriptedOut(""), // reset --hard startHEAD (recovery)
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // reset --keep startHEAD (recovery)
 	)...)
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}
@@ -296,7 +297,7 @@ func TestRegenerateAllValidated_Changelog_PrePushFailure_ResetsCommit(t *testing
 		freshChangelogBatchReq(threeVersions(), engine.RegenerateTargetChangelog), true)
 
 	assertAbortNonZero(t, err)
-	if !invokedWith(f, "git", "reset", "--hard", "startHEAD") {
+	if !invokedWith(f, "git", "reset", "--keep", "startHEAD") {
 		t.Errorf("batch pre-push failure did not reset the rebuild commit to the captured start; got %v", commandLines(f.Invocations()))
 	}
 	if stageFailedName(t, rec) != "push" {

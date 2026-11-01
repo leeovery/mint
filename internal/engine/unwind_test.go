@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"mint/internal/engine"
+	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 )
@@ -14,6 +15,30 @@ import (
 // abort carries it (the engine owns the non-zero exit; the cause is the original
 // failure or the gate-abort sentinel).
 var errUnwindReason = errors.New("pre-PONR failure")
+
+// nothingStaged is git's answer to the reset's read of what the index holds staged:
+// nothing, so no snapshot of it is taken and nothing is staged again.
+var nothingStaged = ScriptedOut("")
+
+// keepStepTo is the manual step a failed reset of mint's commits back to sha leaves, as
+// plain's warning says it; keepStep and keepMove are it for the starting commit, the
+// second as a next move.
+func keepStepTo(sha string) string {
+	return "stash your changes to any file git names, then reset HEAD back to " + sha + " (`git reset --keep " + sha + "`)"
+}
+
+var (
+	keepStep = keepStepTo(startingSHA)
+	keepMove = presenter.NextMove{
+		Lead:    "Stash your changes to any file git names, then reset HEAD back to " + startingSHA + ":",
+		Command: "git reset --keep " + startingSHA,
+	}
+)
+
+// keepRefusalStderr is git refusing a reset --keep over a change of the user's to a
+// path mint's commits changed, leaving HEAD, the index and the work tree as they were.
+const keepRefusalStderr = "error: Entry 'src/app.go' not uptodate. Cannot merge.\n" +
+	"fatal: Could not reset index file to revision '" + startingSHA + "'.\n"
 
 // startState builds the captured StartState the surgical unwind resets back to:
 // the clean starting HEAD and the target tag, which did NOT exist at capture time.
@@ -32,7 +57,8 @@ func TestUnwind_TwoCommitsAndTag_ResetsBothAndDeletesTag(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -d v0.0.1
-		ScriptedOut(""), // reset --hard startsha
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -45,7 +71,7 @@ func TestUnwind_TwoCommitsAndTag_ResetsBothAndDeletesTag(t *testing.T) {
 	if !invokedWith(f, "git", "tag", "-d", "v0.0.1") {
 		t.Errorf("unwind did not delete the local tag; got %v", commandLines(f.Invocations()))
 	}
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("unwind did not reset to the captured starting sha; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundText(t, rec), "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
@@ -63,7 +89,8 @@ func TestUnwind_OneBookkeepingCommitAndTag_ResetsToStart(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -d v0.0.1
-		ScriptedOut(""), // reset --hard startsha
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -76,7 +103,7 @@ func TestUnwind_OneBookkeepingCommitAndTag_ResetsToStart(t *testing.T) {
 	if !invokedWith(f, "git", "tag", "-d", "v0.0.1") {
 		t.Errorf("unwind did not delete the local tag; got %v", commandLines(f.Invocations()))
 	}
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("unwind did not reset to the captured starting sha; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundText(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
@@ -93,7 +120,8 @@ func TestUnwind_CommitsButTagNotCreated_DeletesNoTag(t *testing.T) {
 
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
-		ScriptedOut(""), // reset --hard startsha
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -106,7 +134,7 @@ func TestUnwind_CommitsButTagNotCreated_DeletesNoTag(t *testing.T) {
 	if invokedWith(f, "git", "tag", "-d", "v0.0.1") {
 		t.Errorf("unwind deleted a tag though none was created; got %v", commandLines(f.Invocations()))
 	}
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("unwind did not reset to the captured starting sha; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
@@ -136,7 +164,7 @@ func TestUnwind_TagOnlyNoCommits_DeletesTagOnly(t *testing.T) {
 	if !invokedWith(f, "git", "tag", "-d", "v0.0.1") {
 		t.Errorf("unwind did not delete the local tag; got %v", commandLines(f.Invocations()))
 	}
-	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("unwind reset despite zero commits made; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundText(t, rec), "deleted tag v0.0.1; repo clean"; got != want {
@@ -176,7 +204,8 @@ func TestUnwind_ResetsToExactCapturedSha(t *testing.T) {
 
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
-		ScriptedOut(""), // reset --hard startsha
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -188,11 +217,11 @@ func TestUnwind_ResetsToExactCapturedSha(t *testing.T) {
 	}
 
 	// The reset names the captured sha exactly, never a HEAD~N relative ref.
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Fatalf("unwind did not reset to the exact captured sha %q; got %v", startingSHA, commandLines(f.Invocations()))
 	}
 	for _, inv := range f.Invocations() {
-		if inv.Name == "git" && len(inv.Args) >= 3 && inv.Args[0] == "reset" && inv.Args[1] == "--hard" {
+		if inv.Name == "git" && len(inv.Args) >= 3 && inv.Args[0] == "reset" && inv.Args[1] == "--keep" {
 			if inv.Args[2] != startingSHA {
 				t.Errorf("reset target = %q, want the captured sha %q (no HEAD~N)", inv.Args[2], startingSHA)
 			}
@@ -210,7 +239,8 @@ func TestUnwind_ReportsEachUndoneItem(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -d v0.0.1
-		ScriptedOut(""), // reset --hard startsha
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -233,7 +263,7 @@ func TestUnwind_ReportsEachUndoneItem(t *testing.T) {
 
 // scriptedMutateFailure models a recovery git mutation that ran and exited non-zero
 // (a NON-lock failure, so the Mutator surfaces it on the first attempt without
-// retrying) — e.g. a `git reset --hard` or `git tag -d` hiccup mid-unwind.
+// retrying) — e.g. a `git reset --keep` or `git tag -d` hiccup mid-unwind.
 func scriptedMutateFailure() runner.ScriptedCall {
 	return runner.ScriptedCall{
 		Result: runner.Result{ExitCode: 1},
@@ -255,7 +285,7 @@ func recoveryWarn(t *testing.T, rec *presentertest.RecordingPresenter) presenter
 }
 
 // TestUnwind_ResetFails_WarnsManualCleanupAndSummaryNotClean proves that when the
-// recovery `git reset --hard` exits non-zero mid-unwind, the unwind does NOT falsely
+// recovery `git reset --keep` exits non-zero mid-unwind, the unwind does NOT falsely
 // claim "repo clean": it emits a Warn naming the manual cleanup (the reset back to the
 // captured starting sha) and the Unwound summary omits the "; repo clean" tail.
 func TestUnwind_ResetFails_WarnsManualCleanupAndSummaryNotClean(t *testing.T) {
@@ -264,7 +294,8 @@ func TestUnwind_ResetFails_WarnsManualCleanupAndSummaryNotClean(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""),         // tag -d v0.0.1 (succeeds)
-		scriptedMutateFailure(), // reset --hard startsha (FAILS)
+		ScriptedOut(""),         // unwind: diff --cached --name-only (nothing staged)
+		scriptedMutateFailure(), // reset --keep startsha (FAILS)
 	)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -295,7 +326,8 @@ func TestUnwind_TagDeleteFails_WarnsManualCleanupAndSummaryNotClean(t *testing.T
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedMutateFailure(), // tag -d v0.0.1 (FAILS)
-		ScriptedOut(""),         // reset --hard startsha (succeeds)
+		ScriptedOut(""),         // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),         // reset --keep startsha (succeeds)
 	)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -325,7 +357,8 @@ func TestUnwind_AllRecoverySucceeds_NoWarnAndReportsClean(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -d v0.0.1
-		ScriptedOut(""), // reset --hard startsha
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -353,7 +386,8 @@ func TestUnwind_NeverPushesOrPublishes(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -d v0.0.1
-		ScriptedOut(""), // reset --hard startsha
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
 

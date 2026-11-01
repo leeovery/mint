@@ -109,9 +109,25 @@ func literalPathspecsOf(paths []string) string {
 	return strings.Join(specs, " ")
 }
 
-// resetCommits is the unwind's reset of the commits mint made.
-func resetCommits() []gitStep {
-	return []gitStep{{"git reset --hard " + startingSHA, ScriptedOut("")}}
+// stagedTree is the tree git writes the index as ahead of a reset.
+const stagedTree = "5e1f0a7b"
+
+// resetCommits is the unwind's reset of the commits mint made, a reset that keeps every
+// change of the user's: a read of what is staged, then the reset, and where the notes
+// file has edits staged, the index written as a tree first and the file staged again
+// from it after.
+func (r restoreRepo) resetCommits() []gitStep {
+	read := r.git("diff --cached --name-only -z --no-renames")
+	reset := gitStep{"git reset --keep " + startingSHA, ScriptedOut("")}
+	if !r.notesStaged {
+		return []gitStep{{read, nothingStaged}, reset}
+	}
+	return []gitStep{
+		{read, ScriptedOut(r.notes + "\x00")},
+		{"git write-tree", ScriptedOut(stagedTree + "\n")},
+		reset,
+		{"git restore --source=" + stagedTree + " --staged -- :(top,literal)" + r.notes, ScriptedOut("")},
+	}
 }
 
 const (
@@ -225,7 +241,7 @@ func (r restoringRun) tail() []gitStep {
 	}
 	var reset []gitStep
 	if len(r.before) > 0 {
-		reset = resetCommits()
+		reset = r.repo.resetCommits()
 	}
 	return slices.Concat(r.before, r.failure.fails(r.repo), r.failure.restores(r.repo, answer), reset, r.after)
 }
@@ -316,6 +332,17 @@ func assertNoReset(t *testing.T, f *runner.FakeRunner) {
 	}
 }
 
+// assertNoDiscard fails if the run issued a reset that discards changes of the user's
+// rather than refusing over them: a --hard, or a --soft and a restore of the whole tree.
+func assertNoDiscard(t *testing.T, f *runner.FakeRunner) {
+	t.Helper()
+	for _, mode := range []string{"--hard", "--soft", "--mixed", "--merge"} {
+		if got := argsOf(f, "reset", mode); len(got) != 0 {
+			t.Errorf("the unwind ran git %q, want only reset --keep", got)
+		}
+	}
+}
+
 // assertCreatedRemoved fails unless the file mint created, if any, is gone.
 func assertCreatedRemoved(t *testing.T, root, created string) {
 	t.Helper()
@@ -388,6 +415,30 @@ func TestRelease_AFailureAfterAnArtifactsCommit_PutsBackTheWritesThenResetsTheCo
 			assertGitTail(t, f, commandLinesOf(run.tail()))
 			assertCreatedRemoved(t, repo.root, tf.created)
 		})
+	}
+}
+
+// The reset after the put-back keeps the notes file's edits, and stages again what the
+// index held staged of it: no step discards a change mint did not make.
+func TestRelease_AFailureAfterAnArtifactsCommit_LeavesAnInRepoNotesFileAlone(t *testing.T) {
+	t.Parallel()
+
+	for _, tf := range []treeFailure{changelogWriteFails, stagedBookkeepingFails} {
+		for _, nc := range notesResetCases {
+			t.Run(tf.name+"/"+nc.name, func(t *testing.T) {
+				t.Parallel()
+
+				repo := restoreRepo{root: t.TempDir(), notes: nc.file, notesStaged: nc.notesStaged != ""}
+				path := writeNotesFile(t, repo.root, nc.file, suppliedBody)
+				run := restoringRun{repo: repo, failure: tf, config: preTagHookConfig, before: repo.artifacts(ScriptedOut(""))}
+				rec, f, err := run.release(t)
+
+				assertTreeRestored(t, rec, err, tf.afterCommit, tf.end)
+				assertGitTail(t, f, commandLinesOf(run.tail()))
+				assertNoDiscard(t, f)
+				assertFileUnchanged(t, path, suppliedBody)
+			})
+		}
 	}
 }
 

@@ -431,7 +431,7 @@ func TestRelease_PriorTag_GateAbort_LeavesRepoClean(t *testing.T) {
 	if recorded(rec, presentertest.KindUnwound) {
 		t.Errorf("prior-tag gate-no before any mutation emitted an Unwound; nothing was made to undo")
 	}
-	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("prior-tag gate-no issued a `git reset`; nothing to reset")
 	}
 	assertNoMutation(t, f)

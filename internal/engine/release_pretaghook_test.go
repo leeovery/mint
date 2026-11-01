@@ -346,8 +346,8 @@ func TestRelease_PreTagHook_NonZeroAbortsBeforeTag(t *testing.T) {
 	}
 	// No tag/push/publish — the abort precedes all of it.
 	assertNoMutation(t, f)
-	// The hook made no commit, so there is nothing to reset (no `git reset --hard`).
-	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	// The hook made no commit, so there is nothing to reset (no `git reset`).
+	if invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("a reset ran though the failing hook moved no HEAD; nothing should be reset")
 	}
 	// Notes never reached the gate — the abort is before notes generation. The
@@ -408,7 +408,7 @@ func TestRelease_PreTagHook_NonZero_SurgicalNoOpsOnZeroMadeState(t *testing.T) {
 		t.Errorf("StageFailed.Name = %q, want %q", name, "pre_tag")
 	}
 	// Zero MadeState → surgical no-op: no reset, no Unwound, no HEAD probe beyond capture.
-	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("a `git reset` ran though mint made no tracked commit; the surgical unwind no-ops on zero MadeState")
 	}
 	if recorded(rec, presentertest.KindUnwound) {

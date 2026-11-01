@@ -324,7 +324,7 @@ func TestRelease_NotesFloorEdit_FailedEditorAbortsAndUnwindsThePreTagCommit(t *t
 		t.Errorf("floor gates = %d, want the run to end at the editor failure", got)
 	}
 	assertNoTag(t, f)
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("the pre_tag artifact commit was not unwound; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {

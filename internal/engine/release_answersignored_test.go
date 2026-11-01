@@ -224,7 +224,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, tc.reviews)
 			a := newIgnoredAnswers(t, rec, tc.config, tc.preTag)
 			a.f.SeedSequence("git", tc.tail...)
-			a.f.SeedSequence("git", ScriptedOut("")) // the unwind's reset
+			a.f.SeedSequence("git", nothingStaged, ScriptedOut("")) // the unwind's staged read and reset
 
 			err := a.release(t)
 
@@ -243,7 +243,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 				}
 				return
 			}
-			if !invokedWith(a.f, "git", "reset", "--hard", startingSHA) {
+			if !invokedWith(a.f, "git", "reset", "--keep", startingSHA) {
 				t.Errorf("the run was not reset to the starting commit; got %v", commandLines(a.f.Invocations()))
 			}
 			if got := unwoundText(t, rec); got != tc.summary {

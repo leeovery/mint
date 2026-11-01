@@ -15,10 +15,11 @@
  │                │ error: failed to push some refs to 'https://github.com/acme/pigeon'
  ✗  unwind        automatic recovery failed
  │                deleted tag v1.3.0
+ │                │ error: Entry 'CHANGELOG.md' not uptodate. Cannot merge.
  │                │ fatal: Could not reset index file to revision 'startsha'.
  │
  ◇  main          9f3e2a1 · 1 commit not reset · manual cleanup required · nothing pushed       5.6s
 
  next
-   Reset HEAD back to startsha:
-     git reset --hard startsha
+   Stash your changes to any file git names, then reset HEAD back to startsha:
+     git reset --keep startsha

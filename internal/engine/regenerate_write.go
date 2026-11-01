@@ -15,7 +15,8 @@ package engine
 //     RETURN for the changelog surface.
 //   - RECOVERY (pre-PONR) is LIGHTER than the forward surgical unwind: there is no
 //     tag to delete, so any pre-push failure just RESETS the local CHANGELOG commit
-//     back to the clean start, leaving any notes file as it was (resetTo). A gate
+//     back to the clean start, keeping every other change, a notes file's included
+//     (resetTo). A gate
 //     abort lands before the commit, and a release-only TARGET (any source) makes no
 //     commit, so neither has anything to reset.
 //   - POST-PONR a provider create/update failure AFTER the changelog push is WARN
@@ -326,7 +327,7 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 	if err != nil {
 		return false, surface(p, stageRecord, err)
 	}
-	start := resetTarget{HEAD: startingHEAD, KeepOut: req.KeepOut}
+	start := resetTarget{HEAD: startingHEAD, Root: root}
 
 	// Recover the version's ORIGINAL historical date from the tag metadata so the
 	// healed `## [x.y.z] - <date>` header keeps its original date, not today.
@@ -447,31 +448,25 @@ func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, com
 // signal, so the changelog commit is rolled back and the repo left clean — the
 // regenerate sibling of the forward Unwind's cancellation resilience.
 //
-// A failed reset is not swallowed: it surfaces a manual-cleanup Warn naming the step
-// the user must run, and why: where HEAD has already left the commit, only the
-// commit's changes are left to drop. Where it never left it, the close names where
-// HEAD stands.
+// The reset takes back exactly what the changelog commit changed and keeps every other
+// change in the tree, staged or not (see resetTo). A failed reset is not swallowed: it
+// surfaces a manual-cleanup Warn naming the step the user must run, and the close
+// names where HEAD stands, never having left the commit; a failure to stage again what
+// was staged warns the same way, HEAD back at the start.
 func resetChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarget) {
 	ctx = context.WithoutCancel(ctx)
-	moved, manual, output, err := resetTo(ctx, deps.Mutator, start)
-	event := presenter.Unwind{Key: stageUnwind, Quiet: true}
-	if moved {
-		event.Undone = "reset the changelog commit"
-	}
+	staged, manual, output, err := resetTo(ctx, deps.Mutator, start)
 	if err != nil {
 		manual.why = "to drop the leftover changelog commit"
-		if moved {
-			manual.why = "to drop the changelog commit's leftover changes"
-		}
 		warnUnwindIncomplete(deps.Presenter, output, manual)
-	}
-	deps.Presenter.Unwound(event)
-	switch {
-	case err != nil && !moved:
+		deps.Presenter.Unwound(presenter.Unwind{Key: stageUnwind, Quiet: true})
 		strandedAt(ctx, deps, "the changelog commit not reset", manualCleanup+" · "+nothingPushed)
 		return
-	case err != nil:
-		deps.run.Unwound(manualCleanup + " · " + nothingPushed)
+	}
+	restaged := restageIfReset(ctx, deps, staged)
+	deps.Presenter.Unwound(presenter.Unwind{Undone: "reset the changelog commit", Key: stageUnwind, Quiet: true})
+	if !restaged {
+		deps.run.Unwound(backWhereItStarted + " · " + manualCleanup + " · " + nothingPushed)
 		return
 	}
 	deps.run.Unwound(backWhereItStarted + " · " + nothingPushed)

@@ -303,7 +303,7 @@ func TestRelease_Fallback_AttendedAbortAtTheReviewGate_UnwindsAndKeepsTheSavedPa
 	t.Parallel()
 
 	run, kept := newSixPartFallbackRun(t)
-	run.f.SeedSequence("git", ScriptedOut("")) // unwind: reset --hard startingSHA
+	run.f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: diff --cached (nothing staged), reset --keep startingSHA
 	run.deps.StdinInteractive = true
 	run.rec.PromptResult = func(g presenter.Gate) (presenter.Choice, error) {
 		if g.Subject == "notes" && g.Has(presenter.ChoiceYes) {
@@ -316,7 +316,7 @@ func TestRelease_Fallback_AttendedAbortAtTheReviewGate_UnwindsAndKeepsTheSavedPa
 
 	assertAbortNonZero(t, err)
 	assertNoTag(t, run.f)
-	if !invokedWith(run.f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(run.f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("the pre_tag artifact commit was not unwound; got %v", commandLines(run.f.Invocations()))
 	}
 	if len(kept.notes) != 1 {

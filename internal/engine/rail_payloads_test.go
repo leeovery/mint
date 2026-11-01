@@ -545,7 +545,8 @@ func TestRelease_Rail_ARejectedPushIsThePushNodeTimedAndTheRunGoesBackToItsStart
 	f.SeedSequence("git",
 		pushRejected(),  // push --atomic origin HEAD v0.0.1 (rejected)
 		ScriptedOut(""), // unwind: tag -d v0.0.1
-		ScriptedOut(""), // unwind: reset --hard startingSHA
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: reset --keep startingSHA
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -981,13 +982,13 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 		},
 		{
 			name:    "a rejected push resets the commit",
-			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, ScriptedOut("")}, // add, commit, push, reset --hard
+			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, nothingStaged, ScriptedOut("")}, // add, commit, push, the staged read, reset --keep
 			end:     "back where it started · nothing pushed",
 			unwound: true,
 		},
 		{
 			name:    "a rejected push whose reset fails needs cleaning up, on the commit HEAD never left",
-			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, scriptedMutateFailure(), ScriptedOut("9f3e2a1c4b\nmain")},
+			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, nothingStaged, scriptedMutateFailure(), ScriptedOut("9f3e2a1c4b\nmain")},
 			at:      "main",
 			end:     "9f3e2a1 · the changelog commit not reset · manual cleanup required · nothing pushed",
 			unwound: true,

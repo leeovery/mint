@@ -42,7 +42,7 @@ func (r *stashingRunner) Run(ctx context.Context, name string, args ...string) (
 	case slices.Equal(args, []string{"stash", "push", "--include-untracked"}):
 		r.stash = append(r.stash, r.read())
 		r.write(r.committed)
-	case slices.Equal(args, []string{"reset", "--hard", startingSHA}):
+	case slices.Equal(args, []string{"reset", "--keep", startingSHA}):
 		r.write(r.committed)
 	case slices.Equal(args, []string{"stash", "pop"}):
 		edit := r.stash[len(r.stash)-1]
@@ -122,10 +122,11 @@ func (a *autostashedRelease) released(pop runner.ScriptedCall) *autostashedRelea
 	return a
 }
 
-// unwound scripts the unwind's read of the answers commit's sha, its reset and its
-// re-commit of the answers, then pop as the restore.
+// unwound scripts the unwind's read of the answers commit's sha, its reset (a read of
+// what is staged, then the reset) and its re-commit of the answers, then pop as the
+// restore.
 func (a *autostashedRelease) unwound(pop runner.ScriptedCall) *autostashedRelease {
-	a.f.SeedSequence("git", ScriptedOut(answersSHA+"\n"), ScriptedOut(""), ScriptedOut(""), ScriptedOut(""), pop)
+	a.f.SeedSequence("git", ScriptedOut(answersSHA+"\n"), nothingStaged, ScriptedOut(""), ScriptedOut(""), ScriptedOut(""), pop)
 	return a
 }
 
@@ -287,7 +288,7 @@ func TestRelease_Autostash_AbortAfterAnswering_RecommitsOnlyTheAnswersThenRestor
 				t.Fatalf("Release returned %v, want an abort exiting 1", err)
 			}
 
-			reset := indexOfCmd(a.f, "git", "reset", "--hard", startingSHA)
+			reset := indexOfCmd(a.f, "git", "reset", "--keep", startingSHA)
 			if reset == -1 {
 				t.Fatalf("no reset to the starting commit; got %v", commandLines(a.f.Invocations()))
 			}

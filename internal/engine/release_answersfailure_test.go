@@ -72,7 +72,7 @@ func recordAnswersFailingIn(t *testing.T, root string, config *string, preTag bo
 	}
 	f.SeedSequence("git", ScriptedOut(exportGoDiff+designDocDiff))
 	f.SeedSequence("git", failure.git...)
-	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // the unwind
+	f.SeedSequence("git", ScriptedOut(""), nothingStaged, ScriptedOut("")) // the unwind: the unstage, the staged read, the reset
 	f.SeedSequence("claude", ScriptedOut(designDocAnswer), ScriptedOut(aiBody))
 	f.Seed("gh", runner.Result{}, nil)
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
@@ -178,14 +178,14 @@ func TestRelease_AnswersCommitFailingAfterTheArtifactCommit_UnwindsToTheStartAnd
 	run := recordAnswersFailing(t, ptr(before), true, commitFails)
 
 	assertAbortedBeforeTheNotes(t, run)
-	if !invokedWith(run.f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(run.f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("the run was not reset to the starting commit; got %v", commandLines(run.f.Invocations()))
 	}
 	if got := countCommitsWithSubject(run.f, run.root, answersSubject(nextTag)); got != 1 {
 		t.Errorf("answers commit attempts = %d, want only the one that failed", got)
 	}
 	unstageAt := indexOfCmd(run.f, "git", unstageConfigArgs(run.root)...)
-	if resetAt := indexOfCmd(run.f, "git", "reset", "--hard", startingSHA); unstageAt == -1 || unstageAt > resetAt {
+	if resetAt := indexOfCmd(run.f, "git", "reset", "--keep", startingSHA); unstageAt == -1 || unstageAt > resetAt {
 		t.Errorf("the staged .mint.toml was not unstaged before the reset; got %v", commandLines(run.f.Invocations()))
 	}
 	if got := readConfigBytes(t, run.root); got != before {
@@ -209,7 +209,7 @@ func TestRelease_AnswersStagedButTheirCommitFailing_LeavesMintTomlAsBeforeTheRun
 	if unstageAt == -1 || unstageAt < commitAt {
 		t.Errorf("the staged .mint.toml was not unstaged after the failed commit; got %v", commandLines(run.f.Invocations()))
 	}
-	if invokedWith(run.f, "git", "reset", "--hard", startingSHA) {
+	if invokedWith(run.f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("a run that made no commit was reset")
 	}
 }

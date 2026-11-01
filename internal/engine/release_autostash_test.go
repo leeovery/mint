@@ -162,7 +162,8 @@ func TestRelease_Autostash_AbortUnwindsBeforePop(t *testing.T) {
 	f.SeedSequence("git",
 		pushRejected(),  // push --atomic origin HEAD v0.0.1 (rejected → pre-PONR abort)
 		ScriptedOut(""), // unwind: tag -d v0.0.1
-		ScriptedOut(""), // unwind: reset --hard startingSHA
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: reset --keep startingSHA
 		stashPopped(),   // stash pop on TOP of the clean state
 	)
 	f.Seed("gh", runner.Result{}, nil)
@@ -172,7 +173,7 @@ func TestRelease_Autostash_AbortUnwindsBeforePop(t *testing.T) {
 	assertAbortNonZero(t, err)
 
 	// The surgical unwind ran AND the stash was popped.
-	resetAt := indexOfCmd(f, "git", "reset", "--hard", startingSHA)
+	resetAt := indexOfCmd(f, "git", "reset", "--keep", startingSHA)
 	popAt := indexOfCmd(f, "git", "stash", "pop")
 	if resetAt == -1 {
 		t.Fatalf("abort did not run the surgical unwind reset; got %v", commandLines(f.Invocations()))
@@ -359,7 +360,8 @@ func TestRelease_Autostash_PopConflictAfterAbort_KeepsStashAndWarns(t *testing.T
 	f.SeedSequence("git",
 		pushRejected(),     // push rejected → pre-PONR abort
 		ScriptedOut(""),    // unwind: tag -d v0.0.1
-		ScriptedOut(""),    // unwind: reset --hard startingSHA
+		ScriptedOut(""),    // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),    // unwind: reset --keep startingSHA
 		stashPopConflict(), // restoring pop conflicts on top of the clean state
 	)
 	f.Seed("gh", runner.Result{}, nil)
@@ -375,7 +377,7 @@ func TestRelease_Autostash_PopConflictAfterAbort_KeepsStashAndWarns(t *testing.T
 		t.Errorf("abort-path pop conflict did not warn that the WIP is preserved; warns = %v", warnMessages(rec))
 	}
 	// The unwind still ran (reset + tag-delete) before the conflicting pop.
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("abort path did not run the surgical unwind before the pop")
 	}
 }

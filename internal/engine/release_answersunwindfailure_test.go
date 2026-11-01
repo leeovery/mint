@@ -65,7 +65,8 @@ func pushRejectedAfterTheTag() []runner.ScriptedCall {
 var answersCommitRead = ScriptedOut(answersSHA + "\n")
 
 // assertAnswersCommitReadFirst fails unless the unwind reads the answers commit's sha
-// as rev immediately before its first mutation.
+// as rev immediately before its first step: its tag delete, or its reset's read of
+// what is staged.
 func assertAnswersCommitReadFirst(t *testing.T, f *runner.FakeRunner, rev string) {
 	t.Helper()
 	want := "git rev-parse " + rev
@@ -78,7 +79,8 @@ func assertAnswersCommitReadFirst(t *testing.T, f *runner.FakeRunner, rev string
 	if read == -1 {
 		t.Fatalf("no read of %s; got %v", rev, commandLines(f.Invocations()))
 	}
-	first := indexOfCmd(f, "git", "reset", "--hard", startingSHA)
+	// Nothing is staged, so the reset's read of what is staged is the step before it.
+	first := indexOfCmd(f, "git", "reset", "--keep", startingSHA) - 1
 	if del := indexOfCmd(f, "git", "tag", "-d", minorTagV130); del != -1 && del < first {
 		first = del
 	}
@@ -103,7 +105,8 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitFails_WarnsTheStepThatCommi
 
 			rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, []presenter.Choice{presenter.ChoiceNo})
 			a := newAnsweredAbort(t, rec, preTagHookConfig)
-			a.f.SeedSequence("git", append([]runner.ScriptedCall{answersCommitRead, ScriptedOut("")}, tc.git...)...)
+			a.f.SeedSequence("git", answersCommitRead, nothingStaged, ScriptedOut("")) // the sha, the reset
+			a.f.SeedSequence("git", tc.git...)
 
 			err := a.release(t.Context())
 
@@ -140,7 +143,7 @@ type unreadableConfigRunner struct {
 }
 
 func (r *unreadableConfigRunner) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
-	if name == "git" && slices.Equal(args, []string{"reset", "--hard", startingSHA}) {
+	if name == "git" && slices.Equal(args, []string{"reset", "--keep", startingSHA}) {
 		path := filepath.Join(r.root, config.FileName)
 		if err := os.Remove(path); err != nil {
 			return runner.Result{ExitCode: 1}, err
@@ -188,7 +191,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitCannotWriteTheAnswers_Warns
 			a.deps.Mutator, a.deps.Releaser = mut, release.NewReleaser(mut)
 			a.f.SeedSequence("git", tc.tail...)
 			a.f.Seed("gh", runner.Result{}, nil)
-			a.f.SeedSequence("git", slices.Concat([]runner.ScriptedCall{answersCommitRead}, tc.beforeReset, []runner.ScriptedCall{ScriptedOut("")})...)
+			a.f.SeedSequence("git", slices.Concat([]runner.ScriptedCall{answersCommitRead}, tc.beforeReset, []runner.ScriptedCall{nothingStaged, ScriptedOut("")})...)
 
 			err := a.release(t.Context())
 
@@ -203,7 +206,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitCannotWriteTheAnswers_Warns
 			}
 			assertUnwoundWithOneWarning(t, rec, err, want, tc.summary)
 			assertAnswersCommitReadFirst(t, a.f, tc.rev)
-			reset := indexOfCmd(a.f, "git", "reset", "--hard", startingSHA)
+			reset := indexOfCmd(a.f, "git", "reset", "--keep", startingSHA)
 			if after := a.f.Invocations()[reset+1:]; len(after) != 0 {
 				t.Errorf("after the reset = %q, want no git call", commandLines(after))
 			}
@@ -245,22 +248,21 @@ func TestRelease_UnwindAfterAnswering_WhenTheResetFails_DoesNotReCommitAndNamesT
 			a := newAnsweredAbort(t, rec, preTagHookConfig)
 			a.f.SeedSequence("git", tc.tail...)
 			a.f.Seed("gh", runner.Result{}, nil)
-			a.f.SeedSequence("git", slices.Concat([]runner.ScriptedCall{answersCommitRead}, tc.beforeReset, []runner.ScriptedCall{gitFailing(resetStderr)})...)
+			a.f.SeedSequence("git", slices.Concat([]runner.ScriptedCall{answersCommitRead}, tc.beforeReset, []runner.ScriptedCall{nothingStaged, gitFailing(resetStderr)})...)
 
 			err := a.release(t.Context())
 
 			want := presenter.Warning{
-				Label:  "unwind incomplete",
-				Key:    "unwind",
-				Row:    "automatic recovery failed",
-				Failed: true,
-				Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
-					"`), then put your exclusion answers back on top (`git cherry-pick " + answersSHA + "`)",
-				Output: resetStderr,
+				Label:   "unwind incomplete",
+				Key:     "unwind",
+				Row:     "automatic recovery failed",
+				Failed:  true,
+				Message: "automatic recovery failed; manually " + keepStep + ", then put your exclusion answers back on top (`git cherry-pick " + answersSHA + "`)",
+				Output:  resetStderr,
 			}
 			assertUnwoundWithOneWarning(t, rec, err, want, tc.summary)
 			assertAnswersCommitReadFirst(t, a.f, tc.rev)
-			reset := indexOfCmd(a.f, "git", "reset", "--hard", startingSHA)
+			reset := indexOfCmd(a.f, "git", "reset", "--keep", startingSHA)
 			if reset == -1 {
 				t.Fatalf("no reset to the starting commit; got %v", commandLines(a.f.Invocations()))
 			}
@@ -281,22 +283,21 @@ func TestRelease_UnwindAfterAnswering_WhenTheShaCannotBeRead_StillResetsAndNames
 	a := newAnsweredAbort(t, rec, preTagHookConfig)
 	a.f.SeedSequence("git", pushRejectedAfterTheTag()...)
 	a.f.Seed("gh", runner.Result{}, nil)
-	a.f.SeedSequence("git", gitFailing("fatal: bad revision 'HEAD~1'\n"), ScriptedOut(""), gitFailing(resetStderr))
+	a.f.SeedSequence("git", gitFailing("fatal: bad revision 'HEAD~1'\n"), ScriptedOut(""), nothingStaged, gitFailing(resetStderr))
 
 	err := a.release(t.Context())
 
 	want := presenter.Warning{
-		Label:  "unwind incomplete",
-		Key:    "unwind",
-		Row:    "automatic recovery failed",
-		Failed: true,
-		Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
-			"`), then put your exclusion answers back on top (`git cherry-pick ORIG_HEAD~1`)",
-		Output: resetStderr,
+		Label:   "unwind incomplete",
+		Key:     "unwind",
+		Row:     "automatic recovery failed",
+		Failed:  true,
+		Message: "automatic recovery failed; manually " + keepStep + ", then put your exclusion answers back on top (`git cherry-pick ORIG_HEAD~1`)",
+		Output:  resetStderr,
 	}
 	assertUnwoundWithOneWarning(t, rec, err, want, "deleted tag "+minorTagV130+"; manual cleanup required")
 	assertManualSteps(t, rec,
-		presenter.NextMove{Lead: "Reset HEAD back to " + startingSHA + ":", Command: "git reset --hard " + startingSHA},
+		keepMove,
 		presenter.NextMove{Lead: "Put your exclusion answers back on top:", Command: "git cherry-pick ORIG_HEAD~1"},
 	)
 	assertAnswersCommitReadFirst(t, a.f, "HEAD~1")

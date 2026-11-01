@@ -588,7 +588,7 @@ func TestRelease_GateNo_AbortsNonZero(t *testing.T) {
 	if recorded(rec, presentertest.KindUnwound) {
 		t.Errorf("gate-no before any mutation emitted an Unwound; nothing was made to undo")
 	}
-	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("gate-no before any mutation issued a `git reset`; nothing to reset")
 	}
 	assertNoMutation(t, f)
@@ -621,8 +621,8 @@ func TestRelease_GateNo_NoMutation_SurgicalNoOp(t *testing.T) {
 	}
 	// No reset, and no HEAD probe beyond the single pre-gate capture — the surgical
 	// unwind is driven by MadeState, never a rev-parse compare.
-	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
-		t.Errorf("gate-n before mutation issued a `git reset --hard`; nothing should be reset")
+	if invokedWith(f, "git", "reset", "--keep", startingSHA) {
+		t.Errorf("gate-n before mutation issued a `git reset`; nothing should be reset")
 	}
 	if got := countCmd(f, "git", "rev-parse", "HEAD"); got != 1 {
 		t.Errorf("rev-parse HEAD count = %d, want 1 (the pre-gate capture only; the unwind probes no HEAD)", got)
@@ -694,7 +694,7 @@ func TestRelease_VersionGateNo_AbortsBeforePreflight(t *testing.T) {
 // TestRelease_PushRejected_ResetsCommitAndDeletesTag proves a push REJECTION
 // (post-Record, pre-PONR) routes through the surgical unwind AFTER a StageFailed: the
 // tracked MadeState (one bookkeeping commit, tag created via release.ErrPushRejected)
-// drives a `git reset --hard {startingSHA}` and a `git tag -d {tag}` — no HEAD probe.
+// drives a `git reset --keep {startingSHA}` and a `git tag -d {tag}` — no HEAD probe.
 // The Unwound sentence (engine-authored) names the reset commit AND the deleted tag AND
 // the repo-clean tail, a StageFailed precedes the Unwound, the run returns a non-zero
 // *AbortError, and no success end-of-run line follows.
@@ -709,7 +709,8 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 	f.SeedSequence("git",
 		pushRejected(),  // push --atomic origin HEAD v0.0.1 (rejected)
 		ScriptedOut(""), // unwind: tag -d v0.0.1
-		ScriptedOut(""), // unwind: reset --hard startingSHA
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: reset --keep startingSHA
 	)
 	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
 	rec := &presentertest.RecordingPresenter{}
@@ -718,7 +719,7 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 
 	assertAbortNonZero(t, err)
 	// The release commit was reset to the clean starting point.
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("push-rejection unwind did not reset to the starting SHA; got %v", commandLines(f.Invocations()))
 	}
 	// The local tag mint created this run was deleted.
@@ -809,7 +810,8 @@ func TestRelease_AbortPathMatchesPrePushFailurePath(t *testing.T) {
 	pushRunner.SeedSequence("git",
 		pushRejected(),  // push rejected
 		ScriptedOut(""), // unwind: tag -d
-		ScriptedOut(""), // unwind: reset --hard
+		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: reset --keep
 	)
 	pushRunner.Seed("gh", runner.Result{}, nil)
 	pushRec := &presentertest.RecordingPresenter{}
@@ -822,7 +824,7 @@ func TestRelease_AbortPathMatchesPrePushFailurePath(t *testing.T) {
 	if recorded(gateRec, presentertest.KindUnwound) {
 		t.Errorf("gate-n abort emitted an Unwound despite making nothing; the surgical unwind no-ops")
 	}
-	if invokedWith(gateRunner, "git", "reset", "--hard", startingSHA) {
+	if invokedWith(gateRunner, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("gate-n abort reset despite making nothing")
 	}
 	// The pre-push path made a commit + tag, so it resets to the shared starting SHA and
@@ -830,7 +832,7 @@ func TestRelease_AbortPathMatchesPrePushFailurePath(t *testing.T) {
 	if !recorded(pushRec, presentertest.KindUnwound) {
 		t.Errorf("pre-push failure did not end in an Unwound")
 	}
-	if !invokedWith(pushRunner, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(pushRunner, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("pre-push failure did not reset to the shared starting SHA")
 	}
 }

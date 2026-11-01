@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strings"
 	"testing"
 
 	"mint/internal/cmdline"
@@ -29,25 +28,38 @@ var notesResetCases = []notesResetCase{
 	{name: "a tracked NEXT_RELEASE.md with staged edits", file: "NEXT_RELEASE.md", notesStaged: "NEXT_RELEASE.md\x00"},
 }
 
-// keepingReset scripts a successful reset that leaves the notes file as it was.
-func keepingReset() []runner.ScriptedCall {
-	return []runner.ScriptedCall{
-		ScriptedOut(""), // reset --soft <start>
-		ScriptedOut(""), // restore --source=<start> --staged --worktree -- :(exclude)<notes>
+// keepingReset scripts a successful reset that leaves the notes file as it was: the read
+// of what is staged, answered with the notes file where it has edits staged, then the
+// index written as a tree, the reset, and the file staged again.
+func keepingReset(tt notesResetCase) []runner.ScriptedCall {
+	if tt.notesStaged == "" {
+		return []runner.ScriptedCall{nothingStaged, ScriptedOut("")}
 	}
+	return []runner.ScriptedCall{ScriptedOut(tt.notesStaged), ScriptedOut(stagedTree + "\n"), ScriptedOut(""), ScriptedOut("")}
 }
 
-// assertResetKeptNotesFile fails unless the run moved HEAD back to start and restored
-// the index and work tree to start everywhere but the notes file, and issued no
-// `git reset --hard`, which would discard the file's edits and staged state.
-func assertResetKeptNotesFile(t *testing.T, f *runner.FakeRunner, start, rel string) {
-	t.Helper()
-	assertGitArgs(t, f, 1, []string{"reset", "--soft", start})
-	assertGitArgs(t, f, 1, []string{"restore", "--source=" + start, "--staged", "--worktree", "--", excludePathspec(rel)})
-	if got := argsOf(f, "reset", "--hard"); len(got) != 0 {
-		t.Errorf("a reset discarded the notes file's edits: %q", got)
+// keepingResetLines are the git steps keepingReset answers, in the repo at root.
+func keepingResetLines(tt notesResetCase, root, start string) []string {
+	read := "git -C " + root + " diff --cached --name-only -z --no-renames"
+	reset := "git reset --keep " + start
+	if tt.notesStaged == "" {
+		return []string{read, reset}
 	}
-	assertNotesFileOnlyExcluded(t, f, rel)
+	return []string{read, "git write-tree", reset, "git restore --source=" + stagedTree + " --staged -- :(top,literal)" + tt.file}
+}
+
+// assertResetKeptNotesFile fails unless the run's reset was keepingReset's: HEAD moved
+// back to start by a reset that keeps the notes file's edits, then the file's staged
+// edits staged again, and no reset that discards them.
+func assertResetKeptNotesFile(t *testing.T, f *runner.FakeRunner, tt notesResetCase, root, start string) {
+	t.Helper()
+	want := keepingResetLines(tt, root, start)
+	got := commandLines(f.Invocations())
+	at := slices.Index(got, want[0])
+	if at == -1 || len(got) < at+len(want) || !slices.Equal(got[at:at+len(want)], want) {
+		t.Errorf("git steps = %q, want the reset %q", got, want)
+	}
+	assertNoDiscard(t, f)
 }
 
 func TestRelease_NotesFileInRepo_GateAbortAfterArtifactCommit_ResetLeavesTheNotesFile(t *testing.T) {
@@ -68,7 +80,7 @@ func TestRelease_NotesFileInRepo_GateAbortAfterArtifactCommit_ResetLeavesTheNote
 				ScriptedOut(""),               // -C root add -A
 			)
 			f.SeedSequence("git", keepOutCommit(tt.notesStaged, stagedArtifacts)...)
-			f.SeedSequence("git", keepingReset()...)
+			f.SeedSequence("git", keepingReset(tt)...)
 			f.Seed("sh", runner.Result{}, nil)
 			rec := &presentertest.RecordingPresenter{
 				NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo},
@@ -77,7 +89,7 @@ func TestRelease_NotesFileInRepo_GateAbortAfterArtifactCommit_ResetLeavesTheNote
 			err := engine.Release(t.Context(), newDeps(rec, f), inRepoNotesFileOptions(root, tt.file))
 			assertAbortNonZero(t, err)
 
-			assertResetKeptNotesFile(t, f, startingSHA, tt.file)
+			assertResetKeptNotesFile(t, f, tt, root, startingSHA)
 			if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
 				t.Errorf("Unwound.Text() = %q, want %q", got, want)
 			}
@@ -113,14 +125,14 @@ func TestRelease_NotesFileInRepo_PushRejected_UnwindLeavesTheNotesFile(t *testin
 				pushRejected(),  // push --atomic origin HEAD v0.0.1
 				ScriptedOut(""), // tag -d v0.0.1
 			)
-			f.SeedSequence("git", keepingReset()...)
+			f.SeedSequence("git", keepingReset(tt)...)
 			rec := &presentertest.RecordingPresenter{}
 
 			err := engine.Release(t.Context(), newDeps(rec, f), inRepoNotesFileOptions(root, tt.file))
 			assertAbortNonZero(t, err)
 
 			assertGitArgs(t, f, 2, []string{"tag", "-d", "v0.0.1"})
-			assertResetKeptNotesFile(t, f, startingSHA, tt.file)
+			assertResetKeptNotesFile(t, f, tt, root, startingSHA)
 			if got, want := unwoundText(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
 				t.Errorf("Unwound.Text() = %q, want %q", got, want)
 			}
@@ -140,7 +152,7 @@ func TestRelease_NotesFileInRepo_CancelledAfterACommit_UnwindLeavesTheNotesFile(
 			path := writeNotesFile(t, root, tt.file, suppliedBody)
 			f := runner.NewFakeRunner()
 			seedThroughBookkeepingCommit(f, root, tt.notesStaged)
-			f.SeedSequence("git", keepingReset()...)
+			f.SeedSequence("git", keepingReset(tt)...)
 			rec := &presentertest.RecordingPresenter{}
 
 			ctx, cancel := context.WithCancel(t.Context())
@@ -152,7 +164,7 @@ func TestRelease_NotesFileInRepo_CancelledAfterACommit_UnwindLeavesTheNotesFile(
 			if got := argsOf(f, "push"); len(got) != 0 {
 				t.Errorf("a cancelled run pushed: %q", got)
 			}
-			assertResetKeptNotesFile(t, f, startingSHA, tt.file)
+			assertResetKeptNotesFile(t, f, tt, root, startingSHA)
 			if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
 				t.Errorf("Unwound.Text() = %q, want %q", got, want)
 			}
@@ -177,7 +189,7 @@ func TestRelease_NotesFileInRepo_Autostash_PushRejected_UnwindsKeepingTheNotesFi
 				pushRejected(),  // push --atomic origin HEAD v0.0.1
 				ScriptedOut(""), // tag -d v0.0.1
 			)
-			f.SeedSequence("git", keepingReset()...)
+			f.SeedSequence("git", keepingReset(tt)...)
 			f.SeedSequence("git", stashPopped())
 			rec := &presentertest.RecordingPresenter{}
 
@@ -187,11 +199,11 @@ func TestRelease_NotesFileInRepo_Autostash_PushRejected_UnwindsKeepingTheNotesFi
 			assertAbortNonZero(t, err)
 
 			assertGitArgs(t, f, 2, []string{"stash", "push", "--include-untracked", "--", excludePathspec(tt.file)})
-			assertResetKeptNotesFile(t, f, startingSHA, tt.file)
-			restoreAt := indexOfCmd(f, "git", "restore", "--source="+startingSHA, "--staged", "--worktree", "--", excludePathspec(tt.file))
-			popAt := indexOfCmd(f, "git", "stash", "pop")
-			if popAt == -1 || restoreAt == -1 || popAt < restoreAt {
-				t.Errorf("stash pop at %d, reset's restore at %d: the other changes must be popped after the unwind", popAt, restoreAt)
+			assertResetKeptNotesFile(t, f, tt, root, startingSHA)
+			reset := keepingResetLines(tt, root, startingSHA)
+			got := commandLines(f.Invocations())
+			if last := slices.Index(got, reset[len(reset)-1]); last == -1 || slices.Index(got, "git stash pop") != last+1 {
+				t.Errorf("git steps = %q, want the other changes popped once the reset's %q is done", got, reset)
 			}
 			assertFileUnchanged(t, path, suppliedBody)
 		})
@@ -214,13 +226,13 @@ func TestRegenerateRun_NotesFileInRepo_PushFails_ResetLeavesTheNotesFile(t *test
 			f.SeedSequence("git", regenChangelogWrite()...)
 			f.SeedSequence("git", keepOutCommit(tt.notesStaged, stagedChangelog)...)
 			f.SeedSequence("git", runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}) // push origin HEAD
-			f.SeedSequence("git", keepingReset()...)
+			f.SeedSequence("git", keepingReset(tt)...)
 			rec := &presentertest.RecordingPresenter{}
 
 			err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), nil, root, notesFileRunReq(t, path, engine.RegenerateTargetChangelog))
 			assertAbortNonZero(t, err)
 
-			assertResetKeptNotesFile(t, f, "startHEAD", tt.file)
+			assertResetKeptNotesFile(t, f, tt, root, "startHEAD")
 			if got := argsOf(f, "tag"); len(got) != 0 {
 				t.Errorf("regenerate's reset touched a tag: %q", got)
 			}
@@ -229,12 +241,20 @@ func TestRegenerateRun_NotesFileInRepo_PushFails_ResetLeavesTheNotesFile(t *test
 	}
 }
 
-func TestUnwind_KeepOut_ResetsAroundTheKeptPath(t *testing.T) {
+// The reset keeps every change mint did not make: an unstaged edit of the user's, here
+// to any path, is named by no step, and the paths the index holds staged, the notes
+// file's among them, are staged again from the tree the index was written as.
+func TestUnwind_Reset_KeepsEveryOtherChangeAndStagesAgainWhatWasStaged(t *testing.T) {
 	t.Parallel()
 
 	f := runner.NewFakeRunner()
-	f.SeedSequence("git", ScriptedOut("")) // tag -d v0.0.1
-	f.SeedSequence("git", keepingReset()...)
+	f.SeedSequence("git",
+		ScriptedOut(""), // tag -d v0.0.1
+		ScriptedOut("NEXT_RELEASE.md\x00src/app.go\x00"), // diff --cached --name-only
+		ScriptedOut(stagedTree+"\n"),                     // write-tree
+		ScriptedOut(""),                                  // reset --keep
+		ScriptedOut(""),                                  // restore --staged
+	)
 	rec := &presentertest.RecordingPresenter{}
 
 	start := startState(startingSHA, "v0.0.1")
@@ -242,7 +262,16 @@ func TestUnwind_KeepOut_ResetsAroundTheKeptPath(t *testing.T) {
 	err := engine.Unwind(t.Context(), newDeps(rec, f), start, engine.MadeState{Commits: 2, TagCreated: true}, errUnwindReason)
 
 	assertAbortNonZero(t, err)
-	assertResetKeptNotesFile(t, f, startingSHA, "NEXT_RELEASE.md")
+	want := []string{
+		"git tag -d v0.0.1",
+		"git diff --cached --name-only -z --no-renames",
+		"git write-tree",
+		"git reset --keep " + startingSHA,
+		"git restore --source=" + stagedTree + " --staged -- :(top,literal)NEXT_RELEASE.md :(top,literal)src/app.go",
+	}
+	if got := commandLines(f.Invocations()); !slices.Equal(got, want) {
+		t.Errorf("git steps = %q, want %q", got, want)
+	}
 	if got, want := unwoundText(t, rec), "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
@@ -264,89 +293,40 @@ func TestUnwind_KeepOut_NoCommits_IssuesNoReset(t *testing.T) {
 	}
 }
 
-func TestUnwind_KeepOut_ResetStepFails_WarnsTheManualStepsLeft(t *testing.T) {
+// Where the user changed a path mint's commits changed, git refuses the reset and
+// changes nothing: the unwind says so with git's words beneath, names the manual step,
+// claims no reset and takes no further step, so nothing of the user's is lost.
+func TestUnwind_ResetRefusedOverAChangeOfTheUsers_SaysSoWithTheManualStep(t *testing.T) {
 	t.Parallel()
 
-	const (
-		soft    = "`git reset --soft " + startingSHA + "`"
-		restore = "`git restore --source=" + startingSHA + " --staged --worktree -- ':(top,literal,exclude)NEXT_RELEASE.md'`"
-	)
-	tests := []struct {
-		name  string
-		calls []runner.ScriptedCall
-		want  string
-		// unwound names the reset once HEAD moved back: the restore after the soft reset
-		// is what failed.
-		unwound string
-	}{
-		{
-			name:    "the soft reset fails",
-			calls:   []runner.ScriptedCall{scriptedMutateFailure()},
-			want:    "automatic recovery failed; manually reset HEAD back to " + startingSHA + ", leaving NEXT_RELEASE.md as it is (" + soft + " then " + restore + ")",
-			unwound: "manual cleanup required",
-		},
-		{
-			name:    "the restore fails",
-			calls:   []runner.ScriptedCall{ScriptedOut(""), scriptedMutateFailure()},
-			want:    "automatic recovery failed; manually restore the index and work tree to " + startingSHA + ", leaving NEXT_RELEASE.md as it is (" + restore + ")",
-			unwound: "reset 1 commit; manual cleanup required",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			f := runner.NewFakeRunner()
-			f.SeedSequence("git", tt.calls...)
-			rec := &presentertest.RecordingPresenter{}
-
-			start := startState(startingSHA, "v0.0.1")
-			start.KeepOut = git.Exclusion("NEXT_RELEASE.md")
-			err := engine.Unwind(t.Context(), newDeps(rec, f), start, engine.MadeState{Commits: 1}, errUnwindReason)
-
-			assertAbortNonZero(t, err)
-			if got := recoveryWarn(t, rec).Warn.Message; got != tt.want {
-				t.Errorf("recovery Warn message = %q, want %q", got, tt.want)
-			}
-			if got := unwoundText(t, rec); got != tt.unwound {
-				t.Errorf("Unwound.Text() = %q, want %q", got, tt.unwound)
-			}
-		})
-	}
-}
-
-func TestRegenerateWrite_KeepOut_RecoveryResetFails_WarnsTheManualStepsLeft(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	seedChangelog(t, dir, regenNotesStaleChangelog)
 	f := runner.NewFakeRunner()
-	f.SeedSequence("git", regenChangelogWrite()...)
-	f.SeedSequence("git", keepOutCommit("", stagedChangelog)...)
-	f.SeedSequence("git",
-		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push origin HEAD
-		scriptedMutateFailure(), // reset --soft startHEAD
-	)
-	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
+	f.SeedSequence("git", nothingStaged, gitFailing(keepRefusalStderr))
+	rec := &presentertest.RecordingPresenter{}
 
-	req := freshWriteReq(engine.RegenerateTargetChangelog)
-	req.KeepOut = git.Exclusion("notes.md")
-	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, req)
+	err := engine.Unwind(t.Context(), newDeps(rec, f), startState(startingSHA, "v0.0.1"), engine.MadeState{Commits: 1}, errUnwindReason)
 
 	assertAbortNonZero(t, err)
-	want := "automatic recovery failed; manually reset HEAD back to startHEAD, leaving notes.md as it is " +
-		"(`git reset --soft startHEAD` then `git restore --source=startHEAD --staged --worktree -- ':(top,literal,exclude)notes.md'`)" +
-		" to drop the leftover changelog commit"
-	if got := recoveryWarn(t, rec).Warn.Message; got != want {
-		t.Errorf("recovery Warn message = %q, want %q", got, want)
+	onlyWarning(t, rec, unwindIncomplete(keepStep, keepRefusalStderr))
+	assertManualSteps(t, rec, keepMove)
+	if got, want := unwoundText(t, rec), "manual cleanup required"; got != want {
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
+	}
+	// After the refused reset, only the reads of where HEAD stands, for the close.
+	want := []string{
+		"git diff --cached --name-only -z --no-renames",
+		"git reset --keep " + startingSHA,
+		"git rev-parse HEAD --abbrev-ref HEAD",
+		"git symbolic-ref --short -q HEAD",
+	}
+	if got := commandLines(f.Invocations()); !slices.Equal(got, want) {
+		t.Errorf("git steps = %q, want only the refused reset %q", got, want)
 	}
 }
 
-// A notes file whose name holds a single quote still gets restore steps the operator can
-// paste: the pathspec is written the way cmdline.Quote writes it, while the prose names
-// the file raw.
-func TestUnwind_KeepOut_ResetStepFails_QuotesThePathspecForTheShell(t *testing.T) {
+// A restage that fails after the reset went through says so with the step that stages
+// the paths again, each pathspec quoted so the shell hands it to git as one word, while
+// the prose names the file raw.
+func TestUnwind_RestageFails_SaysSoWithAStepThatSplitsBackToThePathspec(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -354,106 +334,37 @@ func TestUnwind_KeepOut_ResetStepFails_QuotesThePathspecForTheShell(t *testing.T
 		file     string
 		pathspec string
 	}{
-		{name: "a name holding a single quote", file: "notes/what's-new.md", pathspec: `':(top,literal,exclude)notes/what'\''s-new.md'`},
-		{name: "a name holding a pair of single quotes", file: "notes/'draft'.md", pathspec: `':(top,literal,exclude)notes/'\''draft'\''.md'`},
-		{name: "a name holding a space", file: "release notes.md", pathspec: "':(top,literal,exclude)release notes.md'"},
+		{name: "a plain name", file: "NEXT_RELEASE.md", pathspec: "':(top,literal)NEXT_RELEASE.md'"},
+		{name: "a name holding a single quote", file: "notes/what's-new.md", pathspec: `':(top,literal)notes/what'\''s-new.md'`},
+		{name: "a name holding a pair of single quotes", file: "notes/'draft'.md", pathspec: `':(top,literal)notes/'\''draft'\''.md'`},
+		{name: "a name holding a space", file: "release notes.md", pathspec: "':(top,literal)release notes.md'"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			restore := "`git restore --source=" + startingSHA + " --staged --worktree -- " + tt.pathspec + "`"
-			steps := []struct {
-				name  string
-				calls []runner.ScriptedCall
-				want  string
-			}{
-				{
-					name:  "the soft reset fails",
-					calls: []runner.ScriptedCall{scriptedMutateFailure()},
-					want: "automatic recovery failed; manually reset HEAD back to " + startingSHA + ", leaving " + tt.file +
-						" as it is (`git reset --soft " + startingSHA + "` then " + restore + ")",
-				},
-				{
-					name:  "the restore fails",
-					calls: []runner.ScriptedCall{ScriptedOut(""), scriptedMutateFailure()},
-					want: "automatic recovery failed; manually restore the index and work tree to " + startingSHA + ", leaving " + tt.file +
-						" as it is (" + restore + ")",
-				},
+			f := runner.NewFakeRunner()
+			f.SeedSequence("git", ScriptedOut(tt.file+"\x00"), ScriptedOut(stagedTree+"\n"), ScriptedOut(""), gitFailing(stageStderr))
+			rec := &presentertest.RecordingPresenter{}
+
+			err := engine.Unwind(t.Context(), newDeps(rec, f), startState(startingSHA, "v0.0.1"), engine.MadeState{Commits: 1}, errUnwindReason)
+
+			assertAbortNonZero(t, err)
+			restage := "git restore --source=" + stagedTree + " --staged -- " + tt.pathspec
+			onlyWarning(t, rec, unwindIncomplete("stage your changes to "+tt.file+" again (`"+restage+"`)", stageStderr))
+			assertManualSteps(t, rec, presenter.NextMove{Lead: "Stage your changes to " + tt.file + " again:", Command: restage})
+			if got, want := unwoundText(t, rec), "reset 1 commit; manual cleanup required"; got != want {
+				t.Errorf("Unwound.Text() = %q, want %q", got, want)
 			}
-			for _, step := range steps {
-				f := runner.NewFakeRunner()
-				f.SeedSequence("git", step.calls...)
-				rec := &presentertest.RecordingPresenter{}
-
-				start := startState(startingSHA, "v0.0.1")
-				start.KeepOut = git.Exclusion(tt.file)
-				err := engine.Unwind(t.Context(), newDeps(rec, f), start, engine.MadeState{Commits: 1}, errUnwindReason)
-
-				assertAbortNonZero(t, err)
-				if got := recoveryWarn(t, rec).Warn.Message; got != step.want {
-					t.Errorf("%s: recovery Warn message = %q, want %q", step.name, got, step.want)
-				}
+			words, err := cmdline.Split(restage)
+			if err != nil {
+				t.Fatalf("Split(restage step) error = %v", err)
+			}
+			want := []string{"git", "restore", "--source=" + stagedTree, "--staged", "--", ":(top,literal)" + tt.file}
+			if !slices.Equal(words, want) {
+				t.Errorf("restage step splits to %q, want %q", words, want)
 			}
 		})
-	}
-}
-
-// Read back by POSIX shell rules, the printed restore step hands git the keep-out
-// pathspec as one whole word, so the restore leaves the notes file out and never names
-// a path with the quotes stripped.
-func TestUnwind_KeepOut_RestoreStepSplitsBackToTheKeepOutPathspec(t *testing.T) {
-	t.Parallel()
-
-	f := runner.NewFakeRunner()
-	f.SeedSequence("git", ScriptedOut(""), scriptedMutateFailure())
-	rec := &presentertest.RecordingPresenter{}
-
-	start := startState(startingSHA, "v0.0.1")
-	start.KeepOut = git.Exclusion("notes/'draft'.md")
-	err := engine.Unwind(t.Context(), newDeps(rec, f), start, engine.MadeState{Commits: 1}, errUnwindReason)
-
-	assertAbortNonZero(t, err)
-	msg := recoveryWarn(t, rec).Warn.Message
-	open := strings.Index(msg, "`")
-	shut := strings.LastIndex(msg, "`")
-	if open < 0 || shut <= open {
-		t.Fatalf("recovery Warn message %q carries no backticked step", msg)
-	}
-	words, err := cmdline.Split(msg[open+1 : shut])
-	if err != nil {
-		t.Fatalf("Split(restore step) error = %v", err)
-	}
-	want := []string{"git", "restore", "--source=" + startingSHA, "--staged", "--worktree", "--", ":(top,literal,exclude)notes/'draft'.md"}
-	if !slices.Equal(words, want) {
-		t.Errorf("restore step splits to %q, want %q", words, want)
-	}
-}
-
-func TestRegenerateWrite_KeepOut_RecoveryResetFails_QuotesThePathspecForTheShell(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	seedChangelog(t, dir, regenNotesStaleChangelog)
-	f := runner.NewFakeRunner()
-	f.SeedSequence("git", regenChangelogWrite()...)
-	f.SeedSequence("git", keepOutCommit("", stagedChangelog)...)
-	f.SeedSequence("git",
-		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push origin HEAD
-		scriptedMutateFailure(), // reset --soft startHEAD
-	)
-	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
-
-	req := freshWriteReq(engine.RegenerateTargetChangelog)
-	req.KeepOut = git.Exclusion("notes/what's-new.md")
-	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, req)
-
-	assertAbortNonZero(t, err)
-	want := "automatic recovery failed; manually reset HEAD back to startHEAD, leaving notes/what's-new.md as it is " +
-		`(` + "`git reset --soft startHEAD` then `git restore --source=startHEAD --staged --worktree -- ':(top,literal,exclude)notes/what'\\''s-new.md'`" + `)` +
-		" to drop the leftover changelog commit"
-	if got := recoveryWarn(t, rec).Warn.Message; got != want {
-		t.Errorf("recovery Warn message = %q, want %q", got, want)
 	}
 }
