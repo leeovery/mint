@@ -18,10 +18,11 @@ package engine
 // and TRACKS the MadeState as it proceeds (the count of commits mint made — an
 // optional pre_tag artifact commit, answers commit and bookkeeping commit — and whether
 // the annotated tag was created). On a gate-no or any pre-push failure it hands those
-// captured inputs to Unwind, which resets EXACTLY the commits mint made and deletes the
-// tag iff mint created it — no HEAD probe, no inference — then re-commits the exclusion
-// answers on the starting commit when their commit had landed, and leaves their
-// uncommitted write to a .mint.toml git ignores in place.
+// captured inputs to Unwind, which puts back exactly what mint wrote or staged that no
+// commit holds, resets EXACTLY the commits it made and deletes the tag iff it created
+// it — no HEAD probe, no inference — then re-commits the exclusion answers on the
+// starting commit when their commit had landed, and leaves their uncommitted write to
+// a .mint.toml git ignores in place.
 // The two triggers are deliberately identical: a declined gate and a rejected push with
 // the same MadeState produce a byte-identical state and Unwound summary. With nothing made the
 // surgical unwind no-ops (no reset, no Unwound). The PRE-mutation / preflight failures
@@ -151,8 +152,9 @@ func (r reviewRegen) keepFailed(cause error) error {
 
 // regenContextPrompt is the AskLine label shown when the user chooses `r`: it asks
 // for the one-time context nudge appended to the regeneration prompt. An empty
-// answer is legal (regenerate with no extra context).
-const regenContextPrompt = "Add one-time context for regeneration (optional):"
+// answer is legal (regenerate with no extra context). Like every AskLine label it
+// ends in no colon: each presenter frames it with its own.
+const regenContextPrompt = "Add one-time context for regeneration (optional)"
 
 // ReleaseDeps bundles the orchestrator's injected seams so production wires the
 // real implementations once (at the cmd entry point) and tests drive the whole
@@ -626,7 +628,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	if err != nil {
 		return surface(p, "preflight", err)
 	}
-	start := StartState{HEAD: startingHEAD, Tag: tag, TagExisted: false, KeepOut: keepOut}
+	start := StartState{HEAD: startingHEAD, Tag: tag, TagExisted: false, KeepOut: keepOut, Root: root}
 
 	// Track what mint actually makes this run (NOT inferred by probing git): each
 	// commit count is bumped as the step that made it runs, and TagCreated is set when
@@ -642,7 +644,8 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// at the post-hook HEAD. An absent or empty hook is a no-op (no prep, no artifact
 	// commit); a non-zero exit aborts cleanly before any notes/tag/push — routed
 	// through the surgical unwind so mint's OWN artifact commit (when one landed before
-	// the hook step failed) is reset back to startingHEAD. The committed signal is
+	// the hook step failed) is reset back to startingHEAD, and what mint staged of the
+	// hook's changes when their commit failed is put back. The committed signal is
 	// folded into made.Commits the moment the artifact commit lands, so it is tracked
 	// even if a LATER stage fails.
 	made.hookRan = made.hookRan || hookRuns(cfg.Release.Hooks.PreTag, opts.DryRun)
@@ -679,7 +682,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// while the notes run (the cached notes') is a wait it leaves out.
 	stage := startNotesStage(p, deps.clock())
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, tag)
-	answers := &answersCommit{root: root, tag: tag}
+	answers := &answersCommit{root: root, tag: tag, keepOut: keepOut}
 	body, kind, generator, err := resolveBody(ctx, stage.stage.awaiting(deps), root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage, answers)
 	if answers.landed {
 		made.Commits++
@@ -763,21 +766,32 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// adds no git calls; its change is staged by CommitBookkeeping below. An empty
 	// version_file is tag-only and no-ops (versionChanged false).
 	//
+	// Before either write, a change the user made to either file while the run waited
+	// stops it (refuseUserChanges): the write would take the change into mint's commit,
+	// and an unwind would discard it.
+	//
 	// The bookkeeping commit runs the repo's own commit hooks, so the rail shows record
 	// running.
-	made.wrote = true
 	showRunning(p, stageRecord, "recording the release…")
-	projection, err := record.ProjectVersionFile(root, cfg.Release.VersionFile, cfg.Release.VersionPattern, versionKey)
+	// Named as git names it from here on, so the commit's and the unwind's literal
+	// pathspecs match the file, in git's own case where the filesystem ignores it.
+	versionFile, err := record.TrackedSpelling(ctx, deps.Mutator, root, record.RepoPath(root, cfg.Release.VersionFile))
 	if err != nil {
-		// Post-mutation, pre-PONR: route through the surgical unwind so any pre_tag
-		// artifact commit already in made is reset back to the clean start. The
-		// version-file projection is a filesystem write that made no commit, so made is
-		// unchanged here; the unwind's reset (when made.Commits>0) discards the projection
-		// along with the artifact commit. No tag exists yet (made.TagCreated false).
+		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
+	}
+	if err := refuseUserChanges(ctx, deps.Mutator, root, recordPaths(versionFile, cfg.Release.Changelog)...); err != nil {
+		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
+	}
+	made.wrote = true
+	projection, err := record.ProjectVersionFile(root, versionFile, cfg.Release.VersionPattern, versionKey)
+	if err != nil {
+		// Post-mutation, pre-PONR: route through the surgical unwind so any commit
+		// already in made is reset back to the clean start. A failed projection writes
+		// nothing, so made is unchanged here. No tag exists yet (made.TagCreated false).
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}
 	versionChanged := projection.Changed
-	made.recordWrite(cfg.Release.VersionFile, versionChanged, projection.Created)
+	made.recordWrite(versionFile, versionChanged, projection.Created)
 
 	// When changelog=false WriteChangelog no-ops (Changed:false). When the version file
 	// also nets no change, CommitBookkeeping makes NO commit — the tag then points at
@@ -785,9 +799,9 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// is lost.
 	writeResult, err := record.WriteChangelog(root, versionKey, opts.Now, body, cfg.Release.Changelog)
 	if err != nil {
-		// Post-mutation, pre-PONR: route through the surgical unwind so any artifact commit
-		// (and a half-written changelog discarded by the reset) is rolled back to the clean
-		// start — the abort path is identical to the pre-push failure path. No tag yet.
+		// Post-mutation, pre-PONR: route through the surgical unwind so the version file
+		// the projection rewrote is put back and any commit reset to the clean start —
+		// the abort path is identical to the pre-push failure path. No tag yet.
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}
 	made.recordWrite(record.ChangelogFileName, writeResult.Changed, writeResult.Created)
@@ -799,13 +813,11 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// the same rule CommitBookkeeping's no-op branch consumes — tells the spine whether
 	// HEAD just moved, so made.Commits is bumped exactly when a commit landed —
 	// tracked, not inferred by probing git.
-	bookkeepingCommitted := record.BookkeepingWillCommit(cfg.Release.VersionFile, writeResult.Changed, versionChanged)
-	if err := record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, cfg.Release.VersionFile, writeResult.Changed, versionChanged, keepOut); err != nil {
+	bookkeepingCommitted := record.BookkeepingWillCommit(versionFile, writeResult.Changed, versionChanged)
+	err = record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, versionFile, writeResult.Changed, versionChanged, start.KeepOut)
+	if err = warnIndexBehind(p, root, stageRecord, err); err != nil {
 		var uncommitted *record.UncommittedError
-		if errors.As(err, &uncommitted) {
-			// Staged, the files the record created are tracked, so a reset removes them.
-			made.created = nil
-		}
+		made.recordStaged = errors.As(err, &uncommitted)
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}
 	if bookkeepingCommitted {
@@ -1200,6 +1212,7 @@ func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, tr
 // run to, and edit is the write until a commit holds it or git is found to ignore it.
 type answersCommit struct {
 	root, tag   string
+	keepOut     git.Exclusion
 	globs       config.ReleaseGlobs
 	wrote       bool
 	landed      bool
@@ -1214,6 +1227,9 @@ const releaseTable = "[release]"
 func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Answers) error {
 	return func(ctx context.Context, answers notes.Answers) error {
 		const writing = "recording the exclusion answers"
+		if err := refuseUserChanges(ctx, deps.Mutator, a.root, config.FileName); err != nil {
+			return &answersRecordingError{step: writing, err: err, output: gitOutput(err)}
+		}
 		edit, err := beforeEdit(a.root, config.FileName)
 		if err != nil {
 			return &answersRecordingError{step: writing, err: err, output: err.Error()}
@@ -1232,7 +1248,7 @@ func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Ans
 		// An ignored file is the operator's local config: staging it would take
 		// `add -f`, and the unwind keeps the write as it keeps an answers commit.
 		if !ignored {
-			if err := a.commit(ctx, deps.Mutator); err != nil {
+			if err := a.committed(deps.Presenter, a.commit(ctx, deps.Mutator)); err != nil {
 				return &answersRecordingError{step: committing, err: err, output: gitOutput(err)}
 			}
 			a.landed = true
@@ -1261,23 +1277,32 @@ func (a *answersCommit) write() error {
 }
 
 func (a *answersCommit) commit(ctx context.Context, m *git.Mutator) error {
-	return record.CommitFile(ctx, m, a.root, config.FileName, record.AnswersSubject(a.tag))
+	return record.CommitFile(ctx, m, a.root, config.FileName, record.AnswersSubject(a.tag), a.keepOut)
 }
 
-// recommit records the answers again on whatever HEAD is now. On failure it returns
-// the manual steps that finish the re-commit, given restore as the steps that bring
-// back the answers commit itself, and the failing tool's own message.
-func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator, restore []manualStep) (manual []manualStep, output string, err error) {
+// committed is the answers commit's err as the run takes it: nil where the commit
+// landed with the index left behind it, which it warns of (warnIndexBehind).
+func (a *answersCommit) committed(p presenter.Presenter, err error) error {
+	p.SuspendSpinner()
+	defer p.ResumeSpinner()
+	return warnIndexBehind(p, a.root, "notes", err)
+}
+
+// recommit records the answers again on whatever HEAD is now, warning through p where
+// the commit landed with the index left behind it (warnIndexBehind). On failure it
+// returns the manual steps that finish the re-commit, given restore as the steps that
+// bring back the answers commit itself, and the failing tool's own message.
+func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator, p presenter.Presenter, restore []manualStep) (manual []manualStep, output string, err error) {
 	if err := a.write(); err != nil {
 		return restore, err.Error(), err
 	}
-	if err := a.commit(ctx, m); err != nil {
+	if err := warnIndexBehind(p, a.root, stageUnwind, a.commit(ctx, m)); err != nil {
 		root := cmdline.Quote(a.root)
 		return []manualStep{{
 			does: "commit the exclusion answers mint wrote to " + config.FileName,
 			commands: []string{
 				"git -C " + root + " add " + config.FileName,
-				"git -C " + root + " commit -m " + cmdline.Quote(record.AnswersSubject(a.tag)),
+				"git -C " + root + " commit -m " + cmdline.Quote(record.AnswersSubject(a.tag)) + " -- " + config.FileName,
 			},
 		}}, gitOutput(err), err
 	}
@@ -1755,7 +1780,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	}
 	subject := pretagArtifactSubject(tag)
 	committed, err := record.CommitDirtyTree(ctx, deps.Mutator, root, subject, keepOut)
-	if err != nil {
+	if err = warnIndexBehind(deps.Presenter, root, stagePreTag, err); err != nil {
 		return committed, &stageError{stage: stage, err: err}
 	}
 	success := hookCompletion(cfg.Release.Hooks.PreTag)

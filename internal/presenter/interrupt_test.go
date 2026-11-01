@@ -126,7 +126,8 @@ func TestInterrupt_CtrlCAtATypedQuestionClosesTheInput(t *testing.T) {
 
 // TestInterrupt_ALineTypedToItsEnterAnswersAndEndsTheWatch pins that the interrupt's
 // watch changes nothing for a line typed to its Enter: it answers, and the watch
-// stops with the read.
+// stops with the read. Out is not the terminal (as with `| tee log`), so the echoed
+// Enter never reached it and plain ends the prompt's row there itself.
 func TestInterrupt_ALineTypedToItsEnterAnswersAndEndsTheWatch(t *testing.T) {
 	t.Parallel()
 	pty, tty := ptytest.Open(t)
@@ -152,6 +153,38 @@ func TestInterrupt_ALineTypedToItsEnterAnswersAndEndsTheWatch(t *testing.T) {
 	}
 	if interrupts.watching() || interrupts.starts != 1 {
 		t.Errorf("watches started %d, still watching %v; want one, over with the read", interrupts.starts, interrupts.watching())
+	}
+	if written := out.String(); written != "What should change?: \n" {
+		t.Errorf("plain wrote %q, want the prompt's row ended", written)
+	}
+}
+
+// TestInterrupt_PlainAddsNoRowEndWhereTheTerminalEchoedTheEnter pins plain writing to
+// the terminal it reads from: the echoed Enter ends the prompt's row, so plain adds
+// none, and the next line starts under the answer with no blank row between.
+func TestInterrupt_PlainAddsNoRowEndWhereTheTerminalEchoedTheEnter(t *testing.T) {
+	t.Parallel()
+	pty, tty := ptytest.Open(t)
+	p := presenter.NewPlainPresenterWithInput(tty, io.Discard, tty).WithInterrupts(newFakeInterrupts().watch)
+
+	got := make(chan string, 1)
+	go func() {
+		line, _ := p.AskLine("What should change?")
+		got <- line
+	}()
+	if asked := ptytest.Written(t, pty); !strings.Contains(asked, "What should change?") {
+		t.Fatalf("the terminal shows %q, want the question asked", asked)
+	}
+	ptytest.Type(t, pty, "shorter\r")
+	select {
+	case <-got:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the line never answered")
+	}
+	p.ShowVersion(presenter.Version{Value: "1.4.0"})
+
+	if shown := ptytest.Written(t, pty); shown != "shorter\r\n1.4.0\r\n" {
+		t.Errorf("the terminal shows %q after the question, want the echoed answer then the next line", shown)
 	}
 }
 

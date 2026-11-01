@@ -144,8 +144,12 @@ func (w *regenWorld) changelogWritten(push runner.ScriptedCall) {
 	w.f.SeedSequence("git",
 		ScriptedOut(startingSHA),  // rev-parse HEAD
 		ScriptedOut("2026-07-01"), // for-each-ref creatordate
+		unchangedFiles,            // the read of whether the user changed the files mint writes
 		ScriptedOut(""),           // add CHANGELOG.md
+		headBeforeCommit,          // HEAD before the commit
 		ScriptedOut(""),           // commit
+		headAfterCommit,           // HEAD after it
+		committedPaths,            // the paths the commit changed
 		push,                      // push origin HEAD
 	)
 }
@@ -252,9 +256,13 @@ func (w *regenWorld) rebuilt(n int, skipped ...string) {
 		}
 	}
 	w.f.SeedSequence("git",
-		ScriptedOut(""), // add CHANGELOG.md
-		ScriptedOut(""), // commit
-		ScriptedOut(""), // push origin HEAD
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // commit
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // push origin HEAD
 	)
 }
 
@@ -296,7 +304,7 @@ var regenRuns = map[string]regenRun{
 	"regenerate-push-rejected-100": {yes: true, aborted: true, run: func(t *testing.T, w *regenWorld) error {
 		w.preflight()
 		w.changelogWritten(gitRejected(pushRejectedStderr))
-		w.f.SeedSequence("git", ScriptedOut("")) // reset --hard startsha
+		w.f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // status (nothing staged), reset --keep startsha
 		return w.regenerate(t, w.single(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetChangelog)))
 	}},
 	// --all under -y, every version's GitHub release written and CHANGELOG.md rebuilt,

@@ -79,7 +79,7 @@ func gateAbortRelease(t *testing.T, config string, seedNotes func(*runner.FakeRu
 	seedPriorTagReadGates(f, root, "main")
 	seedPreTagArtifactCommit(f)
 	seedNotes(f)
-	f.SeedSequence("git", ScriptedOut("")) // unwind: reset --hard startingSHA
+	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: status (nothing staged), reset --keep startingSHA
 	return root, f
 }
 
@@ -100,7 +100,7 @@ func regenOnce(nudge string) *presentertest.RecordingPresenter {
 func assertUnwoundToStart(t *testing.T, rec *presentertest.RecordingPresenter, f *runner.FakeRunner, err error) {
 	t.Helper()
 	assertAbortNonZero(t, err)
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("the pre_tag artifact commit was not unwound; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
@@ -285,7 +285,7 @@ func TestRelease_MissingEditorAtTheReviewGate_WarnsAndAsksAgainWithNothingReset(
 	if got := tagAnnotationBody(t, f, nextTag); !strings.Contains(got, firstSinglePass) {
 		t.Errorf("tag annotation = %q, want the unchanged body %q", got, firstSinglePass)
 	}
-	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("a missing editor reset the run; got %v", commandLines(f.Invocations()))
 	}
 	if indexOfKind(rec, presentertest.KindUnwound) != -1 {

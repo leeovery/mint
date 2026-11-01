@@ -94,8 +94,12 @@ func TestRegenerateWrite_Changelog_PushIsPlainNoTag(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD (capture clean start)
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short (historical date)
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // -C dir add CHANGELOG.md
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // -C dir commit -m docs(changelog): ...
+		headAfterCommit,                   // HEAD after it
+		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
@@ -133,8 +137,12 @@ func TestRegenerateWrite_Changelog_UsesHistoricalDateNotToday(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // commit
+		headAfterCommit,                   // HEAD after it
+		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
@@ -200,17 +208,22 @@ func TestRegenerateWrite_PrePushFailure_ResetsCommit(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD (captured start)
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // commit (the changelog commit lands)
+		headAfterCommit,                   // HEAD after it
+		committedPaths,                    // the paths the commit changed
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
-		ScriptedOut(""), // reset --hard startHEAD (recovery)
+		ScriptedOut(""), // unwind: status (nothing staged)
+		ScriptedOut(""), // reset --keep startHEAD (recovery)
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
 	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
 
 	assertAbortNonZero(t, err)
-	if !invokedWith(f, "git", "reset", "--hard", "startHEAD") {
+	if !invokedWith(f, "git", "reset", "--keep", "startHEAD") {
 		t.Errorf("pre-push failure did not reset the CHANGELOG commit to the captured start; got %v", commandLines(f.Invocations()))
 	}
 	// No tag is ever involved in the regenerate recovery.
@@ -222,7 +235,7 @@ func TestRegenerateWrite_PrePushFailure_ResetsCommit(t *testing.T) {
 }
 
 // TestRegenerateWrite_RecoveryResetFails_WarnsManualCleanup proves that when the
-// pre-push recovery `git reset --hard` ITSELF fails after a push rejection, the run no
+// pre-push recovery `git reset --keep` ITSELF fails after a push rejection, the run no
 // longer silently swallows the reset error: it emits a Warn naming the manual cleanup
 // (the reset back to the captured starting HEAD) so the user knows the leftover
 // CHANGELOG commit must be undone by hand. The run still aborts non-zero (the original
@@ -237,17 +250,22 @@ func TestRegenerateWrite_RecoveryResetFails_WarnsManualCleanup(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD (captured start)
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // commit (the changelog commit lands)
-		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")},       // push fails
-		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("reset --hard exploded")}, // reset recovery FAILS
+		headAfterCommit,                   // HEAD after it
+		committedPaths,                    // the paths the commit changed
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
+		nothingStaged, // the reset's read of what the index holds
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("reset --keep exploded")}, // reset recovery FAILS
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
 	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
 
 	assertAbortNonZero(t, err)
-	if !invokedWith(f, "git", "reset", "--hard", "startHEAD") {
+	if !invokedWith(f, "git", "reset", "--keep", "startHEAD") {
 		t.Fatalf("recovery did not attempt the reset; got %v", commandLines(f.Invocations()))
 	}
 
@@ -270,8 +288,12 @@ func TestRegenerateWrite_ProviderFailureAfterPush_WarnOnly(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // commit
+		headAfterCommit,                   // HEAD after it
+		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD (PONR crossed)
 	)
 	pub := newFakePublisher()
@@ -306,8 +328,12 @@ func TestRegenerateWrite_Both_ChangelogPushBeforeProvider(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // commit
+		headAfterCommit,                   // HEAD after it
+		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)
 	pub := newFakePublisher()

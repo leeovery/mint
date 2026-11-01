@@ -21,7 +21,7 @@ import (
 
 const minorTagV130 = "v1.3.0"
 
-// startResettingRunner plays git's part in `git reset --hard {startingSHA}` that the
+// startResettingRunner plays git's part in `git reset --keep {startingSHA}` that the
 // fake cannot: it returns root's .mint.toml to its content at the starting commit.
 type startResettingRunner struct {
 	*runner.FakeRunner
@@ -30,7 +30,7 @@ type startResettingRunner struct {
 }
 
 func (r *startResettingRunner) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
-	if name == "git" && slices.Equal(args, []string{"reset", "--hard", startingSHA}) {
+	if name == "git" && slices.Equal(args, []string{"reset", "--keep", startingSHA}) {
 		if err := os.WriteFile(filepath.Join(r.root, config.FileName), []byte(r.atStart), 0o644); err != nil {
 			return runner.Result{ExitCode: 1}, err
 		}
@@ -79,7 +79,12 @@ type answeredAbort struct {
 // notes calls scripted. The caller scripts what follows the notes, then unwound.
 func newAnsweredAbort(t *testing.T, rec *presentertest.RecordingPresenter, config string) *answeredAbort {
 	t.Helper()
-	root := t.TempDir()
+	return newAnsweredAbortIn(t, t.TempDir(), rec, config)
+}
+
+// newAnsweredAbortIn is newAnsweredAbort in the repo at root.
+func newAnsweredAbortIn(t *testing.T, root string, rec *presentertest.RecordingPresenter, config string) *answeredAbort {
+	t.Helper()
 	writeConfig(t, root, config)
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
@@ -97,9 +102,19 @@ func newAnsweredAbort(t *testing.T, rec *presentertest.RecordingPresenter, confi
 const answersSHA = "answerssha"
 
 // unwound scripts the unwind's read of the answers commit's sha, beforeReset, then the
-// reset and its re-commit of the answers.
+// reset, nothing staged, and its re-commit of the answers.
 func (a *answeredAbort) unwound(beforeReset ...runner.ScriptedCall) *answeredAbort {
-	a.f.SeedSequence("git", append(append([]runner.ScriptedCall{ScriptedOut(answersSHA + "\n")}, beforeReset...), ScriptedOut(""), ScriptedOut(""), ScriptedOut(""))...)
+	a.f.SeedSequence("git", ScriptedOut(answersSHA+"\n"))
+	a.f.SeedSequence("git", beforeReset...)
+	a.f.SeedSequence("git",
+		ScriptedOut(""),  // status (nothing staged)
+		ScriptedOut(""),  // reset --keep startsha
+		ScriptedOut(""),  // -C root add .mint.toml
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m answers
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+	)
 	return a
 }
 
@@ -119,14 +134,17 @@ func assertAnswersKept(t *testing.T, rec *presentertest.RecordingPresenter, a *a
 	if !errors.As(err, &abort) || abort.ExitCode != 1 {
 		t.Fatalf("err = %v, want an abort exiting 1", err)
 	}
-	reset := indexOfCmd(a.f, "git", "reset", "--hard", startingSHA)
+	reset := indexOfCmd(a.f, "git", "reset", "--keep", startingSHA)
 	if reset == -1 {
 		t.Fatalf("no reset to the starting commit; got %v", commandLines(a.f.Invocations()))
 	}
 	after := a.f.Invocations()[reset+1:]
 	want := []string{
 		"git -C " + a.root + " add " + config.FileName,
-		"git -C " + a.root + " commit -m " + answersSubject(minorTagV130),
+		headRead(a.root),
+		"git -C " + a.root + " commit -m " + answersSubject(minorTagV130) + " --pathspec-from-file=- --pathspec-file-nul",
+		headRead(a.root),
+		committedPathsRead(a.root),
 	}
 	if got := commandLines(after); !slices.Equal(got, want) {
 		t.Errorf("after the reset = %q, want the answers re-committed alone %q", got, want)
@@ -169,6 +187,8 @@ func TestRelease_DeclineAfterAnswering_KeepsTheAnswersCommitOnTheStartingCommit(
 	if got, want := commitSubjectsIn(a.f, a.root), []string{pretagArtifactSubject(minorTagV130), answersSubject(minorTagV130), answersSubject(minorTagV130)}; !slices.Equal(got, want) {
 		t.Errorf("commits = %q, want %q", got, want)
 	}
+	// The answers commit and its re-commit after the reset name .mint.toml alone.
+	assertPathsCommitted(t, a.f, a.root, answersSubject(minorTagV130), config.FileName)
 }
 
 func TestRelease_ReviewGateAbortsAfterAnswering_KeepTheAnswersCommit(t *testing.T) {
@@ -286,16 +306,20 @@ func TestRelease_FailuresBeforeThePushAfterAnswering_KeepTheAnswersCommit(t *tes
 	}{
 		{
 			name:    "the bookkeeping commit fails",
-			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)},
-			summary: keptSummary,
+			tail:    []runner.ScriptedCall{unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), ScriptedOut("")}, // the user-change read, add, commit, unwind: restore CHANGELOG.md
+			summary: "reset 2 commits and removed CHANGELOG.md; kept your exclusion answers in .mint.toml; repo clean",
 		},
 		{
 			name: "the push is rejected after the tag",
 			tail: []runner.ScriptedCall{
-				ScriptedOut(""), // -C root add CHANGELOG.md
-				ScriptedOut(""), // -C root commit -m
-				ScriptedOut(""), // tag -a v1.3.0 -F -
-				pushRejected(),  // push --atomic origin HEAD v1.3.0
+				unchangedFiles,   // the read of whether the user changed the files mint writes
+				ScriptedOut(""),  // -C root add CHANGELOG.md
+				headBeforeCommit, // HEAD before the commit
+				ScriptedOut(""),  // -C root commit -m
+				headAfterCommit,  // HEAD after it
+				committedPaths,   // the paths the commit changed
+				ScriptedOut(""),  // tag -a v1.3.0 -F -
+				pushRejected(),   // push --atomic origin HEAD v1.3.0
 			},
 			beforeReset: []runner.ScriptedCall{ScriptedOut("")}, // tag -d v1.3.0
 			summary:     "reset 3 commits and deleted tag " + minorTagV130 + "; kept your exclusion answers in .mint.toml; repo clean",

@@ -91,9 +91,13 @@ func seedRebuildGit(f *runner.FakeRunner, dates ...string) {
 		calls = append(calls, ScriptedOut(d)) // for-each-ref creatordate:short per version
 	}
 	calls = append(calls,
-		ScriptedOut(""), // add CHANGELOG.md
-		ScriptedOut(""), // commit
-		ScriptedOut(""), // push origin HEAD
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // commit
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // push origin HEAD
 	)
 	f.SeedSequence("git", calls...)
 }
@@ -263,6 +267,8 @@ func TestRegenerateAllValidated_Changelog_OneCommitAtEnd(t *testing.T) {
 	if got := committedSubject(f); got != batchRebuildSubject {
 		t.Errorf("commit subject = %q, want the --all form %q", got, batchRebuildSubject)
 	}
+	// The rebuild commit names CHANGELOG.md alone, so nothing else staged rides in it.
+	assertPathsCommitted(t, f, dir, batchRebuildSubject, "CHANGELOG.md")
 	if !invokedWith(f, "git", "push", "origin", "HEAD") {
 		t.Errorf("no plain `git push origin HEAD` at the end of the batch; got %v", commandLines(f.Invocations()))
 	}
@@ -284,10 +290,15 @@ func TestRegenerateAllValidated_Changelog_PrePushFailure_ResetsCommit(t *testing
 		ScriptedOut(batchV1Date), // for-each-ref creatordate:short v1
 		ScriptedOut(batchV2Date), // for-each-ref creatordate:short v2
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
+		unchangedFiles,           // the read of whether the user changed the files mint writes
 		ScriptedOut(""),          // add CHANGELOG.md
+		headBeforeCommit,         // HEAD before the commit
 		ScriptedOut(""),          // commit (the rebuild commit lands)
+		headAfterCommit,          // HEAD after it
+		committedPaths,           // the paths the commit changed
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
-		ScriptedOut(""), // reset --hard startHEAD (recovery)
+		ScriptedOut(""), // unwind: status (nothing staged)
+		ScriptedOut(""), // reset --keep startHEAD (recovery)
 	)...)
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}
@@ -296,7 +307,7 @@ func TestRegenerateAllValidated_Changelog_PrePushFailure_ResetsCommit(t *testing
 		freshChangelogBatchReq(threeVersions(), engine.RegenerateTargetChangelog), true)
 
 	assertAbortNonZero(t, err)
-	if !invokedWith(f, "git", "reset", "--hard", "startHEAD") {
+	if !invokedWith(f, "git", "reset", "--keep", "startHEAD") {
 		t.Errorf("batch pre-push failure did not reset the rebuild commit to the captured start; got %v", commandLines(f.Invocations()))
 	}
 	if stageFailedName(t, rec) != "push" {
@@ -324,7 +335,10 @@ func TestRegenerateAllValidated_Changelog_StageFailure_AbortsNoCommit(t *testing
 		ScriptedOut(batchV1Date), // for-each-ref creatordate:short v1
 		ScriptedOut(batchV2Date), // for-each-ref creatordate:short v2
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
+		unchangedFiles,           // the read of whether the user changed CHANGELOG.md
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 128}, Err: errors.New("fatal: pathspec error")}, // add fails
+		ScriptedOut("CHANGELOG.md\x00"), // ls-files: git holds CHANGELOG.md
+		ScriptedOut(""),                 // the put-back of the rebuild
 	)...)
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}
@@ -340,6 +354,9 @@ func TestRegenerateAllValidated_Changelog_StageFailure_AbortsNoCommit(t *testing
 		if inv.Name == "git" && (slices.Contains(inv.Args, "commit") || slices.Contains(inv.Args, "push")) {
 			t.Errorf("a batch stage failure issued %v; no commit or push must follow a failed stage", inv.Args)
 		}
+	}
+	if got := stepLines(f); got[len(got)-1] != putBack(dir) {
+		t.Errorf("git steps = %q, want them to end with the put-back %q", got, putBack(dir))
 	}
 }
 
@@ -401,6 +418,7 @@ func TestRegenerateAllValidated_Changelog_ByteIdenticalNoCommit(t *testing.T) {
 		ScriptedOut(batchV1Date),
 		ScriptedOut(batchV2Date),
 		ScriptedOut(batchV3Date),
+		unchangedFiles, // the read of whether the user changed CHANGELOG.md
 	)...)
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}

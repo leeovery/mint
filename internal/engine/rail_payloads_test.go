@@ -545,7 +545,8 @@ func TestRelease_Rail_ARejectedPushIsThePushNodeTimedAndTheRunGoesBackToItsStart
 	f.SeedSequence("git",
 		pushRejected(),  // push --atomic origin HEAD v0.0.1 (rejected)
 		ScriptedOut(""), // unwind: tag -d v0.0.1
-		ScriptedOut(""), // unwind: reset --hard startingSHA
+		ScriptedOut(""), // unwind: status (nothing staged)
+		ScriptedOut(""), // unwind: reset --keep startingSHA
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -578,7 +579,7 @@ func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
 	a := newAnsweredAbort(t, rec, preTagHookConfig)
-	a.f.SeedSequence("git", ScriptedOut(""), gitFailing(commitStderr))
+	a.f.SeedSequence("git", unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), ScriptedOut("")) // the user-change read, add, commit, unwind: restore CHANGELOG.md
 	a.f.Seed("gh", runner.Result{}, nil)
 	a.unwound()
 
@@ -586,14 +587,14 @@ func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 
 	unwound := rec.Events[indexOfKind(rec, presentertest.KindUnwound)].Unwound
 	want := presenter.Unwind{
-		Undone: "reset 2 commits", Kept: "kept your exclusion answers in .mint.toml",
+		Undone: "reset 2 commits and removed CHANGELOG.md", Kept: "kept your exclusion answers in .mint.toml",
 		KeptRow: "kept your exclusion answers in .mint.toml", Repo: "repo clean", Key: "unwind",
 	}
 	if unwound != want {
 		t.Errorf("Unwound = %+v, want %+v", unwound, want)
 	}
-	if unwound.Text() != keptSummary {
-		t.Errorf("Text() = %q, want plain's sentence %q", unwound.Text(), keptSummary)
+	if summary := "reset 2 commits and removed CHANGELOG.md; kept your exclusion answers in .mint.toml; repo clean"; unwound.Text() != summary {
+		t.Errorf("Text() = %q, want plain's sentence %q", unwound.Text(), summary)
 	}
 	fin := closingEvent(t, rec)
 	if want := "+ 1 commit (the .mint.toml answers) · nothing pushed"; fin.Outcome != presenter.OutcomeUnwound || fin.End.Detail != want {
@@ -840,8 +841,12 @@ func TestRegenerateRun_Rail_ARegenerateStartsAtItsTagAndLandsRegenerated(t *test
 		ScriptedOut("0\t1"),                // rev-list left-right count (ahead only)
 		ScriptedOut("startHEAD"),           // rev-parse HEAD (capture clean start)
 		ScriptedOut("2024-02-15"),          // for-each-ref creatordate:short (historical date)
+		unchangedFiles,                     // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                    // add CHANGELOG.md
+		headBeforeCommit,                   // HEAD before the commit
 		ScriptedOut(""),                    // commit
+		headAfterCommit,                    // HEAD after it
+		committedPaths,                     // the paths the commit changed
 		ScriptedOut(""),                    // push origin HEAD
 	)
 	f.Seed("gh", runner.Result{}, nil)
@@ -951,6 +956,7 @@ func regenerateChangelogIn(t *testing.T, dir string, tail ...runner.ScriptedCall
 		ScriptedOut("0\t1"),                // rev-list left-right count (ahead only)
 		ScriptedOut("startHEAD"),           // rev-parse HEAD (capture clean start)
 		ScriptedOut("2024-02-15"),          // for-each-ref creatordate:short (historical date)
+		unchangedFiles,                     // the read of whether the user changed CHANGELOG.md
 	)
 	f.SeedSequence("git", tail...)
 	rec := &presentertest.RecordingPresenter{}
@@ -971,23 +977,30 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 		end  string
 		// at is the station the run closes at, where it isn't its start.
 		at string
-		// unwound is a run whose reset ran, which closes as unwound.
+		// unwound is a run whose reset or put-back ran, which closes as unwound.
 		unwound bool
 	}{
 		{
-			name: "a commit that fails leaves the rewrite",
-			tail: []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)}, // add, commit
-			end:  "CHANGELOG.md written, not committed · nothing pushed",
+			name:    "a commit that fails puts back the rewrite",
+			tail:    []runner.ScriptedCall{ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), ScriptedOut("")}, // add, commit, the put-back
+			end:     "back where it started · nothing pushed",
+			unwound: true,
+		},
+		{
+			name:    "a put-back that fails leaves the rewrite",
+			tail:    []runner.ScriptedCall{ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), gitFailing(stageStderr)},
+			end:     "manual cleanup required · CHANGELOG.md written, not committed · nothing pushed",
+			unwound: true,
 		},
 		{
 			name:    "a rejected push resets the commit",
-			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, ScriptedOut("")}, // add, commit, push, reset --hard
+			tail:    []runner.ScriptedCall{ScriptedOut(""), headBeforeCommit, ScriptedOut(""), headAfterCommit, committedPaths, rejected, nothingStaged, ScriptedOut("")}, // add, commit, the read of what it changed, push, the staged read, reset --keep
 			end:     "back where it started · nothing pushed",
 			unwound: true,
 		},
 		{
 			name:    "a rejected push whose reset fails needs cleaning up, on the commit HEAD never left",
-			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, scriptedMutateFailure(), ScriptedOut("9f3e2a1c4b\nmain")},
+			tail:    []runner.ScriptedCall{ScriptedOut(""), headBeforeCommit, ScriptedOut(""), headAfterCommit, committedPaths, rejected, nothingStaged, scriptedMutateFailure(), ScriptedOut("9f3e2a1c4b\nmain")},
 			at:      "main",
 			end:     "9f3e2a1 · the changelog commit not reset · manual cleanup required · nothing pushed",
 			unwound: true,

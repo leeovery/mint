@@ -49,6 +49,58 @@ func ScriptedNonZero() runner.ScriptedCall {
 	}
 }
 
+// The commits HEAD names either side of a commit of mint's, as the fakes answer the
+// reads of HEAD around it (headRead).
+const (
+	beforeCommitSHA = "beforesha"
+	afterCommitSHA  = "aftersha"
+)
+
+// headBeforeCommit and headAfterCommit are git's answers to the reads of HEAD either
+// side of a commit of mint's.
+var (
+	headBeforeCommit = ScriptedOut(beforeCommitSHA + "\n")
+	headAfterCommit  = ScriptedOut(afterCommitSHA + "\n")
+)
+
+// headRead is the read of HEAD either side of a commit of mint's, in the repo at root.
+func headRead(root string) string {
+	return "git -C " + root + " rev-parse HEAD"
+}
+
+// committedPaths is git's answer to the read of the paths a commit of mint's changed,
+// made to match the index to the commit: none, as the fake commit changes nothing, so
+// no restore follows.
+var committedPaths = ScriptedOut("")
+
+// unchangedFiles is git's answer to the read of whether the files mint is about to
+// write hold a change it did not make: none, so the write goes ahead.
+var unchangedFiles = ScriptedOut("")
+
+// noOtherSpelling is git's answer to the read of how it spells the version file in any
+// case: no entry, so the file keeps the name the config gives it.
+var noOtherSpelling = ScriptedOut("")
+
+// spellingRead is the read noOtherSpelling answers for path, in the repo at root.
+func spellingRead(root, path string) string {
+	return "git -C " + root + " ls-files -z -- :(top,icase,literal)" + path
+}
+
+// userChangesRead is the read unchangedFiles answers for paths, in the repo at root.
+func userChangesRead(root string, paths ...string) string {
+	return "git -C " + root + " --no-optional-locks status --porcelain -z --no-renames -- " + literalPathspecsOf(paths)
+}
+
+// committedPathsRead is the read committedPaths answers, in the repo at root, less
+// keepOut, the notes file, where one is given.
+func committedPathsRead(root string, keepOut ...string) string {
+	read := "git -C " + root + " diff --name-only -z --no-renames --diff-filter=d " + beforeCommitSHA + " " + afterCommitSHA
+	for _, path := range keepOut {
+		read += " -- :(top,literal,exclude)" + path
+	}
+	return read
+}
+
 // seedHappyGit scripts a FakeRunner's "git" timeline for a no-tags first-release
 // run through the full spine — every git probe the orchestrator makes resolves
 // the way a clean first-release repo would (publish=true variant). The trailing
@@ -71,8 +123,12 @@ func seedHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut("0\t1"),                  // rev-list left-right count (ahead only)
 		ScriptedOut(""),                      // ls-remote --tags (tag free remote)
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
+		unchangedFiles,                       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
+		headBeforeCommit,                     // HEAD before the commit
 		ScriptedOut(""),                      // -C root commit -m
+		headAfterCommit,                      // HEAD after it
+		committedPaths,                       // the paths the commit changed
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)
@@ -183,8 +239,12 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		"git remote get-url origin",
 		"gh auth status",
 		"git rev-parse HEAD",
+		userChangesRead(root, "CHANGELOG.md"),
 		"git -C " + root + " add CHANGELOG.md",
-		"git -C " + root + " commit -m 🌿 Release v0.0.1",
+		headRead(root),
+		"git -C " + root + " commit -m 🌿 Release v0.0.1 --pathspec-from-file=- --pathspec-file-nul",
+		headRead(root),
+		committedPathsRead(root),
 		"git tag -a --cleanup=verbatim v0.0.1 -F -",
 		"git push --atomic origin HEAD v0.0.1",
 		"gh release create v0.0.1 --title v0.0.1 --notes-file - --verify-tag",
@@ -334,11 +394,15 @@ func TestRelease_ContendedLockOnBookkeepingCommit_RecoversAndCompletes(t *testin
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags (free)
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture clean start)
+		unchangedFiles,             // the read of whether the user changed CHANGELOG.md
 		runner.ScriptedCall{Result: runner.Result{Stderr: lockStderr, ExitCode: 128}, Err: errors.New("exit status 128")}, // -C root add CHANGELOG.md — CONTENDED
-		ScriptedOut(""), // -C root add CHANGELOG.md — retry succeeds
-		ScriptedOut(""), // -C root commit -m
-		ScriptedOut(""), // tag -a v0.0.1 -F -
-		ScriptedOut(""), // push --atomic origin HEAD v0.0.1
+		ScriptedOut(""),  // -C root add CHANGELOG.md — retry succeeds
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // tag -a v0.0.1 -F -
+		ScriptedOut(""),  // push --atomic origin HEAD v0.0.1
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -588,7 +652,7 @@ func TestRelease_GateNo_AbortsNonZero(t *testing.T) {
 	if recorded(rec, presentertest.KindUnwound) {
 		t.Errorf("gate-no before any mutation emitted an Unwound; nothing was made to undo")
 	}
-	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("gate-no before any mutation issued a `git reset`; nothing to reset")
 	}
 	assertNoMutation(t, f)
@@ -621,8 +685,8 @@ func TestRelease_GateNo_NoMutation_SurgicalNoOp(t *testing.T) {
 	}
 	// No reset, and no HEAD probe beyond the single pre-gate capture — the surgical
 	// unwind is driven by MadeState, never a rev-parse compare.
-	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
-		t.Errorf("gate-n before mutation issued a `git reset --hard`; nothing should be reset")
+	if invokedWith(f, "git", "reset", "--keep", startingSHA) {
+		t.Errorf("gate-n before mutation issued a `git reset`; nothing should be reset")
 	}
 	if got := countCmd(f, "git", "rev-parse", "HEAD"); got != 1 {
 		t.Errorf("rev-parse HEAD count = %d, want 1 (the pre-gate capture only; the unwind probes no HEAD)", got)
@@ -683,7 +747,7 @@ func TestRelease_VersionGateNo_AbortsBeforePreflight(t *testing.T) {
 		t.Errorf("rev-parse HEAD count = %d, want 0 (the decline precedes the pre-gate capture)", got)
 	}
 	// Nothing mutated: no commit, tag, push, or publish.
-	if invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v1.2.4") {
+	if invokedWith(f, "git", pathsCommit(root, "🌿 Release v1.2.4")...) {
 		t.Errorf("a bookkeeping commit ran despite a version-gate decline")
 	}
 	assertNoMutation(t, f)
@@ -694,7 +758,7 @@ func TestRelease_VersionGateNo_AbortsBeforePreflight(t *testing.T) {
 // TestRelease_PushRejected_ResetsCommitAndDeletesTag proves a push REJECTION
 // (post-Record, pre-PONR) routes through the surgical unwind AFTER a StageFailed: the
 // tracked MadeState (one bookkeeping commit, tag created via release.ErrPushRejected)
-// drives a `git reset --hard {startingSHA}` and a `git tag -d {tag}` — no HEAD probe.
+// drives a `git reset --keep {startingSHA}` and a `git tag -d {tag}` — no HEAD probe.
 // The Unwound sentence (engine-authored) names the reset commit AND the deleted tag AND
 // the repo-clean tail, a StageFailed precedes the Unwound, the run returns a non-zero
 // *AbortError, and no success end-of-run line follows.
@@ -709,7 +773,8 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 	f.SeedSequence("git",
 		pushRejected(),  // push --atomic origin HEAD v0.0.1 (rejected)
 		ScriptedOut(""), // unwind: tag -d v0.0.1
-		ScriptedOut(""), // unwind: reset --hard startingSHA
+		ScriptedOut(""), // unwind: status (nothing staged)
+		ScriptedOut(""), // unwind: reset --keep startingSHA
 	)
 	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
 	rec := &presentertest.RecordingPresenter{}
@@ -718,7 +783,7 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 
 	assertAbortNonZero(t, err)
 	// The release commit was reset to the clean starting point.
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("push-rejection unwind did not reset to the starting SHA; got %v", commandLines(f.Invocations()))
 	}
 	// The local tag mint created this run was deleted.
@@ -809,7 +874,8 @@ func TestRelease_AbortPathMatchesPrePushFailurePath(t *testing.T) {
 	pushRunner.SeedSequence("git",
 		pushRejected(),  // push rejected
 		ScriptedOut(""), // unwind: tag -d
-		ScriptedOut(""), // unwind: reset --hard
+		ScriptedOut(""), // unwind: status (nothing staged)
+		ScriptedOut(""), // unwind: reset --keep
 	)
 	pushRunner.Seed("gh", runner.Result{}, nil)
 	pushRec := &presentertest.RecordingPresenter{}
@@ -822,7 +888,7 @@ func TestRelease_AbortPathMatchesPrePushFailurePath(t *testing.T) {
 	if recorded(gateRec, presentertest.KindUnwound) {
 		t.Errorf("gate-n abort emitted an Unwound despite making nothing; the surgical unwind no-ops")
 	}
-	if invokedWith(gateRunner, "git", "reset", "--hard", startingSHA) {
+	if invokedWith(gateRunner, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("gate-n abort reset despite making nothing")
 	}
 	// The pre-push path made a commit + tag, so it resets to the shared starting SHA and
@@ -830,7 +896,7 @@ func TestRelease_AbortPathMatchesPrePushFailurePath(t *testing.T) {
 	if !recorded(pushRec, presentertest.KindUnwound) {
 		t.Errorf("pre-push failure did not end in an Unwound")
 	}
-	if !invokedWith(pushRunner, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(pushRunner, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("pre-push failure did not reset to the shared starting SHA")
 	}
 }
@@ -878,8 +944,12 @@ func seedHappyGitThroughGate(f *runner.FakeRunner, root, releaseBranch, tag stri
 func seedHappyGitThroughCommit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 	seedHappyGitThroughGate(f, root, releaseBranch, tag)
 	f.SeedSequence("git",
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit -m
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // -C root add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
 	)
 }
 
@@ -1059,7 +1129,7 @@ func TestRelease_GateBareEnterDefault(t *testing.T) {
 		t.Errorf("Prompt count = %d, want 2 (bare Enter accepts the version gate then the notes gate)", got)
 	}
 	// The run reached Record (the bookkeeping commit) and finished.
-	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+	if !invokedWith(f, "git", pathsCommit(root, "🌿 Release v0.0.1")...) {
 		t.Errorf("bare-Enter accept did not reach Record (no bookkeeping commit)")
 	}
 	fin, _ := rec.At(len(rec.Events) - 1)
@@ -1090,7 +1160,7 @@ func TestRelease_GateExplicitYes(t *testing.T) {
 	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
 		t.Errorf("Prompt count = %d, want 2 (explicit y accepts the version gate then the notes gate)", got)
 	}
-	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+	if !invokedWith(f, "git", pathsCommit(root, "🌿 Release v0.0.1")...) {
 		t.Errorf("explicit-y accept did not reach Record (no bookkeeping commit)")
 	}
 	fin, _ := rec.At(len(rec.Events) - 1)
@@ -1517,8 +1587,12 @@ func TestRelease_PublishDisabled_NoGhNoPublish(t *testing.T) {
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
+		headBeforeCommit,           // HEAD before the commit
 		ScriptedOut(""),            // -C root commit -m
+		headAfterCommit,            // HEAD after it
+		committedPaths,             // the paths the commit changed
 		ScriptedOut(""),            // tag -a v0.0.1 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
 	)
@@ -1814,7 +1888,7 @@ func TestRelease_ChangelogDefaultTrue_WritesChangelog(t *testing.T) {
 		t.Errorf("CHANGELOG body = %q, want %q (changelog defaults true)", got, phase2Body)
 	}
 	// The bookkeeping commit must have run (the changelog changed).
-	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+	if !invokedWith(f, "git", pathsCommit(root, "🌿 Release v0.0.1")...) {
 		t.Errorf("default-true changelog did not record the bookkeeping commit")
 	}
 }
@@ -1843,8 +1917,12 @@ func TestRelease_PublishDisabled_TagStillCarriesBody(t *testing.T) {
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
+		headBeforeCommit,           // HEAD before the commit
 		ScriptedOut(""),            // -C root commit -m
+		headAfterCommit,            // HEAD after it
+		committedPaths,             // the paths the commit changed
 		ScriptedOut(""),            // tag -a v0.0.1 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
 	)

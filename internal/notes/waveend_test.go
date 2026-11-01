@@ -7,15 +7,12 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"mint/internal/ai"
 )
-
-// recordGrace is how long a test lets the wave record a call's outcome after the
-// transport has answered it.
-const recordGrace = 50 * time.Millisecond
 
 // endingTransport scripts a chunked run by the first file each chunk call carries:
 // call decides its outcome, holding it as long as the test needs, nil for notes. A
@@ -169,9 +166,10 @@ func TestGenerator_Wave_PartClassifiedOther_StartsNoNewPartAndClassifiesNoMore(t
 		}
 	}
 
-	done := s.startGenerate(t, et)
-	et.waitFor(t, "classify "+area(2))
-	time.Sleep(recordGrace)
+	// Every other part is held, so the first outcome the wave records is part 2's.
+	rec := &recordedCalls{}
+	done := s.launch(t.Context(), s.generator(t, et).WithCallRecorded(rec.record))
+	rec.waitRecorded(t, 1)
 	close(release)
 	err := awaitFailure(t, done)
 
@@ -258,24 +256,19 @@ func TestGenerator_Wave_PartEndsForGood_EndsTheWaveTheSameWay(t *testing.T) {
 			if classify == nil {
 				classify = answerBy()
 			}
-			release, twoEnded := make(chan struct{}), make(chan struct{})
+			release := make(chan struct{})
 			et := &endingTransport{classify: classify}
 			et.call = func(path string) error {
 				if path == area(2) {
-					defer close(twoEnded)
 					return tc.failure
 				}
 				return heldUntil(release, failedWith(path+": usage limit reached"))
 			}
 
-			done := s.startGenerate(t, et)
-			if err := waitClosed(twoEnded); err != nil {
-				t.Fatalf("part 2 did not end: %v", err)
-			}
-			if tc.wantClassify > 0 {
-				et.waitFor(t, "classify "+area(2))
-			}
-			time.Sleep(recordGrace)
+			// Every other part is held, so the first outcome the wave records is part 2's.
+			rec := &recordedCalls{}
+			done := s.launch(t.Context(), s.generator(t, et).WithCallRecorded(rec.record))
+			rec.waitRecorded(t, 1)
 			close(release)
 			err := awaitFailure(t, done)
 
@@ -316,15 +309,21 @@ func TestGenerator_Wave_SizeWithNoHalvingLeft_ClassifiesNoCallStillInFlight(t *t
 		}
 		return nil
 	}
-	// Part 1 is held through part 3's halvings; every other call goes to ht.
+	// Part 1 is held through part 3's halvings; every other call goes to ht, its chunk
+	// calls counted as they are sent.
+	var sent atomic.Int64
 	tr := transportFunc(func(ctx context.Context, prompt string) (string, error) {
 		if isChunkPrompt(prompt) && firstPath(sliceOf(prompt)) == area(1) {
 			return et.Generate(ctx, prompt)
 		}
+		if isChunkPrompt(prompt) {
+			sent.Add(1)
+		}
 		return ht.Generate(ctx, prompt)
 	})
 
-	done := s.startGenerate(t, tr)
+	rec := &recordedCalls{}
+	done := s.launch(t.Context(), s.generator(t, tr).WithCallRecorded(rec.record))
 	deadline := time.Now().Add(waitLimit)
 	for classified := 0; classified < 4; ht.record(func() { classified = ht.classify }) {
 		if time.Now().After(deadline) {
@@ -332,7 +331,15 @@ func TestGenerator_Wave_SizeWithNoHalvingLeft_ClassifiesNoCallStillInFlight(t *t
 		}
 		time.Sleep(time.Millisecond)
 	}
-	time.Sleep(recordGrace)
+	// Part 3's last call, the fourth SIZE, is among those sent: once the wave has
+	// recorded every call sent but part 1's, which is held, it has recorded part 3's
+	// failure, and the count sent stands still.
+	for n := sent.Load(); ; n = sent.Load() {
+		rec.waitRecorded(t, int(n))
+		if sent.Load() == n {
+			break
+		}
+	}
 	close(release)
 	err := awaitFailure(t, done)
 
@@ -412,12 +419,13 @@ func TestGenerator_Wave_CallInFlightFailsAfterTheWaveEnded_IsNotClassified(t *te
 		}
 	}
 
-	done := s.startGenerate(t, et)
-	et.waitFor(t, "classify "+area(2))
-	time.Sleep(recordGrace)
+	// Part 1's notes are recorded before part 5 can start, so part 2's failure is the
+	// second outcome recorded, and part 5's, released after it, the third.
+	rec := &recordedCalls{}
+	done := s.launch(t.Context(), s.generator(t, et).WithCallRecorded(rec.record))
+	rec.waitRecorded(t, 2)
 	close(releaseFive)
-	et.waitFor(t, "end "+area(5))
-	time.Sleep(recordGrace)
+	rec.waitRecorded(t, 3)
 	close(held)
 	err := awaitFailure(t, done)
 
@@ -451,9 +459,11 @@ func TestGenerator_Wave_EndsBeforeAHalvedPartStarts_NoHalvedPartIsSent(t *testin
 		}
 	}
 
-	done := s.startGenerate(t, et)
-	et.waitFor(t, "classify "+area(5))
-	time.Sleep(recordGrace)
+	// Every other part is held: the wave records part 3's re-cut, then part 5's failure
+	// in the place part 3 freed.
+	rec := &recordedCalls{}
+	done := s.launch(t.Context(), s.generator(t, et).WithCallRecorded(rec.record))
+	rec.waitRecorded(t, 2)
 	close(release)
 	err := awaitFailure(t, done)
 
@@ -484,13 +494,17 @@ func TestGenerator_Wave_EndsWhileAClassifyCallRuns_ItsSizeAnswerSendsNoHalvedPar
 	s := capOneFilePerChunk(t, tenKBFiles(6))
 	release, fiveClassified := make(chan struct{}), make(chan struct{})
 	progress := &recutLog{}
+	// The wave records part 1's notes, then part 5's failure, then part 3's late SIZE.
+	rec := &recordedCalls{}
 	et := &endingTransport{}
 	et.classify = func(prompt string) (string, error) {
 		if strings.Contains(prompt, overflow) {
 			if err := waitClosed(fiveClassified); err != nil {
 				return "", err
 			}
-			time.Sleep(recordGrace)
+			if err := rec.reached(2); err != nil {
+				return "", err
+			}
 			return "SIZE", nil
 		}
 		defer close(fiveClassified)
@@ -511,12 +525,8 @@ func TestGenerator_Wave_EndsWhileAClassifyCallRuns_ItsSizeAnswerSendsNoHalvedPar
 		}
 	}
 
-	done := s.startWithProgress(t, et, progress)
-	et.waitFor(t, "classify "+area(3))
-	if err := waitClosed(fiveClassified); err != nil {
-		t.Fatalf("part 5's failure was never classified: %v", err)
-	}
-	time.Sleep(3 * recordGrace)
+	done := s.launch(t.Context(), s.generator(t, et).WithProgress(progress).WithCallRecorded(rec.record))
+	rec.waitRecorded(t, 3)
 	close(release)
 	err := awaitFailure(t, done)
 

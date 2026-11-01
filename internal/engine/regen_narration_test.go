@@ -249,8 +249,6 @@ func plainRegenNotesLines(t *testing.T, root string, f *runner.FakeRunner, tr *s
 	}
 	var lines []string
 	for line := range strings.Lines(out.String()) {
-		// The nudge prompt ends its line only with the operator's echoed answer.
-		line = strings.TrimPrefix(line, "Add one-time context for regeneration (optional):: ")
 		if strings.HasPrefix(line, "notes: ") {
 			lines = append(lines, strings.TrimSuffix(line, "\n"))
 		}

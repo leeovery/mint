@@ -38,7 +38,7 @@ func newIgnoredAnswers(t *testing.T, rec *presentertest.RecordingPresenter, conf
 	if preTag {
 		seedPreTagArtifactCommit(f)
 	}
-	f.SeedSequence("git", append([]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), configIgnored, ScriptedOut(exportGoDiff)}, exportOnlyChangeMap...)...)
+	f.SeedSequence("git", append([]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), unchangedFiles, configIgnored, ScriptedOut(exportGoDiff)}, exportOnlyChangeMap...)...)
 	f.SeedSequence("claude", ScriptedOut(designDocAnswer), ScriptedOut(aiBody))
 	f.Seed("gh", runner.Result{}, nil)
 	return &ignoredAnswers{root: root, f: f, rec: rec}
@@ -204,9 +204,9 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			name:    "the bookkeeping commit failing",
 			config:  ptr(preTagHookConfig + ignoredStartConfig),
 			preTag:  true,
-			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)},
+			tail:    []runner.ScriptedCall{unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), ScriptedOut("")}, // the user-change read, add, commit, unwind: restore CHANGELOG.md
 			want:    preTagHookConfig + ignoredAnswered,
-			summary: "reset 1 commit; repo clean",
+			summary: "reset 1 commit and removed CHANGELOG.md; repo clean",
 			outcome: presenter.OutcomeUnwound,
 			end:     "back where it started · nothing pushed",
 		},
@@ -224,7 +224,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, tc.reviews)
 			a := newIgnoredAnswers(t, rec, tc.config, tc.preTag)
 			a.f.SeedSequence("git", tc.tail...)
-			a.f.SeedSequence("git", ScriptedOut("")) // the unwind's reset
+			a.f.SeedSequence("git", nothingStaged, ScriptedOut("")) // the unwind's staged read and reset
 
 			err := a.release(t)
 
@@ -243,7 +243,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 				}
 				return
 			}
-			if !invokedWith(a.f, "git", "reset", "--hard", startingSHA) {
+			if !invokedWith(a.f, "git", "reset", "--keep", startingSHA) {
 				t.Errorf("the run was not reset to the starting commit; got %v", commandLines(a.f.Invocations()))
 			}
 			if got := unwoundText(t, rec); got != tc.summary {

@@ -29,6 +29,19 @@ const versionSlot = `\d+\.\d+\.\d+`
 // so errors.Is matches and the message names the file.
 var ErrVersionPatternNoMatch = errors.New("record: version_pattern matched nothing")
 
+// RepoPath is the version file at path under root as git names it: relative to root,
+// cleaned, with forward slashes, so `./package.json` and `sub/../VERSION` name the
+// file a root-anchored literal pathspec matches. An empty path stays empty: no version
+// file.
+func RepoPath(root, path string) string {
+	if path == "" {
+		return ""
+	}
+	// Rel fails only on paths of mixed kinds, and both here are root's kind.
+	rel, _ := filepath.Rel(root, filepath.Join(root, path))
+	return filepath.ToSlash(rel)
+}
+
 // Projection is what a version-file projection did on disk.
 type Projection struct {
 	// Changed reports a net change written to the file.

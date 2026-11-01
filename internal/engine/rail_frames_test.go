@@ -52,6 +52,10 @@ const (
 	pushRejectedStderr = " ! [rejected]        main -> main (fetch first)\n" +
 		"error: failed to push some refs to 'https://github.com/acme/pigeon'\n"
 	ghFailure = "HTTP 502: Bad Gateway (https://api.github.com/repos/acme/pigeon/releases)\n"
+	// changelogRefusalStderr is git refusing a reset --keep over the user's own edit to
+	// CHANGELOG.md, which mint's commit changed.
+	changelogRefusalStderr = "error: Entry 'CHANGELOG.md' not uptodate. Cannot merge.\n" +
+		"fatal: Could not reset index file to revision 'startsha'.\n"
 )
 
 // railEpoch is when every golden run starts.
@@ -170,9 +174,13 @@ func (w *railWorld) notes() {
 // recorded scripts the bookkeeping commit, the provider's detection and the tag.
 func (w *railWorld) recorded() {
 	w.f.SeedSequence("git",
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit -m
-		ScriptedOut(""), // tag -a v1.3.0 -F -
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // -C root add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // tag -a v1.3.0 -F -
 	)
 }
 
@@ -359,7 +367,7 @@ var railRuns = map[string]railRun{
 		w.readGates(false)
 		seedPreTagArtifactCommit(w.f)
 		singlePassNotesAndRegen(w.f)
-		w.f.SeedSequence("git", ScriptedOut("")) // unwind: reset --hard startsha
+		w.f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: status (nothing staged), reset --keep startsha
 		return w.release(t, nil)
 	}},
 	// A release whose pre_tag hook committed artifacts, its AI notes failing at a
@@ -447,11 +455,13 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("git",
 			gitRejected(pushRejectedStderr), // push --atomic origin HEAD v1.3.0
 			ScriptedOut(""),                 // unwind: tag -d v1.3.0
-			ScriptedOut(""),                 // unwind: reset --hard startsha
+			ScriptedOut(""),                 // unwind: status (nothing staged)
+			ScriptedOut(""),                 // unwind: reset --keep startsha
 		)
 		return w.release(t, nil)
 	}},
-	// The same rejected push, its unwind unable to reset the commit it made.
+	// The same rejected push, git refusing the unwind's reset of the commit it made, as the
+	// user changed CHANGELOG.md, which that commit changed, while the run was under way.
 	"release-unwind-incomplete-100": {aborted: true, run: func(t *testing.T) (string, error) {
 		w := newRailWorld(t, "", "", true)
 		w.readGates(false)
@@ -459,10 +469,60 @@ var railRuns = map[string]railRun{
 		w.recorded()
 		w.f.SeedSequence("gh", ScriptedOut("")) // auth status
 		w.f.SeedSequence("git",
-			gitRejected(pushRejectedStderr), // push --atomic origin HEAD v1.3.0
-			ScriptedOut(""),                 // unwind: tag -d v1.3.0
-			gitFailing(resetStderr),         // unwind: reset --hard startsha
-			ScriptedOut("9f3e2a1c4b\nmain"), // where HEAD stands, never reset
+			gitRejected(pushRejectedStderr),    // push --atomic origin HEAD v1.3.0
+			ScriptedOut(""),                    // unwind: tag -d v1.3.0
+			ScriptedOut(""),                    // unwind: status (nothing staged)
+			gitFailing(changelogRefusalStderr), // unwind: reset --keep startsha, refused
+			ScriptedOut("9f3e2a1c4b\nmain"),    // where HEAD stands, never reset
+		)
+		return w.release(t, nil)
+	}},
+	// A release whose bookkeeping commit fails once CHANGELOG.md is staged, before any
+	// commit of mint's: the unwind restores the changelog it wrote over.
+	"release-record-unwound-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "", true)
+		writeRepoFile(t, w.root, "CHANGELOG.md", "# Changelog\n")
+		w.readGates(false)
+		w.notes()
+		w.f.SeedSequence("gh", ScriptedOut("")) // auth status
+		w.f.SeedSequence("git",
+			unchangedFiles,           // the read of whether the user changed the files mint writes
+			ScriptedOut(""),          // -C root add CHANGELOG.md
+			headBeforeCommit,         // HEAD before the commit
+			gitFailing(commitStderr), // -C root commit -m
+			ScriptedOut(""),          // unwind: restore CHANGELOG.md
+		)
+		return w.release(t, nil)
+	}},
+	// The same failure, its unwind unable to restore the changelog.
+	"release-restore-incomplete-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "", true)
+		writeRepoFile(t, w.root, "CHANGELOG.md", "# Changelog\n")
+		w.readGates(false)
+		w.notes()
+		w.f.SeedSequence("gh", ScriptedOut("")) // auth status
+		w.f.SeedSequence("git",
+			unchangedFiles,           // the read of whether the user changed the files mint writes
+			ScriptedOut(""),          // -C root add CHANGELOG.md
+			headBeforeCommit,         // HEAD before the commit
+			gitFailing(commitStderr), // -C root commit -m
+			gitFailing(stageStderr),  // unwind: restore CHANGELOG.md
+		)
+		return w.release(t, nil)
+	}},
+	// A release whose pre_tag hook dirtied the tree and whose commit of it fails once
+	// staged: the unwind takes back what mint staged.
+	"release-pre-tag-unwound-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preTagHookConfig, "", true)
+		w.readGates(false)
+		w.f.SeedSequence("gh", ScriptedOut("")) // auth status
+		w.f.Seed("sh", runner.Result{}, nil)
+		w.f.SeedSequence("git",
+			ScriptedOut(" M bundle.js\n"), // -C root status --porcelain (post-hook: dirty)
+			ScriptedOut(""),               // -C root add -A
+			gitFailing(commitStderr),      // -C root commit -m chore(release): pre-tag artifacts
+			ScriptedOut(stagedArtifacts),  // unwind: diff --cached --name-only
+			ScriptedOut(""),               // unwind: restore bundle.js
 		)
 		return w.release(t, nil)
 	}},
@@ -599,9 +659,13 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("claude", ScriptedOut(designDocAnswer), ScriptedOut(railNotes))
 		w.f.SeedSequence("git",
 			ScriptedOut(answersSHA+"\n"), // rev-parse HEAD, the answers commit
-			ScriptedOut(""),              // unwind: reset --hard startsha
+			ScriptedOut(""),              // unwind: status (nothing staged)
+			ScriptedOut(""),              // unwind: reset --keep startsha
 			ScriptedOut(""),              // unwind: -C root add .mint.toml
+			headBeforeCommit,             // HEAD before the commit
 			ScriptedOut(""),              // unwind: -C root commit -m
+			headAfterCommit,              // HEAD after it
+			committedPaths,               // the paths the commit changed
 		)
 		return w.release(t, nil)
 	}},
@@ -659,7 +723,8 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("git",
 			gitRejected(pushRejectedStderr), // push --atomic origin HEAD v1.3.0
 			ScriptedOut(""),                 // unwind: tag -d v1.3.0
-			ScriptedOut(""),                 // unwind: reset --hard startsha
+			ScriptedOut(""),                 // unwind: status (nothing staged)
+			ScriptedOut(""),                 // unwind: reset --keep startsha
 		)
 		return w.release(t, nil)
 	}},

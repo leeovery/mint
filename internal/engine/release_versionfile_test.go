@@ -31,8 +31,13 @@ func seedVersionFileFold(f *runner.FakeRunner, root, releaseBranch, tag, version
 		ScriptedOut("0\t1"),                  // rev-list left-right count (ahead only)
 		ScriptedOut(""),                      // ls-remote --tags (tag free remote)
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
+		noOtherSpelling,                      // the read of how git spells the version file
+		unchangedFiles,                       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                      // -C root add CHANGELOG.md {versionFile} (folded)
+		headBeforeCommit,                     // HEAD before the commit
 		ScriptedOut(""),                      // -C root commit -m {commit_prefix} Release {tag}
+		headAfterCommit,                      // HEAD after it
+		committedPaths,                       // the paths the commit changed
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)
@@ -61,7 +66,7 @@ func seedFile(t *testing.T, root, name, content string) {
 // invocations were recorded, so a test can prove EXACTLY one bookkeeping commit was
 // made.
 func countBookkeepingCommits(f *runner.FakeRunner, root, subject string) int {
-	want := commandLine(runner.Invocation{Name: "git", Args: []string{"-C", root, "commit", "-m", subject}})
+	want := commandLine(runner.Invocation{Name: "git", Args: pathsCommit(root, subject)})
 	n := 0
 	for _, inv := range f.Invocations() {
 		if commandLine(inv) == want {
@@ -128,9 +133,9 @@ func TestRelease_VersionFile_VersionUnchangedChangelogChanges_OneCommit(t *testi
 	seedFile(t, root, "release.txt", "0.0.1\n")
 
 	f := runner.NewFakeRunner()
-	// Version no-op → only CHANGELOG.md is staged, so the timeline matches the plain
-	// changelog-only happy path.
-	seedHappyGit(f, root, "main", "v0.0.1")
+	// Version no-op → only CHANGELOG.md is staged, so the timeline matches the
+	// changelog-only happy path but for the read of how git spells the version file.
+	seedVersionFileFold(f, root, "main", "v0.0.1", "release.txt")
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -186,6 +191,8 @@ func TestRelease_VersionFile_NothingNetChanged_NoCommit(t *testing.T) {
 		ScriptedOut("0\t1"),        // rev-list left-right count (ahead only)
 		ScriptedOut(""),            // ls-remote --tags (tag free remote)
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
+		noOtherSpelling,            // the read of how git spells the version file
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // tag -a v0.0.1 -F - (no commit precedes it)
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
 	)
@@ -197,7 +204,7 @@ func TestRelease_VersionFile_NothingNetChanged_NoCommit(t *testing.T) {
 	}
 
 	// NO bookkeeping commit and NO staging — the combined no-op makes no empty commit.
-	if invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+	if invokedWith(f, "git", pathsCommit(root, "🌿 Release v0.0.1")...) {
 		t.Errorf("a bookkeeping commit ran despite the combined no-op; no empty commit allowed")
 	}
 	for _, inv := range f.Invocations() {

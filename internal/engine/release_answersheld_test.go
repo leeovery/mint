@@ -132,7 +132,7 @@ func TestRelease_StdinClosedAtTheThirdPauseAfterAnsweringTwo_UnwindsTheArtifactC
 	if notesCallMade(f) {
 		t.Errorf("a notes call was made; the closed input was taken as keep")
 	}
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("the pre_tag artifact commit was not unwound; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {

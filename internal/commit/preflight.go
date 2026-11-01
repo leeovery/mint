@@ -85,8 +85,8 @@ var (
 // the same anchoring the L1 diff sources use — because the shared `-- .` selector is
 // cwd-relative: from a subdirectory an unanchored probe would miss staging outside the
 // subtree and wrongly fail loud while the whole-index `git commit` had plenty to commit.
-func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode) (diffStat, error) {
-	stat, found, err := readDiffStat(ctx, r, root, mode)
+func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode, against string) (diffStat, error) {
+	stat, found, err := readDiffStat(ctx, r, root, mode, against)
 	if err != nil {
 		return diffStat{}, err
 	}
@@ -107,7 +107,8 @@ func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, root st
 //   - StagedOnly: `git diff --cached --numstat -- .` (the staged index — the staged
 //     source command, no exclusion).
 //   - All (-a): `git diff HEAD --numstat -- .` (tracked mods + deletions — the tracked
-//     source command, no exclusion).
+//     source command, no exclusion), the empty tree in HEAD's place on a branch with
+//     no commits yet (against, see trackedAgainst).
 //   - AddAll (-A): that, plus `git ls-files --others --exclude-standard -z -- .`, whose
 //     files are counted from the disk (countUntracked), not by a git call each (tracked
 //     changes AND untracked files — both source commands, no exclusion).
@@ -115,10 +116,10 @@ func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, root st
 // The verdict rests on what git listed alone: the count is display only, so a file it
 // can't read leaves the count, never the verdict. A genuine git failure is wrapped and
 // surfaced so it is never mistaken for an empty set.
-func readDiffStat(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode) (diffStat, bool, error) {
+func readDiffStat(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode, against string) (diffStat, bool, error) {
 	var stat diffStat
 	found := false
-	for _, spec := range sourcesForMode(mode) {
+	for _, spec := range sourcesForMode(mode, against) {
 		args := probeArgs(spec)
 		res, err := r.RunInDir(ctx, root, nil, "git", args...)
 		if err != nil {
@@ -172,8 +173,8 @@ func stagedProbeArgs() []string {
 	return withNumstat(stagedBaseArgs())
 }
 
-func trackedProbeArgs() []string {
-	return withNumstat(trackedBaseArgs())
+func trackedProbeArgs(against string) []string {
+	return withNumstat(trackedBaseArgs(against))
 }
 
 func untrackedProbeArgs() []string {

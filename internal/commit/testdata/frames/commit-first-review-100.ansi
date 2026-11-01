@@ -1,0 +1,16 @@
+ mint ─ commit                                                                ~/Code/pigeon · v0.1.2
+
+ ◇  main          no commits yet
+ │
+ ●  diff          2 files · +52 −0 · everything, staged when you accept
+ ●  message       the first commit's default
+ │
+ │    Initial commit
+ │
+ ?  Commit this message?
+ ┆  Y accept   n abort   e edit   r regenerate ›
+ ┆
+ ○  stage         git add -A
+ ○  commit        on main
+ ┆
+ ◇  main

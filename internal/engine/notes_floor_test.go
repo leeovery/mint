@@ -251,7 +251,7 @@ func seedPreTagArtifactThenNotes(f *runner.FakeRunner, root string) {
 		ScriptedOut(""),               // -C root commit -m chore(release): pre-tag artifacts
 	)
 	seedNormalAINotes(f)
-	f.SeedSequence("git", ScriptedOut("")) // unwind: reset --hard startingSHA
+	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: status (nothing staged), reset --keep startingSHA
 }
 
 func TestRelease_NotesFloor_AbortEndsBeforeAnyTagAndUnwindsThePreTagCommit(t *testing.T) {
@@ -289,7 +289,7 @@ func TestRelease_NotesFloor_AbortEndsBeforeAnyTagAndUnwindsThePreTagCommit(t *te
 				t.Fatalf("floor gates = %d, want 1", len(floorGates(rec)))
 			}
 			assertNoTag(t, f)
-			if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+			if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 				t.Errorf("the pre_tag artifact commit was not unwound; got %v", commandLines(f.Invocations()))
 			}
 			if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {

@@ -70,6 +70,9 @@ type Generator struct {
 	saveChunkNotes SaveChunkNotes
 	// keepMergeInputs is handed a written chunked run's merge inputs; nil is handed none.
 	keepMergeInputs func(MergeInputs)
+	// callRecorded is told each time the wave has recorded a chunk call's outcome;
+	// only tests set it (export_test.go), to wait on the wave rather than on time.
+	callRecorded func()
 }
 
 // NewGenerator builds a Generator over the assembler (the git seam), the AI

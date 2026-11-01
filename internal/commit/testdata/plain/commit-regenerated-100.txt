@@ -9,7 +9,8 @@ hour before they are marked dead.
 
 --- end commit message ---
 Commit this message? [Y/n/e/r]
-extra context for the regeneration (Enter to skip): commit message: running...
+extra context for the regeneration (Enter to skip): 
+commit message: running...
 commit message: regenerated (0.7s)
 --- commit message ---
 feat(webhooks): back off between delivery retries

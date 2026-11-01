@@ -33,8 +33,8 @@ func TestCommitBookkeeping_ChangelogOnly_StagesChangelogAndCommitsWithSubject(t 
 	}
 
 	invs := r.Invocations()
-	if len(invs) != 2 {
-		t.Fatalf("invocations = %d, want 2 (git add then git commit)", len(invs))
+	if len(invs) != 5 {
+		t.Fatalf("invocations = %d, want 5 (git add, the read of HEAD, git commit, the read of HEAD, then the read of what it changed)", len(invs))
 	}
 
 	add := invs[0]
@@ -43,11 +43,7 @@ func TestCommitBookkeeping_ChangelogOnly_StagesChangelogAndCommitsWithSubject(t 
 		t.Errorf("stage invocation = %s %v, want git %v (changelog only, version unchanged)", add.Name, add.Args, wantAdd)
 	}
 
-	commit := invs[1]
-	wantCommit := []string{"-C", dir, "commit", "-m", "🌿 Release v0.0.1"}
-	if commit.Name != "git" || !equalArgs(commit.Args, wantCommit) {
-		t.Errorf("commit invocation = %s %v, want git %v", commit.Name, commit.Args, wantCommit)
-	}
+	assertPathsCommit(t, invs[2], dir, "🌿 Release v0.0.1", "CHANGELOG.md")
 }
 
 func TestCommitBookkeeping_BothChanged_FoldsIntoOneCommit(t *testing.T) {
@@ -66,8 +62,8 @@ func TestCommitBookkeeping_BothChanged_FoldsIntoOneCommit(t *testing.T) {
 	}
 
 	invs := r.Invocations()
-	if len(invs) != 2 {
-		t.Fatalf("invocations = %d, want 2 (one folded add then one commit)\n got: %v", len(invs), invs)
+	if len(invs) != 5 {
+		t.Fatalf("invocations = %d, want 5 (one folded add, the read of HEAD, one commit, the read of HEAD, then the read of what it changed)\n got: %v", len(invs), invs)
 	}
 
 	add := invs[0]
@@ -76,11 +72,7 @@ func TestCommitBookkeeping_BothChanged_FoldsIntoOneCommit(t *testing.T) {
 		t.Errorf("stage invocation = %s %v, want git %v (both paths in ONE add)", add.Name, add.Args, wantAdd)
 	}
 
-	commit := invs[1]
-	wantCommit := []string{"-C", dir, "commit", "-m", "🌿 Release v0.0.1"}
-	if commit.Name != "git" || !equalArgs(commit.Args, wantCommit) {
-		t.Errorf("commit invocation = %s %v, want git %v", commit.Name, commit.Args, wantCommit)
-	}
+	assertPathsCommit(t, invs[2], dir, "🌿 Release v0.0.1", "CHANGELOG.md", "version.txt")
 }
 
 func TestCommitBookkeeping_VersionOnly_StagesVersionFileAndCommits(t *testing.T) {
@@ -99,8 +91,8 @@ func TestCommitBookkeeping_VersionOnly_StagesVersionFileAndCommits(t *testing.T)
 	}
 
 	invs := r.Invocations()
-	if len(invs) != 2 {
-		t.Fatalf("invocations = %d, want 2 (version-file add then commit)\n got: %v", len(invs), invs)
+	if len(invs) != 5 {
+		t.Fatalf("invocations = %d, want 5 (version-file add, the read of HEAD, commit, the read of HEAD, then the read of what it changed)\n got: %v", len(invs), invs)
 	}
 
 	add := invs[0]
@@ -109,11 +101,7 @@ func TestCommitBookkeeping_VersionOnly_StagesVersionFileAndCommits(t *testing.T)
 		t.Errorf("stage invocation = %s %v, want git %v (version file only)", add.Name, add.Args, wantAdd)
 	}
 
-	commit := invs[1]
-	wantCommit := []string{"-C", dir, "commit", "-m", "🌿 Release v0.0.1"}
-	if commit.Name != "git" || !equalArgs(commit.Args, wantCommit) {
-		t.Errorf("commit invocation = %s %v, want git %v", commit.Name, commit.Args, wantCommit)
-	}
+	assertPathsCommit(t, invs[2], dir, "🌿 Release v0.0.1", "version.txt")
 }
 
 func TestCommitBookkeeping_NeitherChanged_SkipsCommit(t *testing.T) {
@@ -161,8 +149,8 @@ func TestCommitBookkeeping_SubjectHonoursPrefixAndTag(t *testing.T) {
 				t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 			}
 
-			commit := r.Invocations()[1]
-			gotSubject := commit.Args[len(commit.Args)-1]
+			commit := r.Invocations()[2]
+			gotSubject := commit.Args[4]
 			if gotSubject != tt.wantSubject {
 				t.Errorf("commit subject = %q, want %q", gotSubject, tt.wantSubject)
 			}
@@ -369,6 +357,21 @@ func pathspecCommitArgs(dir, subject string) []string {
 	return []string{"-C", dir, "commit", "-m", subject, "--pathspec-from-file=-", "--pathspec-file-nul"}
 }
 
+// assertPathsCommit fails unless inv is the commit in dir under subject of exactly
+// paths, named on stdin as root-anchored literal pathspecs: git commits those alone,
+// leaving whatever else the index holds, a change the user staged included, staged
+// and out of the commit.
+func assertPathsCommit(t *testing.T, inv runner.Invocation, dir, subject string, paths ...string) {
+	t.Helper()
+	var stdin string
+	for _, path := range paths {
+		stdin += ":(top,literal)" + path + "\x00"
+	}
+	if want := pathspecCommitArgs(dir, subject); inv.Name != "git" || !equalArgs(inv.Args, want) || inv.Stdin != stdin {
+		t.Errorf("commit = %s %q stdin %q, want git %q stdin %q", inv.Name, inv.Args, inv.Stdin, want, stdin)
+	}
+}
+
 type wantCall struct {
 	args  []string
 	stdin string
@@ -397,7 +400,10 @@ func TestCommitDirtyTree_Exclusion_CommitsOnlyTheOtherStagedPaths(t *testing.T) 
 		runner.ScriptedCall{}, // add -A
 		notesStaged,           // diff --cached -- NEXT_RELEASE.md (staged edits)
 		runner.ScriptedCall{Result: runner.Result{Stdout: staged}}, // diff --cached --name-only
+		headBefore,
 		runner.ScriptedCall{}, // commit --pathspec-from-file
+		headAfter,
+		runner.ScriptedCall{}, // diff (the commit changed nothing)
 	)
 
 	const dir = "/repo/root"
@@ -414,7 +420,10 @@ func TestCommitDirtyTree_Exclusion_CommitsOnlyTheOtherStagedPaths(t *testing.T) 
 		{args: []string{"-C", dir, "add", "-A", "--", notesExclusionPathspec}},
 		{args: notesStagedArgs(dir)},
 		{args: stagedPathsArgs(dir)},
+		{args: headArgs(dir)},
 		{args: pathspecCommitArgs(dir, "subject"), stdin: ":(top,literal)bundle.js\x00:(top,literal)odd [x]*.txt\x00"},
+		{args: headArgs(dir)},
+		{args: committedPathsArgs(dir, "--", notesExclusionPathspec)},
 	})
 }
 
@@ -456,51 +465,6 @@ func TestCommitDirtyTree_Exclusion_OnlyTheExcludedPathDirty_CommitsNothing(t *te
 	}
 	if got := len(r.Invocations()); got != 1 {
 		t.Errorf("invocations = %d, want 1 (only the status probe)", got)
-	}
-}
-
-func TestCommitBookkeeping_Exclusion_CommitsOnlyTheOtherStagedPaths(t *testing.T) {
-	t.Parallel()
-
-	const staged = "CHANGELOG.md\x00version.txt\x00"
-	r := runner.NewFakeRunner()
-	r.SeedSequence("git",
-		runner.ScriptedCall{}, // add CHANGELOG.md version.txt
-		notesStaged,           // diff --cached -- NEXT_RELEASE.md (staged edits)
-		runner.ScriptedCall{Result: runner.Result{Stdout: staged}}, // diff --cached --name-only
-		runner.ScriptedCall{}, // commit --pathspec-from-file
-	)
-
-	const dir = "/repo/root"
-	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", true, true, "NEXT_RELEASE.md"); err != nil {
-		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
-	}
-
-	assertCalls(t, r, []wantCall{
-		{args: []string{"-C", dir, "add", "CHANGELOG.md", "version.txt"}},
-		{args: notesStagedArgs(dir)},
-		{args: stagedPathsArgs(dir)},
-		{args: pathspecCommitArgs(dir, "🌿 Release v0.0.1"), stdin: ":(top,literal)CHANGELOG.md\x00:(top,literal)version.txt\x00"},
-	})
-}
-
-func TestCommitBookkeeping_Exclusion_NothingElseStaged_FailsWithoutCommitting(t *testing.T) {
-	t.Parallel()
-
-	r := runner.NewFakeRunner()
-	r.SeedSequence("git",
-		runner.ScriptedCall{}, // add CHANGELOG.md
-		notesStaged,           // diff --cached -- NEXT_RELEASE.md (staged edits)
-		runner.ScriptedCall{}, // diff --cached --name-only (nothing staged)
-	)
-
-	err := record.CommitBookkeeping(t.Context(), mutator(r), "/repo", "🌿", "v0.0.1", "", true, false, "NEXT_RELEASE.md")
-	const want = `committing release bookkeeping "🌿 Release v0.0.1": nothing staged to commit`
-	if err == nil || err.Error() != want {
-		t.Fatalf("CommitBookkeeping error = %v, want %q", err, want)
-	}
-	if got := len(r.Invocations()); got != 3 {
-		t.Errorf("invocations = %d, want 3 (no commit after an empty staged list)", got)
 	}
 }
 
@@ -555,38 +519,21 @@ func TestCommitDirtyTree_Exclusion_NoStagedEditsToKeepOut_CommitsAsBuilt(t *test
 	})
 }
 
-func TestCommitBookkeeping_Exclusion_NoStagedEditsToKeepOut_CommitsAsBuilt(t *testing.T) {
-	t.Parallel()
-
-	r := runner.NewFakeRunner()
-	r.Seed("git", runner.Result{}, nil) // add, the empty staged-edit probe, commit
-
-	const dir = "/repo/root"
-	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "", true, false, "NEXT_RELEASE.md"); err != nil {
-		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
-	}
-
-	assertCalls(t, r, []wantCall{
-		{args: []string{"-C", dir, "add", "CHANGELOG.md"}},
-		{args: notesStagedArgs(dir)},
-		{args: []string{"-C", dir, "commit", "-m", "🌿 Release v0.0.1"}},
-	})
-}
-
 func TestCommitStaged_Exclusion_StagedEditProbeFails_SurfacesErrorWithoutCommitting(t *testing.T) {
 	t.Parallel()
 
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
-		runner.ScriptedCall{}, // add CHANGELOG.md
+		runner.ScriptedCall{Result: runner.Result{Stdout: " M bundle.js\n"}}, // status --porcelain (dirty)
+		runner.ScriptedCall{}, // add -A
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 128}, Err: errors.New("exit status 128")}, // probe fails
 	)
 
-	if err := record.CommitBookkeeping(t.Context(), mutator(r), "/repo", "🌿", "v0.0.1", "", true, false, "NEXT_RELEASE.md"); err == nil {
-		t.Fatal("CommitBookkeeping returned nil error, want the staged-edit probe failure to surface")
+	if _, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "subject", "NEXT_RELEASE.md"); err == nil {
+		t.Fatal("CommitDirtyTree returned nil error, want the staged-edit probe failure to surface")
 	}
-	if got := len(r.Invocations()); got != 2 {
-		t.Errorf("invocations = %d, want 2 (no commit after a failed probe)", got)
+	if got := len(r.Invocations()); got != 3 {
+		t.Errorf("invocations = %d, want 3 (no commit after a failed probe)", got)
 	}
 }
 

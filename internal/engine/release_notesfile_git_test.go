@@ -59,23 +59,46 @@ func assertNotesFileOnlyExcluded(t *testing.T, f *runner.FakeRunner, rel string)
 	}
 }
 
-// stagedChangelog is the staged-path list the bookkeeping commit reads after it
-// stages the changelog.
-const stagedChangelog = "CHANGELOG.md\x00"
-
 // stagedArtifacts is the staged-path list the artifact commit reads after a pre_tag
 // hook rewrote bundle.js.
 const stagedArtifacts = "bundle.js\x00"
 
-// committedChangelog and committedArtifacts are the literal pathspecs the commits
-// pipe for those staged lists.
-const (
-	committedChangelog = ":(top,literal)CHANGELOG.md\x00"
-	committedArtifacts = ":(top,literal)bundle.js\x00"
-)
+// committedArtifacts is the literal pathspec the artifact commit pipes for that list.
+const committedArtifacts = ":(top,literal)bundle.js\x00"
 
-// keepOutCommit scripts a commit that keeps the notes file out. notesStaged is the
-// staged-edit probe's output: empty sends the commit down the as-built route, and
+// pathsCommit is mint's commit in root of exactly the paths it pipes on stdin, under
+// subject.
+func pathsCommit(root, subject string) []string {
+	return []string{"-C", root, "commit", "-m", subject, "--pathspec-from-file=-", "--pathspec-file-nul"}
+}
+
+// assertPathsCommitted fails unless the run made the commit in root under subject, and
+// each one it made names exactly paths on stdin: git commits those alone, so whatever
+// else the index holds, the notes file's staged edits or a change the user staged
+// meanwhile, stays staged and out of the commit. No other commit under subject ran.
+func assertPathsCommitted(t *testing.T, f *runner.FakeRunner, root, subject string, paths ...string) {
+	t.Helper()
+	var want string
+	for _, path := range paths {
+		want += ":(top,literal)" + path + "\x00"
+	}
+	commit := commandLine(runner.Invocation{Name: "git", Args: pathsCommit(root, subject)})
+	made := 0
+	for _, inv := range f.Invocations() {
+		if commandLine(inv) == commit {
+			made++
+			if inv.Stdin != want {
+				t.Errorf("commit %q stdin = %q, want only mint's paths %q", subject, inv.Stdin, want)
+			}
+		}
+	}
+	if made == 0 || made != countCommitsWithSubject(f, root, subject) {
+		t.Errorf("commits %q = %d of %d naming their paths, want every one; got %v", subject, made, countCommitsWithSubject(f, root, subject), commandLines(f.Invocations()))
+	}
+}
+
+// keepOutCommit scripts the artifact commit that keeps the notes file out. notesStaged
+// is the staged-edit probe's output: empty sends the commit down the as-built route, and
 // otherwise the commit reads staged, the other staged paths, and names them.
 func keepOutCommit(notesStaged, staged string) []runner.ScriptedCall {
 	if notesStaged == "" {
@@ -87,7 +110,10 @@ func keepOutCommit(notesStaged, staged string) []runner.ScriptedCall {
 	return []runner.ScriptedCall{
 		ScriptedOut(notesStaged), // -C root diff --cached -- <notes> (staged edits)
 		ScriptedOut(staged),      // -C root diff --cached --name-only -- :(exclude)<notes>
+		headBeforeCommit,         // HEAD before the commit
 		ScriptedOut(""),          // commit --pathspec-from-file
+		headAfterCommit,          // HEAD after it
+		committedPaths,           // the paths the commit changed
 	}
 }
 
@@ -118,9 +144,9 @@ func assertCommitKeepsNotesOut(t *testing.T, f *runner.FakeRunner, root, rel, su
 	}
 }
 
-// seedInRepoNotesFileGit scripts a prior-tag supplied-body release whose bookkeeping
-// commit keeps an in-repo notes file out; notesStaged is as for keepOutCommit.
-func seedInRepoNotesFileGit(f *runner.FakeRunner, root, notesStaged string) {
+// seedInRepoNotesFileGit scripts a prior-tag supplied-body release with an in-repo
+// notes file, whose bookkeeping commit names the changelog alone.
+func seedInRepoNotesFileGit(f *runner.FakeRunner, root string) {
 	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),          // rev-parse --show-toplevel
@@ -135,9 +161,13 @@ func seedInRepoNotesFileGit(f *runner.FakeRunner, root, notesStaged string) {
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags
 		ScriptedOut(startingSHA),   // rev-parse HEAD
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
+		headBeforeCommit,           // HEAD before the commit
+		ScriptedOut(""),            // -C root commit of CHANGELOG.md
+		headAfterCommit,            // HEAD after it
+		committedPaths,             // the paths the commit changed
 	)
-	f.SeedSequence("git", keepOutCommit(notesStaged, stagedChangelog)...)
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -a v1.2.4 -F -
 		ScriptedOut(""), // push --atomic origin HEAD v1.2.4
@@ -168,30 +198,18 @@ func firstReleaseGates(root, ignored string, stash ...runner.ScriptedCall) []run
 	)
 }
 
-// firstReleaseTail scripts the bookkeeping commit with a notes file that has no
-// staged edits kept out, then the tag and push.
+// firstReleaseTail scripts the bookkeeping commit, which names the changelog alone
+// whatever the notes file holds, then the tag and push.
 func firstReleaseTail() []runner.ScriptedCall {
-	return firstReleaseTailFor("")
-}
-
-// firstReleaseTailFor is firstReleaseTail with notesStaged as for keepOutCommit.
-func firstReleaseTailFor(notesStaged string) []runner.ScriptedCall {
-	calls := []runner.ScriptedCall{ScriptedOut("")} // -C root add CHANGELOG.md
-	calls = append(calls, keepOutCommit(notesStaged, stagedChangelog)...)
-	return append(calls,
-		ScriptedOut(""), // tag -a v0.0.1 -F -
-		ScriptedOut(""), // push --atomic origin HEAD v0.0.1
-	)
-}
-
-// bareFirstReleaseTail scripts the bookkeeping commit with no exclusion, then the
-// tag and push.
-func bareFirstReleaseTail() []runner.ScriptedCall {
 	return []runner.ScriptedCall{
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit -m
-		ScriptedOut(""), // tag -a v0.0.1 -F -
-		ScriptedOut(""), // push --atomic origin HEAD v0.0.1
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // -C root add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit of CHANGELOG.md
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // tag -a v0.0.1 -F -
+		ScriptedOut(""),  // push --atomic origin HEAD v0.0.1
 	}
 }
 
@@ -218,13 +236,11 @@ func TestRelease_NotesFileInRepo_KeptOutOfTheCleanTreeCheckAndBookkeepingCommit(
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		file        string
-		notesStaged string
+		name string
+		file string
 	}{
 		{name: "an untracked notes.md at the repo root", file: "notes.md"},
-		{name: "a tracked NEXT_RELEASE.md with unstaged edits", file: "NEXT_RELEASE.md"},
-		{name: "a tracked NEXT_RELEASE.md with staged edits", file: "NEXT_RELEASE.md", notesStaged: "NEXT_RELEASE.md\x00"},
+		{name: "a tracked NEXT_RELEASE.md", file: "NEXT_RELEASE.md"},
 	}
 
 	for _, tt := range tests {
@@ -234,7 +250,7 @@ func TestRelease_NotesFileInRepo_KeptOutOfTheCleanTreeCheckAndBookkeepingCommit(
 			root := t.TempDir()
 			path := writeNotesFile(t, root, tt.file, suppliedBody)
 			f := runner.NewFakeRunner()
-			seedInRepoNotesFileGit(f, root, tt.notesStaged)
+			seedInRepoNotesFileGit(f, root)
 			rec := &presentertest.RecordingPresenter{}
 
 			if err := engine.Release(t.Context(), newDeps(rec, f), inRepoNotesFileOptions(root, tt.file)); err != nil {
@@ -243,12 +259,13 @@ func TestRelease_NotesFileInRepo_KeptOutOfTheCleanTreeCheckAndBookkeepingCommit(
 
 			assertGitArgs(t, f, 2, []string{"status", "--porcelain", "--", excludePathspec(tt.file)})
 			assertGitArgs(t, f, 3, []string{"-C", root, "add", "CHANGELOG.md"})
-			if tt.notesStaged == "" {
-				assertCommitAsBuilt(t, f, root, tt.file, "🌿 Release "+nextTag)
-			} else {
-				assertCommitKeepsNotesOut(t, f, root, tt.file, "🌿 Release "+nextTag, committedChangelog)
-			}
+			assertPathsCommitted(t, f, root, "🌿 Release "+nextTag, "CHANGELOG.md")
 			assertNotesFileOnlyExcluded(t, f, tt.file)
+			// A hook that stages every tracked change commits the notes file, and the
+			// index match would put that over its staged state, so the match leaves it out.
+			if lines := stepLines(f); !slices.Contains(lines, committedPathsRead(root, tt.file)) {
+				t.Errorf("git steps = %q, want the read of the paths the commit changed less the notes file %q", lines, committedPathsRead(root, tt.file))
+			}
 			assertFileUnchanged(t, path, suppliedBody)
 			assertRunFinished(t, rec)
 		})
@@ -393,7 +410,7 @@ func TestRelease_NotesFileInRepo_PreTagHook_ArtifactCommitLeavesTheNotesFileOut(
 			seedProvider(f)
 			f.SeedSequence("git", firstReleaseGates(root, "")...)
 			f.SeedSequence("git", tt.artifact...)
-			f.SeedSequence("git", firstReleaseTailFor(tt.notesStaged)...)
+			f.SeedSequence("git", firstReleaseTail()...)
 			f.Seed("sh", runner.Result{}, nil)
 			f.Seed("gh", runner.Result{}, nil)
 			rec := &presentertest.RecordingPresenter{}
@@ -411,8 +428,8 @@ func TestRelease_NotesFileInRepo_PreTagHook_ArtifactCommitLeavesTheNotesFileOut(
 					assertCommitAsBuilt(t, f, root, "notes.md", artifactSubject)
 				} else {
 					assertCommitKeepsNotesOut(t, f, root, "notes.md", artifactSubject, committedArtifacts)
-					assertCommitKeepsNotesOut(t, f, root, "notes.md", "🌿 Release v0.0.1", committedChangelog)
 				}
+				assertPathsCommitted(t, f, root, "🌿 Release v0.0.1", "CHANGELOG.md")
 			} else if got := argsOf(f, "-C", root, "commit", "-m", artifactSubject); len(got) != 0 {
 				t.Errorf("an artifact commit was made though the hook changed nothing: %q", got)
 			}
@@ -455,7 +472,7 @@ func TestRelease_NotesFileInRepo_RelativePathFromASubdirectory_ExcludesTheFileIt
 			}
 			path := writeNotesFile(t, root, tt.wantRel, suppliedBody)
 			f := runner.NewFakeRunner()
-			seedInRepoNotesFileGit(f, root, "")
+			seedInRepoNotesFileGit(f, root)
 			rec := &presentertest.RecordingPresenter{}
 
 			if err := engine.Release(t.Context(), newDeps(rec, f), inRepoNotesFileOptions(workDir, tt.notesFile)); err != nil {
@@ -463,7 +480,7 @@ func TestRelease_NotesFileInRepo_RelativePathFromASubdirectory_ExcludesTheFileIt
 			}
 
 			assertGitArgs(t, f, 2, []string{"status", "--porcelain", "--", excludePathspec(tt.wantRel)})
-			assertCommitAsBuilt(t, f, root, tt.wantRel, "🌿 Release "+nextTag)
+			assertPathsCommitted(t, f, root, "🌿 Release "+nextTag, "CHANGELOG.md")
 			assertSuppliedBodyShipped(t, f, root, nextTag, "1.2.4", suppliedBody)
 			assertFileUnchanged(t, path, suppliedBody)
 		})
@@ -484,7 +501,7 @@ func TestRelease_NotesFileOutsideTheRepo_GitStepsRunAsBuilt(t *testing.T) {
 	}
 
 	assertGitArgs(t, f, 2, []string{"status", "--porcelain"})
-	assertGitArgs(t, f, 3, []string{"-C", root, "commit", "-m", "🌿 Release " + nextTag})
+	assertGitArgs(t, f, 3, pathsCommit(root, "🌿 Release "+nextTag))
 }
 
 func TestRelease_NotesFile_EmptyWorkDir_ReadsThePathAsGiven(t *testing.T) {
@@ -548,7 +565,7 @@ func TestRelease_NotesFileInRepo_IgnoredByGit_GitStepsRunAsBuilt(t *testing.T) {
 			ScriptedOut(""),               // -C root add -A
 			ScriptedOut(""),               // -C root commit -m (artifacts)
 		)
-		f.SeedSequence("git", bareFirstReleaseTail()...)
+		f.SeedSequence("git", firstReleaseTail()...)
 		f.Seed("sh", runner.Result{}, nil)
 		f.Seed("gh", runner.Result{}, nil)
 		rec := &presentertest.RecordingPresenter{}
@@ -561,7 +578,7 @@ func TestRelease_NotesFileInRepo_IgnoredByGit_GitStepsRunAsBuilt(t *testing.T) {
 		assertGitArgs(t, f, 3, []string{"-C", root, "status", "--porcelain"})
 		assertGitArgs(t, f, 4, []string{"-C", root, "add", "-A"})
 		assertGitArgs(t, f, 5, []string{"-C", root, "commit", "-m", pretagArtifactSubject("v0.0.1")})
-		assertGitArgs(t, f, 5, []string{"-C", root, "commit", "-m", "🌿 Release v0.0.1"})
+		assertGitArgs(t, f, 5, pathsCommit(root, "🌿 Release v0.0.1"))
 		assertFileUnchanged(t, path, suppliedBody)
 		assertRunFinished(t, rec)
 	})
@@ -574,7 +591,7 @@ func TestRelease_NotesFileInRepo_IgnoredByGit_GitStepsRunAsBuilt(t *testing.T) {
 		f := runner.NewFakeRunner()
 		seedProvider(f)
 		f.SeedSequence("git", firstReleaseGates(root, ignored, stashSaved())...)
-		f.SeedSequence("git", bareFirstReleaseTail()...)
+		f.SeedSequence("git", firstReleaseTail()...)
 		f.SeedSequence("git", stashPopped())
 		f.Seed("gh", runner.Result{}, nil)
 		rec := &presentertest.RecordingPresenter{}

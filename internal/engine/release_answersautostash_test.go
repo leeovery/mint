@@ -3,6 +3,7 @@ package engine_test
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -30,10 +31,16 @@ type stashingRunner struct {
 	answersCommits []string
 }
 
-func (r *stashingRunner) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
-	if name == "git" && slices.Equal(args, []string{"-C", r.root, "commit", "-m", answersSubject(nextTag)}) {
+// RunWith keeps the .mint.toml each answers commit takes; the commit names its path on
+// stdin.
+func (r *stashingRunner) RunWith(ctx context.Context, stdin io.Reader, name string, args ...string) (runner.Result, error) {
+	if name == "git" && slices.Equal(args, pathsCommit(r.root, answersSubject(nextTag))) {
 		r.answersCommits = append(r.answersCommits, r.read())
 	}
+	return r.FakeRunner.RunWith(ctx, stdin, name, args...)
+}
+
+func (r *stashingRunner) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
 	res, err := r.FakeRunner.Run(ctx, name, args...)
 	if name != "git" || err != nil {
 		return res, err
@@ -42,7 +49,7 @@ func (r *stashingRunner) Run(ctx context.Context, name string, args ...string) (
 	case slices.Equal(args, []string{"stash", "push", "--include-untracked"}):
 		r.stash = append(r.stash, r.read())
 		r.write(r.committed)
-	case slices.Equal(args, []string{"reset", "--hard", startingSHA}):
+	case slices.Equal(args, []string{"reset", "--keep", startingSHA}):
 		r.write(r.committed)
 	case slices.Equal(args, []string{"stash", "pop"}):
 		edit := r.stash[len(r.stash)-1]
@@ -122,10 +129,11 @@ func (a *autostashedRelease) released(pop runner.ScriptedCall) *autostashedRelea
 	return a
 }
 
-// unwound scripts the unwind's read of the answers commit's sha, its reset and its
-// re-commit of the answers, then pop as the restore.
+// unwound scripts the unwind's read of the answers commit's sha, its reset (a read of
+// what is staged, then the reset) and its re-commit of the answers with the read of
+// the paths it changed, then pop as the restore.
 func (a *autostashedRelease) unwound(pop runner.ScriptedCall) *autostashedRelease {
-	a.f.SeedSequence("git", ScriptedOut(answersSHA+"\n"), ScriptedOut(""), ScriptedOut(""), ScriptedOut(""), pop)
+	a.f.SeedSequence("git", ScriptedOut(answersSHA+"\n"), nothingStaged, ScriptedOut(""), ScriptedOut(""), headBeforeCommit, ScriptedOut(""), headAfterCommit, committedPaths, pop)
 	return a
 }
 
@@ -219,7 +227,7 @@ func TestRelease_Autostash_ACleanRestoreLeavesTheEditOverTheAnswersAndDropsTheSt
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	commitAt := indexOfCmd(a.f, "git", "-C", a.git.root, "commit", "-m", answersSubject(nextTag))
+	commitAt := indexOfCmd(a.f, "git", pathsCommit(a.git.root, answersSubject(nextTag))...)
 	popAt := indexOfCmd(a.f, "git", "stash", "pop")
 	if commitAt == -1 || popAt < commitAt {
 		t.Errorf("stash pop (at %d) does not follow the answers commit (at %d)", popAt, commitAt)
@@ -287,13 +295,16 @@ func TestRelease_Autostash_AbortAfterAnswering_RecommitsOnlyTheAnswersThenRestor
 				t.Fatalf("Release returned %v, want an abort exiting 1", err)
 			}
 
-			reset := indexOfCmd(a.f, "git", "reset", "--hard", startingSHA)
+			reset := indexOfCmd(a.f, "git", "reset", "--keep", startingSHA)
 			if reset == -1 {
 				t.Fatalf("no reset to the starting commit; got %v", commandLines(a.f.Invocations()))
 			}
 			want := []string{
 				"git -C " + a.git.root + " add " + config.FileName,
-				"git -C " + a.git.root + " commit -m " + answersSubject(nextTag),
+				headRead(a.git.root),
+				"git -C " + a.git.root + " commit -m " + answersSubject(nextTag) + " --pathspec-from-file=- --pathspec-file-nul",
+				headRead(a.git.root),
+				committedPathsRead(a.git.root),
 				"git stash pop",
 			}
 			if got := commandLines(a.f.Invocations()[reset+1:]); !slices.Equal(got, want) {

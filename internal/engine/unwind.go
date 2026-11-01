@@ -7,10 +7,13 @@ package engine
 // (it cannot tell one commit from two and never names the count it dropped). This
 // operation instead drives off what mint KNOWS it created this run — the exact
 // captured StartState and the tracked MadeState — so it deletes exactly the tag it
-// made (if any) and resets exactly the N commits it made, returning the repo to the
-// exact clean starting state and REPORTING each undone item. The one exception is the
-// exclusion answers: an answer is about the repo, not the release, so after the reset
-// the answers are re-committed on the starting commit and narrated as kept, and their
+// made (if any), puts back exactly the files it wrote or staged that no commit holds and
+// resets exactly the N commits it made, undoing exactly what the run changed, keeping
+// every change the user made meanwhile, and REPORTING each undone item. Where a change
+// of the user's touches a path mint's commits changed, the reset refuses and the unwind
+// says so with the manual step, losing nothing. The one exception is the exclusion
+// answers: an answer is about the repo, not the release, so after the reset the
+// answers are re-committed on the starting commit and narrated as kept, and their
 // write to a .mint.toml git ignores, never committed, is left in place.
 //
 // LOAD-BEARING INVARIANT: this is a PRE-PONR operation ONLY. It issues local-only
@@ -45,6 +48,7 @@ import (
 	"mint/internal/git"
 	"mint/internal/gitrepo"
 	"mint/internal/presenter"
+	"mint/internal/record"
 )
 
 // StartState is the exact clean ref state captured at the START of the mutating
@@ -53,8 +57,8 @@ import (
 // unwind resets back to.
 type StartState struct {
 	// HEAD is the starting commit sha (`git rev-parse HEAD`). The unwind resets to
-	// THIS exact sha, not a relative HEAD~N, so the result is provably the exact
-	// starting state regardless of how many commits mint made.
+	// THIS exact sha, not a relative HEAD~N, so HEAD provably returns to the starting
+	// commit regardless of how many commits mint made.
 	HEAD string
 	// Tag is the target tag this run computes (e.g. "v0.0.1"). It is captured here so
 	// the unwind deletes exactly the tag mint would have created.
@@ -64,14 +68,16 @@ type StartState struct {
 	// normal path; it is captured to document the starting fact and to never delete a
 	// pre-existing tag mint did not create.
 	TagExisted bool
-	// KeepOut is the path the reset leaves as it was, its content and staged state
-	// untouched.
+	// KeepOut is the path the unwind never reads as a change of mint's.
 	KeepOut git.Exclusion
+	// Root is the repo's root, under which the unwind puts back the files mint wrote.
+	Root string
 }
 
 // MadeState is what mint actually created this run, tracked as the spine steps run
 // (not inferred by probing git). It drives the surgical unwind: delete the tag iff
-// TagCreated, reset iff Commits > 0, and reset by exactly Commits.
+// TagCreated, put back exactly the files mint wrote or staged that no commit holds,
+// and reset to the starting commit iff mint committed.
 type MadeState struct {
 	// Commits is the count of commits mint made before the tag, 0 to 3: the
 	// hook-artifact, answers and bookkeeping commits, each optional. The unwind reports
@@ -89,12 +95,13 @@ type MadeState struct {
 	// answersLeft reports that the answers went to a .mint.toml git ignores, a write
 	// the unwind leaves in place.
 	answersLeft bool
-	// written are the files the record stage wrote and no commit yet holds; with no
-	// commit to reset they stay as written.
+	// written are the files the record stage wrote and no commit yet holds.
 	written []string
-	// created are the files the record stage created that neither a commit nor the
-	// index holds, which a reset leaves untracked.
+	// created are the files among written that the record stage's write created.
 	created []string
+	// recordStaged reports that the record stage staged written and the commit of
+	// them failed, so git holds the files it created in the index.
+	recordStaged bool
 	// hookRan reports that a preflight or pre_tag hook ran: what it did to the tree or
 	// HEAD is unknown to mint, so the close claims nothing a hook could have undone.
 	hookRan bool
@@ -117,24 +124,76 @@ func (m *MadeState) recordWrite(file string, changed, created bool) {
 	}
 }
 
+// restored are the files the unwind returns to HEAD's content: those the record stage
+// wrote that were there before it.
+func (m MadeState) restored() []string {
+	return slices.DeleteFunc(slices.Clone(m.written), func(file string) bool {
+		return slices.Contains(m.created, file)
+	})
+}
+
+// recordFiles are the record stage's files to put back: tracked, those git holds in
+// HEAD or the index, and untracked, those it created and never staged.
+func (m MadeState) recordFiles() (tracked, untracked []string) {
+	if m.recordStaged {
+		return m.written, nil
+	}
+	return m.restored(), m.created
+}
+
+// restores reports whether the tree or the index holds what mint wrote or staged and
+// no commit holds, which the unwind puts back.
+func (m MadeState) restores() bool {
+	return m.preTagStaged || len(m.written) > 0
+}
+
+// writesLeft is what of m's uncommitted writes is still in the tree: the record
+// stage's files among paths, and pre_tag's staged changes where preTag says so.
+func (m MadeState) writesLeft(paths []string, preTag bool) MadeState {
+	among := func(files []string) []string {
+		return slices.DeleteFunc(slices.Clone(files), func(file string) bool { return !slices.Contains(paths, file) })
+	}
+	return MadeState{written: among(m.written), created: among(m.created), preTagStaged: preTag}
+}
+
+// putBackOf is what of m's uncommitted writes the unwind put back, left being what
+// is still in the tree.
+func (m MadeState) putBackOf(left MadeState) MadeState {
+	notLeft := func(files, leftFiles []string) []string {
+		return slices.DeleteFunc(slices.Clone(files), func(file string) bool { return slices.Contains(leftFiles, file) })
+	}
+	return MadeState{
+		written:      notLeft(m.written, left.written),
+		created:      notLeft(m.created, left.created),
+		preTagStaged: m.preTagStaged && !left.preTagStaged,
+	}
+}
+
 // Unwind is the surgical pre-PONR recovery. Given the captured StartState and the
 // tracked MadeState it:
 //
 //   - deletes the exact tag (local) when made.TagCreated — `git tag -d {start.Tag}`;
 //   - reverts made.answersEdit, the exclusion answers' uncommitted write to .mint.toml,
 //     unstaging it and restoring its content, or removing a file the write created;
+//   - puts back exactly what mint wrote or staged that no commit holds (see
+//     restoreWritesIfMade): the record stage's files and pre_tag's changes it staged
+//     return to HEAD's content, in the index and the work tree, and the files it
+//     created are removed, while every other path stays as it is and HEAD stays where
+//     it stands;
 //   - resets HEAD to the captured starting commit when made.Commits > 0 (see
-//     resetTo), dropping exactly the N commits mint made and their working-tree
-//     changes (changelog, version-file projection, hook artifacts) while start.KeepOut
-//     keeps its content and staged state;
+//     resetTo), taking back exactly what the N commits mint made changed and keeping
+//     every other change in the tree, a notes file's included, or, where the user
+//     changed a path those commits changed, refusing and changing nothing;
 //   - re-commits the exclusion answers on the starting commit when made.keptAnswers
-//     holds their commit and the reset succeeded;
+//     holds their commit and the reset succeeded, then puts the index back as it
+//     held the user's changes before the reset (stagedIndex);
 //   - reports each undone item, the kept answers commit and where the repo ended up
 //     via the Presenter's Unwound, the engine authoring every part, and tells the
 //     run's close what mint did and where HEAD stands (unwoundTo), so the run closes
 //     back at its start station saying so, or, where its reset never moved HEAD, at
-//     the branch and commit HEAD stands on (strandedAt); with nothing to unwind it
-//     tells the close what the run left behind (leftBehind).
+//     the branch and commit HEAD stands on (strandedAt), or, where its
+//     put-back left something, saying what mint left unrestored (notRestored); with
+//     nothing to unwind it tells the close what the run left behind (leftBehind).
 //
 // With zero mutations (no tag, no commits, no write) it is a no-op: it emits NO
 // Unwound and issues NO git command. A reverted write alone emits no Unwound either.
@@ -157,30 +216,36 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 
 	restore := answersRestoreStep(ctx, deps, made)
 	tagDeleted, tagOK := deleteTagIfMade(ctx, deps, start, made)
-	// Reverted before the reset, which then returns a tracked file to the starting
-	// commit whatever the write found there.
+	// Reverted before the reset, which would keep the write as a change of the user's.
 	editOK := revertEditIfMade(ctx, deps, start, made.answersEdit)
-	commitsReset, headMoved, resetOK := resetCommitsIfMade(ctx, deps, start, made, restore)
+	// Put back before the reset, which moves HEAD and HEAD's content with it.
+	restored, left := restoreWritesIfMade(ctx, deps, start, made)
+	restoreOK := !left.restores()
+	reset, resetOK, staged := resetIfMade(ctx, deps, start, made, restore)
 	kept, keptOK := recommitAnswersIfKept(ctx, deps, made.keptAnswers, resetOK, restore)
+	restagedOK := restageIfReset(ctx, deps, staged)
 
-	if tagDeleted || commitsReset {
-		clean := tagOK && editOK && resetOK && keptOK
+	if tagDeleted || restored || reset {
+		clean := tagOK && editOK && restoreOK && resetOK && keptOK && restagedOK
 		event := unwindEvent(start.Tag, made, unwindOutcome{
-			reset:       headMoved,
+			reset:       resetOK && reset,
+			put:         made.putBackOf(left),
 			deleted:     tagDeleted && tagOK,
 			answersKept: kept,
 			clean:       clean,
 		})
 		deps.Presenter.Unwound(event)
-		// HEAD is back on the starting commit once the reset ran, or, with only a tag to
-		// delete, when nothing but mint could have moved it; where the reset never moved
+		// HEAD is back on the starting commit once the reset ran, or, with no commit to
+		// reset, when nothing but mint could have moved it; where the reset never moved
 		// it, it stands on mint's commits.
-		atStart := resetOK && (commitsReset || !made.hookRan)
-		detail := unwoundTo(event, clean, atStart, made)
-		if commitsReset && !headMoved {
-			strandedAt(ctx, deps, commitsPhrase(made.Commits)+" not reset", detail)
-		} else {
-			deps.run.Unwound(detail)
+		atStart := resetOK && (reset || !made.hookRan)
+		switch {
+		case reset && !resetOK:
+			strandedAt(ctx, deps, commitsPhrase(made.Commits)+" not reset", unwoundTo(event, clean, atStart))
+		case !restoreOK:
+			deps.run.Unwound(notRestored(left))
+		default:
+			deps.run.Unwound(unwoundTo(event, clean, atStart))
 		}
 	} else {
 		deps.run.Left(leftBehind(editOK, made))
@@ -206,7 +271,6 @@ const (
 	// unwind re-committed the answers.
 	answersRecommitted = "+ 1 commit (the " + config.FileName + " answers)"
 	notCommitted       = " written, not committed"
-	leftUntracked      = " left untracked"
 	preTagStaged       = "pre_tag's changes staged, not committed"
 	// noClaim is the detail of a run stopped once mint began a write of its own, no
 	// hook having run, with nothing of it left to name. Once a hook has run even
@@ -216,11 +280,10 @@ const (
 
 // unwoundTo is where an unwind left the repo, as the run's close states it: one
 // commit past the start, the answers', when it re-committed them, else back where it
-// started when atStart says HEAD is, then that recovery needs a hand when it does and
-// the files the record stage created and the reset left untracked. That it kept the
-// answers is the unwind's row's to say, not the close's. An unwind runs only before
-// the push, so it always pushed nothing.
-func unwoundTo(event presenter.Unwind, clean, atStart bool, made MadeState) string {
+// started when atStart says HEAD is, then that recovery needs a hand when it does.
+// That it kept the answers is the unwind's row's to say, not the close's. An unwind
+// runs only before the push, so it always pushed nothing.
+func unwoundTo(event presenter.Unwind, clean, atStart bool) string {
 	var parts []string
 	switch {
 	case event.Kept != "":
@@ -231,10 +294,27 @@ func unwoundTo(event presenter.Unwind, clean, atStart bool, made MadeState) stri
 	if !clean {
 		parts = append(parts, manualCleanup)
 	}
-	if len(made.created) > 0 {
-		parts = append(parts, strings.Join(made.created, " + ")+leftUntracked)
-	}
 	return strings.Join(append(parts, nothingPushed), " · ")
+}
+
+// notRestored is where an unwind left the repo when its put-back left part of what
+// mint wrote or staged: that recovery needs a hand, then left, what is still there
+// that no commit holds, then that it pushed nothing.
+func notRestored(left MadeState) string {
+	return strings.Join(slices.Concat([]string{manualCleanup}, uncommitted(left), []string{nothingPushed}), " · ")
+}
+
+// uncommitted is what mint wrote or staged that no commit holds, as a close names it:
+// pre_tag's changes it staged, then the files the record stage wrote.
+func uncommitted(made MadeState) []string {
+	var parts []string
+	if made.preTagStaged {
+		parts = append(parts, preTagStaged)
+	}
+	if len(made.written) > 0 {
+		parts = append(parts, strings.Join(made.written, " + ")+notCommitted)
+	}
+	return parts
 }
 
 // strandedAt tells the run's close that a recovery reset never moved HEAD off what mint
@@ -253,21 +333,14 @@ func strandedAt(ctx context.Context, deps ReleaseDeps, notReset, detail string) 
 }
 
 // leftBehind is what a release that stopped short with nothing to unwind left
-// behind: a failed revert of the answers' write, pre_tag's changes left staged, the
-// files the record stage wrote and no commit holds, and the answers an ignored
-// .mint.toml keeps, then that it pushed nothing. With none of those it is
-// nothingPushed once a hook has run, noClaim once mint began a write, and "" (the
-// close's "nothing changed") when neither has.
+// behind: a failed revert of the answers' write and the answers an ignored .mint.toml
+// keeps, then that it pushed nothing. With none of those it is nothingPushed once a
+// hook has run, noClaim once mint began a write, and "" (the close's "nothing
+// changed") when neither has.
 func leftBehind(editOK bool, made MadeState) string {
 	var parts []string
 	if !editOK {
 		parts = append(parts, manualCleanup)
-	}
-	if made.preTagStaged {
-		parts = append(parts, preTagStaged)
-	}
-	if len(made.written) > 0 {
-		parts = append(parts, strings.Join(made.written, " + ")+notCommitted)
 	}
 	if made.answersLeft {
 		parts = append(parts, answersLeftInPlace)
@@ -292,7 +365,7 @@ func recommitAnswersIfKept(ctx context.Context, deps ReleaseDeps, answers *answe
 	if answers == nil || !resetOK {
 		return false, true
 	}
-	if manual, output, err := answers.recommit(ctx, deps.Mutator, restore); err != nil {
+	if manual, output, err := answers.recommit(ctx, deps.Mutator, deps.Presenter, restore); err != nil {
 		warnUnwindIncomplete(deps.Presenter, output, manual...)
 		return false, false
 	}
@@ -337,24 +410,200 @@ func deleteTagIfMade(ctx context.Context, deps ReleaseDeps, start StartState, ma
 	return true, true
 }
 
-// resetCommitsIfMade resets HEAD to the captured starting commit when mint made any
-// commits this run, returning whether a reset was issued, whether HEAD moved back, and
-// whether the whole reset succeeded. It uses the captured sha (not HEAD~N) so the tree
-// returns to the EXACT starting state, discarding mint's release commits and their
-// working-tree changes, all but start.KeepOut's. A non-zero exit is no longer discarded: it is surfaced as a
-// manual-cleanup Warn naming the steps left so the user is not told the repo is clean
-// when mint's commit(s) still live — the recovery DID NOT complete.
-func resetCommitsIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState, restore []manualStep) (issued, headMoved, ok bool) {
+// resetIfMade resets HEAD to the captured starting commit when mint made any commits
+// this run (see resetTo), returning whether a reset was issued, whether it moved HEAD
+// back, and what the index held of the user's, for restageIfReset to put back. It
+// uses the captured sha (not HEAD~N), so exactly mint's commits are taken back, and
+// every other change in the tree is kept. A failure is surfaced as a manual-cleanup
+// Warn naming the steps left so the user is not told the repo is clean when mint's
+// commit(s) still live — the recovery DID NOT complete.
+func resetIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState, restore []manualStep) (issued, ok bool, staged stagedIndex) {
 	if made.Commits <= 0 {
-		return false, false, true
+		return false, true, stagedIndex{}
 	}
-	headMoved, manual, output, err := resetTo(ctx, deps.Mutator, resetTarget{HEAD: start.HEAD, KeepOut: start.KeepOut})
+	staged, manual, output, err := resetTo(ctx, deps.Mutator, resetTarget{HEAD: start.HEAD, Root: start.Root}, "")
 	if err != nil {
 		// The manual reset drops the answers commit along with mint's other commits.
-		warnUnwindIncomplete(deps.Presenter, output, append([]manualStep{manual}, restore...)...)
-		return true, headMoved, false
+		warnUnwindIncomplete(deps.Presenter, output, append(manual, restore...)...)
+		return true, false, stagedIndex{}
 	}
-	return true, true, true
+	return true, true, staged
+}
+
+// restageIfReset puts the index back as it held the user's changes before the reset
+// (stagedIndex.steps), each step attempted whatever another's outcome, reporting
+// whether all succeeded; each that fails warns with the manual step that does it.
+func restageIfReset(ctx context.Context, deps ReleaseDeps, index stagedIndex) bool {
+	ok := true
+	for _, step := range index.steps() {
+		if res, err := deps.Mutator.Mutate(ctx, record.PathspecInput(step.paths), "git", append(step.args, pathspecsOnStdin...)...); err != nil {
+			warnUnwindIncomplete(deps.Presenter, failedGitOutput(res.Stderr, err), step.manual)
+			ok = false
+		}
+	}
+	return ok
+}
+
+// restoreWritesIfMade puts back what mint wrote or staged that no commit holds, and
+// touches no other path, returning whether it ran and what of it is left: the record
+// stage's files, and the paths of pre_tag's changes mint staged, which it reads from
+// the index, leaving start.KeepOut out. A file of the record stage's git holds in
+// neither HEAD nor the index, one mint wrote over that git ignores, is left and
+// warned, and never stops the rest being put back. HEAD stays where it stands, so a
+// commit the pre_tag hook made itself stays too.
+func restoreWritesIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState) (issued bool, left MadeState) {
+	if !made.restores() {
+		return false, MadeState{}
+	}
+	tracked, untracked := made.recordFiles()
+	unrestored := putBack(ctx, deps, start.Root, tracked, untracked, made.recordStaged)
+	preTagLeft := made.preTagStaged && !restorePreTag(ctx, deps, start)
+	return true, made.writesLeft(unrestored, preTagLeft)
+}
+
+// restorePreTag returns the paths of pre_tag's changes mint staged, read from the
+// index with start.KeepOut left out, to HEAD, reporting whether it did.
+func restorePreTag(ctx context.Context, deps ReleaseDeps, start StartState) bool {
+	staged, output, err := stagedPaths(ctx, deps.Mutator, start.Root, start.KeepOut)
+	if err != nil {
+		warnUnwindIncomplete(deps.Presenter, output, manualStep{does: "unstage and remove the pre_tag changes mint staged"})
+		return false
+	}
+	return restoreToHEAD(ctx, deps, start.Root, staged)
+}
+
+// putBack returns tracked, files mint wrote over under root, to HEAD's content, and
+// removes untracked, files it created that git never held, returning those it could
+// not put back. Where mint never staged the files, those git holds in neither HEAD
+// nor the index are left (knownToGit) and never stop the rest.
+func putBack(ctx context.Context, deps ReleaseDeps, root string, tracked, untracked []string, staged bool) (left []string) {
+	if !staged {
+		tracked, left = knownToGit(ctx, deps, root, tracked)
+	}
+	if !restoreToHEAD(ctx, deps, root, tracked) {
+		left = append(left, tracked...)
+	}
+	return append(left, removeCreated(ctx, deps, root, untracked)...)
+}
+
+// knownToGit splits paths, files mint wrote over in the repo at root, into those git
+// can restore, held in HEAD or the index, and the rest, which it warns are left as mint
+// wrote them, git holding no copy to put back. A failed read counts them all known,
+// for the restore to try.
+func knownToGit(ctx context.Context, deps ReleaseDeps, root string, paths []string) (known, unknown []string) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	args := append([]string{"-C", root, "ls-files", "-z", "--cached", "--with-tree=HEAD", "--"}, literalPathspecs(paths)...)
+	res, err := deps.Mutator.Run(ctx, "git", args...)
+	if err != nil {
+		return paths, nil
+	}
+	listed := strings.FieldsFunc(res.Stdout, func(r rune) bool { return r == 0 })
+	for _, path := range paths {
+		if slices.Contains(listed, path) {
+			known = append(known, path)
+		} else {
+			unknown = append(unknown, path)
+		}
+	}
+	if len(unknown) > 0 {
+		warnUnwindIncomplete(deps.Presenter, "", manualStep{
+			does: "put back " + strings.Join(unknown, " + ") + ", which mint wrote over and git holds no copy of",
+		})
+	}
+	return known, unknown
+}
+
+// restoreToHEAD returns paths, which git holds in HEAD or the index in the repo at
+// root, to HEAD's content in the index and the work tree, removing those HEAD lacks.
+// It touches no other path and moves no HEAD. A failure is warned with its manual
+// step; it reports whether it succeeded.
+func restoreToHEAD(ctx context.Context, deps ReleaseDeps, root string, paths []string) bool {
+	if len(paths) == 0 {
+		return true
+	}
+	args := append([]string{"-C", root, "restore", "--source=HEAD", "--staged", "--worktree"}, pathspecsOnStdin...)
+	if res, err := deps.Mutator.Mutate(ctx, record.PathspecInput(paths), "git", args...); err != nil {
+		warnUnwindIncomplete(deps.Presenter, failedGitOutput(res.Stderr, err), manualStep{
+			does:     "restore " + strings.Join(paths, " + ") + " to HEAD",
+			commands: []string{"git restore --source=HEAD --staged --worktree -- " + quoteAll(literalPathspecs(paths))},
+		})
+		return false
+	}
+	return true
+}
+
+// removeCreated removes paths, files under root mint created, from the index and the
+// disk, returning those it could not, each warned with its manual step. The index is
+// cleared whatever mint believes of it: a `git add` that fails part-way, on an ignored
+// path beside them, has already staged the others.
+func removeCreated(ctx context.Context, deps ReleaseDeps, root string, paths []string) (left []string) {
+	if len(paths) == 0 {
+		return nil
+	}
+	args := append([]string{"-C", root, "rm", "--cached", "-q", "--ignore-unmatch"}, pathspecsOnStdin...)
+	if res, err := deps.Mutator.Mutate(ctx, record.PathspecInput(paths), "git", args...); err != nil {
+		warnUnwindIncomplete(deps.Presenter, failedGitOutput(res.Stderr, err), manualStep{
+			does:     "unstage " + strings.Join(paths, " + ") + ", which mint created",
+			commands: []string{"git -C " + cmdline.Quote(root) + " rm --cached -q --ignore-unmatch -- " + quoteAll(literalPathspecs(paths))},
+		})
+		left = slices.Clone(paths)
+	}
+	for _, path := range paths {
+		full := filepath.Join(root, path)
+		if err := os.Remove(full); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			warnUnwindIncomplete(deps.Presenter, err.Error(), manualStep{does: "remove " + full + ", which mint created"})
+			if !slices.Contains(left, path) {
+				left = append(left, path)
+			}
+		}
+	}
+	return left
+}
+
+// stagedPaths reads the paths the index holds changes to, keepOut left out, in the
+// repo at root, or the one the working directory is in where root is empty, returning
+// git's output where the read fails.
+func stagedPaths(ctx context.Context, m *git.Mutator, root string, keepOut git.Exclusion) (paths []string, output string, err error) {
+	args := append(atRoot(root, "diff", "--cached", "--name-only", "-z", "--no-renames"), keepOut.Pathspec()...)
+	res, err := m.Run(ctx, "git", args...)
+	if err != nil {
+		return nil, failedGitOutput(res.Stderr, err), err
+	}
+	return strings.FieldsFunc(res.Stdout, func(r rune) bool { return r == 0 }), "", nil
+}
+
+// atRoot is a git step's args run in the repo at root, or in the one the working
+// directory is in where root is empty.
+func atRoot(root string, args ...string) []string {
+	if root == "" {
+		return args
+	}
+	return append([]string{"-C", root}, args...)
+}
+
+// pathspecsOnStdin has git read a step's pathspecs from stdin (record.PathspecInput),
+// so no count of paths meets the argument limit.
+var pathspecsOnStdin = []string{"--pathspec-from-file=-", "--pathspec-file-nul"}
+
+// literalPathspecs are paths as root-anchored literal pathspecs, as a manual step
+// prints them.
+func literalPathspecs(paths []string) []string {
+	specs := make([]string, len(paths))
+	for i, path := range paths {
+		specs[i] = git.LiteralPathspec(path)
+	}
+	return specs
+}
+
+// quoteAll quotes each of args for the shell, joined by spaces.
+func quoteAll(args []string) string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = cmdline.Quote(arg)
+	}
+	return strings.Join(quoted, " ")
 }
 
 // fileEdit is a write mint made to path under root, with what path held before it.
@@ -425,50 +674,171 @@ func restoreEditContent(p presenter.Presenter, edit *fileEdit) bool {
 }
 
 // resetTarget is where a recovery reset returns the repo: HEAD at the starting commit,
-// with KeepOut left as it was.
+// in the repo at Root, whose index the reset reads.
 type resetTarget struct {
-	HEAD    string
-	KeepOut git.Exclusion
+	HEAD string
+	Root string
 }
 
-// resetTo returns HEAD, the index and the work tree to target.HEAD as
-// `git reset --hard` does, except that target.KeepOut keeps its content and staged
-// state, reporting whether HEAD moved back. On failure it returns the manual step that
-// finishes the reset and the failing git step's own output; HEAD has moved back where
-// the soft reset went through and only the restore after it failed.
-//
-// With a path to keep, `git reset --hard` cannot be used, as it takes no pathspec: the
-// soft reset moves HEAD alone, then restore rewrites the index and work tree everywhere
-// but the excluded path, removing tracked paths the starting commit lacks.
-func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (headMoved bool, manual manualStep, output string, err error) {
-	sha := target.HEAD
-	if target.KeepOut == "" {
-		if res, err := m.Mutate(ctx, nil, "git", "reset", "--hard", sha); err != nil {
-			return false, manualStep{does: "reset HEAD back to " + sha, commands: []string{"git reset --hard " + sha}}, failedGitOutput(res.Stderr, err), err
+// stagedIndex is what the index held of the user's ahead of a reset, for restage to
+// put back after it: the tree the index was written as and the paths whose content it
+// staged, the paths whose deletion it staged, and the paths marked intent-to-add,
+// which the tree doesn't hold.
+type stagedIndex struct {
+	tree    string
+	staged  []string
+	deleted []string
+	intents []string
+}
+
+// readIndex reads what the index holds that HEAD doesn't, in the repo at root, from
+// one porcelain status, which never takes the index lock: content staged, a deletion
+// staged, and intent-to-add marks. Edits only in the work tree are left out, as the
+// reset keeps them.
+func readIndex(ctx context.Context, m *git.Mutator, root string) (index stagedIndex, output string, err error) {
+	res, err := m.Run(ctx, "git", atRoot(root, "--no-optional-locks", "status", "--porcelain=v2", "-z", "--untracked-files=no", "--no-renames")...)
+	if err != nil {
+		return stagedIndex{}, failedGitOutput(res.Stderr, err), err
+	}
+	for _, entry := range strings.FieldsFunc(res.Stdout, func(r rune) bool { return r == 0 }) {
+		// An ordinary entry: "1 XY sub mH mI mW hH hI path", X the index's status.
+		fields := strings.SplitN(entry, " ", 9)
+		if len(fields) < 9 || fields[0] != "1" {
+			continue
 		}
-		return true, manualStep{}, "", nil
+		switch xy, path := fields[1], fields[8]; {
+		case xy[0] == 'D':
+			index.deleted = append(index.deleted, path)
+		case xy[0] != '.':
+			index.staged = append(index.staged, path)
+		case xy[1] == 'A':
+			index.intents = append(index.intents, path)
+		}
 	}
-
-	pathspec := target.KeepOut.Pathspec()
-	restoreArgs := append([]string{"restore", "--source=" + sha, "--staged", "--worktree"}, pathspec...)
-	restoreLine := "git restore --source=" + sha + " --staged --worktree " + pathspec[0] + " " + cmdline.Quote(pathspec[1])
-	keeping := ", leaving " + string(target.KeepOut) + " as it is"
-	if res, err := m.Mutate(ctx, nil, "git", "reset", "--soft", sha); err != nil {
-		step := manualStep{does: "reset HEAD back to " + sha + keeping, commands: []string{"git reset --soft " + sha, restoreLine}}
-		return false, step, failedGitOutput(res.Stderr, err), err
-	}
-	if res, err := m.Mutate(ctx, nil, "git", restoreArgs...); err != nil {
-		step := manualStep{does: "restore the index and work tree to " + sha + keeping, commands: []string{restoreLine}}
-		return true, step, failedGitOutput(res.Stderr, err), err
-	}
-	return true, manualStep{}, "", nil
+	return index, "", nil
 }
 
-// unwindOutcome is how an unwind ended: whether its reset and its tag delete each
+// resetTo moves HEAD back to target.HEAD as `git reset --keep` does: it takes back in
+// the index and the work tree exactly what the commits since target.HEAD changed, and
+// keeps every other change in the work tree, a notes file's included, refusing and
+// changing nothing where the work tree or the index changes a path those commits
+// changed. As --keep also returns every other index entry to target.HEAD, and drops
+// intent-to-add marks, what the index holds is read first (readIndex), the index
+// written as a tree where it stages content, and the returned stagedIndex restages it
+// all. On failure HEAD has not moved, and it returns the manual steps that finish the
+// reset (keepSteps, the reset's step saying why) and the failing git step's own output.
+func resetTo(ctx context.Context, m *git.Mutator, target resetTarget, why string) (index stagedIndex, manual []manualStep, output string, err error) {
+	sha := target.HEAD
+	index, output, err = readIndex(ctx, m, target.Root)
+	if err != nil {
+		return stagedIndex{}, keepSteps(sha, why, nil), output, err
+	}
+	keep := keepSteps(sha, why, index.intents)
+	if len(index.staged) > 0 {
+		res, err := m.Mutate(ctx, nil, "git", "write-tree")
+		if err != nil {
+			return stagedIndex{}, keep, failedGitOutput(res.Stderr, err), err
+		}
+		index.tree = strings.TrimSpace(res.Stdout)
+	}
+	if res, err := m.Mutate(ctx, nil, "git", "reset", "--keep", sha); err != nil {
+		return stagedIndex{}, keep, failedGitOutput(res.Stderr, err), err
+	}
+	return index, nil, "", nil
+}
+
+// keepSteps are the manual steps that reset HEAD back to sha keeping the user's
+// changes, the reset's step saying why: stash them, reset, then pop the stash with
+// --index, which brings back what was staged, a staged deletion included, as it was.
+// The pop is offered only for a stash that saved something, as a reset that failed
+// for another reason may leave nothing to stash, and a pop then would apply some older
+// stash. --index applies the staged part strictly, so where a staged change meets the
+// lines mint's commits wrote, the very case that makes --keep refuse, git answers
+// "conflicts in index. Try without --index." and keeps the stash; a plain pop then
+// brings the changes back, the one to mint's lines as a merge conflict. git can't
+// stash a file marked intent-to-add, so intents, the files the index read found
+// marked, are unmarked first and marked again last.
+func keepSteps(sha, why string, intents []string) []manualStep {
+	var steps []manualStep
+	if len(intents) > 0 {
+		steps = append(steps, manualStep{
+			does:     "unmark " + strings.Join(intents, " + ") + ", which git can't stash",
+			commands: []string{"git rm --cached -q -- " + quoteAll(literalPathspecs(intents))},
+		})
+	}
+	steps = append(steps,
+		manualStep{does: "stash your changes", commands: []string{"git stash"}},
+		manualStep{does: "reset HEAD back to " + sha, commands: []string{"git reset --keep " + sha}, why: why},
+		manualStep{does: "bring your changes back, staged as they were, if the stash saved any", commands: []string{"git stash pop --index"}},
+		manualStep{
+			does:     `if git answers "conflicts in index", bring them back instead, not staged as they were, and any to mint's lines as a conflict to resolve`,
+			commands: []string{"git stash pop"},
+		},
+	)
+	if len(intents) > 0 {
+		steps = append(steps, manualStep{
+			does:     "mark " + strings.Join(intents, " + ") + " as intended to add again",
+			commands: []string{"git add --intent-to-add -- " + quoteAll(literalPathspecs(intents))},
+		})
+	}
+	return steps
+}
+
+// restageStep is one git step of a restage: the paths it names on stdin, its args, and
+// the manual step that does it by hand.
+type restageStep struct {
+	paths  []string
+	args   []string
+	manual manualStep
+}
+
+// steps are the git steps that put the index back as s holds it, touching no work
+// tree: the content staged, from the tree it was written as, which holds each of
+// those paths; the deletions staged, by a removal that passes over a path the reset
+// already took out of the index, one mint's commits created; and the intent-to-add
+// marks. Each kind is a step of its own, so one failing never stops the rest.
+func (s stagedIndex) steps() []restageStep {
+	var steps []restageStep
+	if len(s.staged) > 0 {
+		steps = append(steps, restageStep{
+			paths: s.staged,
+			args:  []string{"restore", "--source=" + s.tree, "--staged"},
+			manual: manualStep{
+				does:     "stage your changes to " + strings.Join(s.staged, " + ") + " again",
+				commands: []string{"git restore --source=" + s.tree + " --staged -- " + quoteAll(literalPathspecs(s.staged))},
+			},
+		})
+	}
+	if len(s.deleted) > 0 {
+		steps = append(steps, restageStep{
+			paths: s.deleted,
+			args:  []string{"rm", "--cached", "-q", "--ignore-unmatch"},
+			manual: manualStep{
+				does:     "stage your deletion of " + strings.Join(s.deleted, " + ") + " again",
+				commands: []string{"git rm --cached -q --ignore-unmatch -- " + quoteAll(literalPathspecs(s.deleted))},
+			},
+		})
+	}
+	if len(s.intents) > 0 {
+		steps = append(steps, restageStep{
+			paths: s.intents,
+			args:  []string{"add", "--intent-to-add"},
+			manual: manualStep{
+				does:     "mark " + strings.Join(s.intents, " + ") + " as intended to add again",
+				commands: []string{"git add --intent-to-add -- " + quoteAll(literalPathspecs(s.intents))},
+			},
+		})
+	}
+	return steps
+}
+
+// unwindOutcome is how an unwind ended: whether its reset dropped mint's commits, what
+// it put back of what mint wrote or staged and no commit held, whether its tag delete
 // succeeded, whether the exclusion answers were re-committed, and whether EVERY
 // recovery mutation succeeded.
 type unwindOutcome struct {
 	reset, deleted bool
+	put            MadeState
 	answersKept    bool
 	clean          bool
 }
@@ -480,7 +850,7 @@ type unwindOutcome struct {
 // leads with a "Reverted:"-style prefix — the presenter prefixes the line with
 // "unwound", so a prefix here would double-label.
 func unwindEvent(tag string, made MadeState, outcome unwindOutcome) presenter.Unwind {
-	event := presenter.Unwind{Undone: undone(tag, made.Commits, outcome), Repo: repoState(outcome.clean), Key: stageUnwind}
+	event := presenter.Unwind{Undone: undone(tag, made, outcome), Repo: repoState(outcome.clean), Key: stageUnwind}
 	if outcome.answersKept {
 		event.Kept = answersKept
 	}
@@ -490,18 +860,45 @@ func unwindEvent(tag string, made MadeState, outcome unwindOutcome) presenter.Un
 	return event
 }
 
-// undone names what the unwind undid: the commits reset and the tag deleted, each only
-// where its step succeeded, so a step that failed is never claimed; "" where none did.
-func undone(tag string, commits int, outcome unwindOutcome) string {
-	switch {
-	case outcome.reset && outcome.deleted:
-		return fmt.Sprintf("reset %s and deleted tag %s", commitsPhrase(commits), tag)
-	case outcome.reset:
-		return "reset " + commitsPhrase(commits)
-	case outcome.deleted:
-		return "deleted tag " + tag
+// undone names what the unwind undid: the commits reset, what it restored and the tag
+// deleted, each only where its step succeeded, so a step that failed is never
+// claimed; "" where none did.
+func undone(tag string, made MadeState, outcome unwindOutcome) string {
+	var parts []string
+	if outcome.reset {
+		parts = append(parts, "reset "+commitsPhrase(made.Commits))
 	}
-	return ""
+	parts = append(parts, restoredParts(outcome.put)...)
+	if outcome.deleted {
+		parts = append(parts, "deleted tag "+tag)
+	}
+	return joinAnd(parts)
+}
+
+// restoredParts names what the unwind put back of what mint wrote or staged and no
+// commit held: pre_tag's changes it staged, the files the record stage wrote over,
+// and those it created.
+func restoredParts(made MadeState) []string {
+	var parts []string
+	if made.preTagStaged {
+		parts = append(parts, "unstaged and removed pre_tag's changes")
+	}
+	if restored := made.restored(); len(restored) > 0 {
+		parts = append(parts, "restored "+strings.Join(restored, " + "))
+	}
+	if len(made.created) > 0 {
+		parts = append(parts, "removed "+strings.Join(made.created, " + "))
+	}
+	return parts
+}
+
+// joinAnd joins parts as a sentence lists them: "a", "a and b", "a, b and c".
+func joinAnd(parts []string) string {
+	if len(parts) < 2 {
+		return strings.Join(parts, "")
+	}
+	last := len(parts) - 1
+	return strings.Join(parts[:last], ", ") + " and " + parts[last]
 }
 
 // repoState is where the unwind left the repo: "repo clean" when all recovery

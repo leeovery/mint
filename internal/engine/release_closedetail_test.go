@@ -64,9 +64,9 @@ func seedReadGates(f *runner.FakeRunner, root string) {
 func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 	t.Parallel()
 
-	captured := ScriptedOut(startingSHA)                                // rev-parse HEAD (capture the clean start)
-	recorded := []runner.ScriptedCall{ScriptedOut(""), ScriptedOut("")} // add CHANGELOG.md, commit
-	tagged := []runner.ScriptedCall{ScriptedOut("")}                    // tag -a
+	captured := ScriptedOut(startingSHA)                                                                                                   // rev-parse HEAD (capture the clean start)
+	recorded := []runner.ScriptedCall{unchangedFiles, ScriptedOut(""), headBeforeCommit, ScriptedOut(""), headAfterCommit, committedPaths} // the user-change read, add CHANGELOG.md, commit, the read of what it changed
+	tagged := []runner.ScriptedCall{ScriptedOut("")}                                                                                       // tag -a
 	tests := []struct {
 		name     string
 		config   string
@@ -107,11 +107,27 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			detail:  afterAHook,
 		},
 		{
-			name:    "pre_tag's changes staged, then their commit failing",
-			config:  preTagHookConfig,
-			git:     [][]runner.ScriptedCall{{dirtyAfterHook, ScriptedOut(""), gitFailing(commitStderr)}}, // status, add -A, commit
-			outcome: presenter.OutcomeFailed,
-			detail:  "pre_tag's changes staged, not committed · nothing pushed",
+			// The hook ran, and could have moved HEAD, so the close claims no more.
+			name:   "pre_tag's changes staged, then their commit failing, which the unwind puts back",
+			config: preTagHookConfig,
+			git: [][]runner.ScriptedCall{{
+				dirtyAfterHook, ScriptedOut(""), gitFailing(commitStderr), // status, add -A, commit
+				ScriptedOut(stagedArtifacts), // unwind: diff --cached --name-only
+				ScriptedOut(""),              // unwind: restore bundle.js
+			}},
+			outcome: presenter.OutcomeUnwound,
+			detail:  afterAHook,
+		},
+		{
+			name:   "pre_tag's changes staged, their commit failing, then a restore that fails",
+			config: preTagHookConfig,
+			git: [][]runner.ScriptedCall{{
+				dirtyAfterHook, ScriptedOut(""), gitFailing(commitStderr), // status, add -A, commit
+				ScriptedOut(stagedArtifacts), // unwind: diff --cached --name-only
+				scriptedMutateFailure(),      // unwind: restore bundle.js
+			}},
+			outcome: presenter.OutcomeUnwound,
+			detail:  "manual cleanup required · pre_tag's changes staged, not committed · nothing pushed",
 		},
 		{
 			name:     "a pre_tag hook that made its own commit, then a declined review",
@@ -127,7 +143,8 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			git: [][]runner.ScriptedCall{recorded, tagged, {
 				pushRejected(),  // push --atomic origin HEAD v0.0.1
 				ScriptedOut(""), // unwind: tag -d v0.0.1
-				ScriptedOut(""), // unwind: reset --hard
+				ScriptedOut(""), // unwind: status (nothing staged)
+				ScriptedOut(""), // unwind: reset --keep
 			}},
 			outcome: presenter.OutcomeUnwound,
 			detail:  "back where it started · nothing pushed",
@@ -160,61 +177,86 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			detail:  "nothing changed",
 		},
 		{
-			name:    "the record's writes with no commit to reset",
-			git:     [][]runner.ScriptedCall{{ScriptedOut(""), gitFailing(commitStderr)}}, // add CHANGELOG.md, commit
-			outcome: presenter.OutcomeFailed,
-			detail:  "CHANGELOG.md written, not committed · nothing pushed",
-		},
-		{
-			name:    "the record's writes, a version file among them, with no commit to reset",
-			config:  plainVersionFile,
-			git:     [][]runner.ScriptedCall{{ScriptedOut(""), gitFailing(commitStderr)}}, // add VERSION CHANGELOG.md, commit
-			outcome: presenter.OutcomeFailed,
-			detail:  "VERSION + CHANGELOG.md written, not committed · nothing pushed",
-		},
-		{
-			name:   "files the record created, never staged, that the reset leaves untracked",
-			config: preTagHookConfig + plainVersionFile,
+			name: "the record's writes staged with no commit to reset, which the unwind puts back",
 			git: [][]runner.ScriptedCall{{
-				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
-				gitFailing(stageStderr), // add VERSION CHANGELOG.md
-				ScriptedOut(""),         // unwind: reset --hard
-			}},
-			outcome: presenter.OutcomeUnwound,
-			detail:  "back where it started · VERSION + CHANGELOG.md left untracked · nothing pushed",
-		},
-		{
-			name:   "files the record created and staged, which the reset removes",
-			config: preTagHookConfig + plainVersionFile,
-			git: [][]runner.ScriptedCall{{
-				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
-				ScriptedOut(""), gitFailing(commitStderr), // add VERSION CHANGELOG.md, commit
-				ScriptedOut(""), // unwind: reset --hard
+				unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), // the user-change read, add CHANGELOG.md, HEAD, commit
+				ScriptedOut(""), // unwind: restore CHANGELOG.md
 			}},
 			outcome: presenter.OutcomeUnwound,
 			detail:  "back where it started · nothing pushed",
 		},
 		{
-			// The files were never staged, so no commit holds them, failed reset or not:
-			// they are untracked all the same.
+			name:   "the record's writes, a version file among them, staged with no commit to reset, then a restore that fails",
+			config: plainVersionFile,
+			git: [][]runner.ScriptedCall{{
+				noOtherSpelling, unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), // the spelling read, the user-change read, add CHANGELOG.md VERSION, HEAD, commit
+				scriptedMutateFailure(), // unwind: restore VERSION CHANGELOG.md
+			}},
+			outcome: presenter.OutcomeUnwound,
+			detail:  "manual cleanup required · VERSION + CHANGELOG.md written, not committed · nothing pushed",
+		},
+		{
+			// Never staged, the files mint created are removed from the disk, no git step
+			// needed.
+			name:    "files the record created, never staged, with no commit to reset",
+			config:  plainVersionFile,
+			git:     [][]runner.ScriptedCall{{noOtherSpelling, unchangedFiles, gitFailing(stageStderr), ScriptedOut("")}}, // the spelling read, the user-change read, add CHANGELOG.md VERSION, unwind: unstage them
+			outcome: presenter.OutcomeUnwound,
+			detail:  "back where it started · nothing pushed",
+		},
+		{
+			name:   "files the record created, never staged, after a commit the reset drops",
+			config: preTagHookConfig + plainVersionFile,
+			git: [][]runner.ScriptedCall{{
+				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
+				noOtherSpelling,         // the spelling read
+				unchangedFiles,          // the user-change read
+				gitFailing(stageStderr), // add VERSION CHANGELOG.md
+				ScriptedOut(""),         // unwind: unstage the files mint created
+				ScriptedOut(""),         // unwind: status (nothing staged)
+				ScriptedOut(""),         // unwind: reset --keep
+			}},
+			outcome: presenter.OutcomeUnwound,
+			detail:  "back where it started · nothing pushed",
+		},
+		{
+			name:   "files the record created and staged, put back before the reset",
+			config: preTagHookConfig + plainVersionFile,
+			git: [][]runner.ScriptedCall{{
+				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
+				noOtherSpelling, unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), // the spelling read, the user-change read, add VERSION CHANGELOG.md, HEAD, commit
+				ScriptedOut(""), // unwind: restore VERSION CHANGELOG.md
+				ScriptedOut(""), // unwind: status (nothing staged)
+				ScriptedOut(""), // unwind: reset --keep
+			}},
+			outcome: presenter.OutcomeUnwound,
+			detail:  "back where it started · nothing pushed",
+		},
+		{
 			name:   "files the record created, never staged, then a reset that fails",
 			config: preTagHookConfig + plainVersionFile,
 			git: [][]runner.ScriptedCall{{
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
+				noOtherSpelling,                 // the spelling read
+				unchangedFiles,                  // the user-change read
 				gitFailing(stageStderr),         // add VERSION CHANGELOG.md
-				scriptedMutateFailure(),         // unwind: reset --hard
+				ScriptedOut(""),                 // unwind: unstage the files mint created
+				ScriptedOut(""),                 // unwind: status (nothing staged)
+				scriptedMutateFailure(),         // unwind: reset --keep
 				ScriptedOut("9f3e2a1c4b\nmain"), // where HEAD stands
 			}},
 			outcome: presenter.OutcomeUnwound,
-			detail:  "9f3e2a1 · 1 commit not reset · manual cleanup required · VERSION + CHANGELOG.md left untracked · nothing pushed",
+			detail:  "9f3e2a1 · 1 commit not reset · manual cleanup required · nothing pushed",
 		},
 		{
 			name:   "an unwind whose reset fails",
 			config: preTagHookConfig,
 			git: [][]runner.ScriptedCall{{
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
-				ScriptedOut(""), gitFailing(commitStderr), // add CHANGELOG.md, commit
-				scriptedMutateFailure(),         // unwind: reset --hard
+				unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), // the user-change read, add CHANGELOG.md, HEAD, commit
+				ScriptedOut(""),                 // unwind: restore CHANGELOG.md
+				ScriptedOut(""),                 // unwind: status (nothing staged)
+				scriptedMutateFailure(),         // unwind: reset --keep
 				ScriptedOut("9f3e2a1c4b\nmain"), // where HEAD stands
 			}},
 			outcome: presenter.OutcomeUnwound,

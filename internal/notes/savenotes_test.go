@@ -58,23 +58,17 @@ func (ns *noteSaver) assertNothingSaved(t *testing.T, err error) {
 }
 
 // startSaving runs the scenario's generation on ctx in the background over transport,
-// saving its chunk notes to the returned saver.
-func (s chunkScenario) startSaving(t *testing.T, ctx context.Context, transport notes.Transport) (<-chan generation, *noteSaver) {
+// saving its chunk notes to the returned saver, the outcomes its wave records counted.
+func (s chunkScenario) startSaving(t *testing.T, ctx context.Context, transport notes.Transport) (<-chan generation, *noteSaver, *recordedCalls) {
 	t.Helper()
-	ns := &noteSaver{}
-	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, s.root).WithChunkNotes(ns.save)
-	done := make(chan generation, 1)
-	go func() {
-		body, err := gen.Generate(ctx, "v1.0.0", s.cfg)
-		done <- generation{body: body, err: err}
-	}()
-	return done, ns
+	ns, rec := &noteSaver{}, &recordedCalls{}
+	gen := s.generator(t, transport).WithChunkNotes(ns.save).WithCallRecorded(rec.record)
+	return s.launch(ctx, gen), ns, rec
 }
 
 func (s chunkScenario) generateSaving(t *testing.T, transport notes.Transport) (*noteSaver, error) {
 	t.Helper()
-	done, ns := s.startSaving(t, t.Context(), transport)
+	done, ns, _ := s.startSaving(t, t.Context(), transport)
 	return ns, awaitFailure(t, done)
 }
 
@@ -124,9 +118,10 @@ func TestGenerator_WaveFailsForGood_SavesTheFinishedPartsNotesInChunkOrder(t *te
 		}
 	}
 
-	done, ns := s.startSaving(t, t.Context(), et)
-	et.waitFor(t, "classify "+area(3))
-	time.Sleep(recordGrace)
+	// Parts 5 and 6 are held, so the wave records parts 1, 2 and 4's notes and part
+	// 3's failure, and only then may either finish.
+	done, ns, rec := s.startSaving(t, t.Context(), et)
+	rec.waitRecorded(t, 4)
 	close(release)
 	err := awaitFailure(t, done)
 
@@ -335,19 +330,18 @@ func TestGenerator_CtrlCWhileChunkCallsAreInFlight_SavesNothing(t *testing.T) {
 	s := capOneFilePerChunk(t, tenKBFiles(3))
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	firstReturned := make(chan struct{})
 	transport := transportFunc(func(ctx context.Context, prompt string) (string, error) {
 		if firstPath(sliceOf(prompt)) == area(1) {
-			defer close(firstReturned)
 			return chunkNotesFor(area(1)), nil
 		}
 		<-ctx.Done()
 		return "", ctx.Err()
 	})
 
-	done, ns := s.startSaving(t, ctx, transport)
-	<-firstReturned
-	time.Sleep(recordGrace)
+	// Every other call waits on the cancel, so the one outcome recorded before it is
+	// part 1's notes.
+	done, ns, rec := s.startSaving(t, ctx, transport)
+	rec.waitRecorded(t, 1)
 	cancel()
 	err := awaitFailure(t, done)
 
@@ -403,7 +397,7 @@ func TestGenerator_CtrlCAtTheMerge_SavesNothing(t *testing.T) {
 				}
 			})
 
-			done, ns := s.startSaving(t, ctx, transport)
+			done, ns, _ := s.startSaving(t, ctx, transport)
 			err := awaitFailure(t, done)
 
 			if !errors.Is(err, context.Canceled) {

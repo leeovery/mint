@@ -219,6 +219,9 @@ func (w *wave) send(ctx context.Context, slot *waveSlot, part chunkPart, prompt 
 		halves, recutErr = w.cut.recut(part, len(prompt)/2)
 	}
 
+	if w.g.callRecorded != nil {
+		defer w.g.callRecorded()
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	defer w.changed.Broadcast()

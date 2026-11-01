@@ -15,7 +15,8 @@ package engine
 //     RETURN for the changelog surface.
 //   - RECOVERY (pre-PONR) is LIGHTER than the forward surgical unwind: there is no
 //     tag to delete, so any pre-push failure just RESETS the local CHANGELOG commit
-//     back to the clean start, leaving any notes file as it was (resetTo). A gate
+//     back to the clean start, keeping every other change, a notes file's included
+//     (resetTo). A gate
 //     abort lands before the commit, and a release-only TARGET (any source) makes no
 //     commit, so neither has anything to reset.
 //   - POST-PONR a provider create/update failure AFTER the changelog push is WARN
@@ -137,11 +138,10 @@ type RegenerateWriteRequest struct {
 	// it nil. A wired deps.Regenerator OVERRIDES it (the test-injection seam), mirroring
 	// the forward path's precedence.
 	Regenerator Regenerator
-	// KeepOut is the path the changelog commit leaves out, any staged edits to it
-	// still staged afterwards.
-	KeepOut git.Exclusion
 	// LowerCap is the cap hinted after the notes, 0 for none.
 	LowerCap int
+	// KeepOut is the notes file, left out of the changelog commit's index match.
+	KeepOut git.Exclusion
 	// regens narrates each `r` and hints after its notes; chunkNotes keeps the version's
 	// chunk notes, saving those of a failed `r`. With either nil, an `r` is neither
 	// narrated nor hinted and keeps nothing.
@@ -326,7 +326,7 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 	if err != nil {
 		return false, surface(p, stageRecord, err)
 	}
-	start := resetTarget{HEAD: startingHEAD, KeepOut: req.KeepOut}
+	start := resetTarget{HEAD: startingHEAD, Root: root}
 
 	// Recover the version's ORIGINAL historical date from the tag metadata so the
 	// healed `## [x.y.z] - <date>` header keeps its original date, not today.
@@ -335,14 +335,18 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 		return false, surface(p, stageRecord, err)
 	}
 
+	// A change the user made to CHANGELOG.md while the run waited stops it before the
+	// write, which would take the change into mint's commit.
+	if err := refuseUserChanges(ctx, deps.Mutator, root, record.ChangelogFileName); err != nil {
+		return false, surface(p, stageRecord, err)
+	}
 	// The write may leave CHANGELOG.md changed, so the close claims no more than the
 	// recovery below can name.
 	deps.run.Left(noClaim)
 	committed, err := RegenerateChangelog(ctx, deps.Mutator, root, req.VersionKey, req.Tag, date, body, req.KeepOut)
-	if err != nil {
-		// A failed write/stage/commit makes no commit, but a partial commit could have
-		// landed before a later step; reset iff one did, then abort. (RegenerateChangelog
-		// returns committed=false on a failed stage/commit, so the reset no-ops there.)
+	if err = warnIndexBehind(p, root, stageRecord, err); err != nil {
+		// A failed write, stage or commit makes no commit (committed is false): a failed
+		// stage or commit leaves the rewrite, which resetAndAbort puts back.
 		return false, resetAndAbort(ctx, deps, start, committed, stageFailure(stageRecord, err), err)
 	}
 	if !committed {
@@ -370,26 +374,29 @@ func startChangelogNode(deps ReleaseDeps, text string) *blockingStage {
 
 // stageAndCommitChangelog is the SHARED regenerate stage+commit half both the
 // single-version (RegenerateChangelog) and batch (commitAndPushRebuild) paths invoke to
-// land a CHANGELOG commit: it runs `git -C {root} add CHANGELOG.md` then commits the
-// index under subject through the lock-resilient Mutator, parameterised by subject so
-// each path keeps its own commit subject. A keepOut path is left out of the commit, any
-// staged edits to it still staged afterwards (record.CommitStaged). A failed step
-// short-circuits (a failed stage never reaches the commit) and the returned error names
-// which step failed (`staging …` / `committing …`) so each caller can apply its own
-// distinct error-recovery to the returned error — the single-version path wraps it with
-// the tag, the batch path routes it through resetAndAbort. Keeping the stage/commit
-// idiom here means the two regenerate paths can no longer drift on the stage/commit half
-// (the mirror of pushChangelogCommit owning the push/recovery half).
-func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject string, keepOut git.Exclusion) error {
+// land a CHANGELOG commit: it runs `git -C {root} add CHANGELOG.md` then commits that
+// path alone under subject through the lock-resilient Mutator, parameterised by subject
+// so each path keeps its own commit subject. Whatever else the index holds, a notes
+// file's edits or the user's own, stays staged and out of it (record.CommitPaths),
+// and keepOut, the notes file, out of the index match after it too. A failed step
+// short-circuits (a failed stage never reaches the commit) and the returned
+// *uncommittedChangelog names which step failed (`staging …` / `committing …`) and
+// carries what resetAndAbort needs to put the rewrite back: created, whether the
+// rewrite created the file, and whether the stage went through. A commit that landed
+// with the index left behind it is a *record.IndexBehindError. Each caller wraps it
+// with its own context. Keeping the stage/commit idiom here means the two regenerate
+// paths can no longer drift on the stage/commit half (the mirror of
+// pushChangelogCommit owning the push/recovery half).
+func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject string, created bool, keepOut git.Exclusion) error {
 	if res, err := m.Mutate(ctx, nil, "git", "-C", root, "add", record.ChangelogFileName); err != nil {
-		return fmt.Errorf("staging %s: %w", record.ChangelogFileName, record.NewGitError(res.Stderr, err))
+		return &uncommittedChangelog{err: fmt.Errorf("staging %s: %w", record.ChangelogFileName, record.NewGitError(res.Stderr, err)), created: created}
 	}
-	committed, err := record.CommitStaged(ctx, m, root, subject, keepOut)
-	if err != nil {
-		return fmt.Errorf("committing %q: %w", subject, err)
-	}
-	if !committed {
-		return fmt.Errorf("committing %q: %w", subject, record.ErrNothingStaged)
+	if err := record.CommitPaths(ctx, m, root, subject, []string{record.ChangelogFileName}, keepOut); err != nil {
+		var behind *record.IndexBehindError
+		if errors.As(err, &behind) {
+			return behind
+		}
+		return &uncommittedChangelog{err: fmt.Errorf("committing %q: %w", subject, err), created: created, staged: true}
 	}
 	return nil
 }
@@ -423,20 +430,45 @@ func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarge
 // local CHANGELOG commit back to start when a commit landed (resetTo — no tag,
 // best-effort), narrates the reset as the rail's unwind, Quiet as plain has no line
 // for it, tells the run's close where that left the repo, and returns the abort on
-// cause. With no commit made the reset is skipped, and a CHANGELOG.md rewritten but
-// not committed is what the run leaves; a write that failed before that leaves the
-// close claiming nothing. The ✗ line carries the failure's message, the failing git
-// step's stderr verbatim beneath it.
+// cause. With no commit made there is no reset: a CHANGELOG.md rewritten but not
+// committed is put back (putBackChangelog), and a write that failed before that leaves
+// the close claiming nothing. The ✗ line carries the failure's message, the failing
+// git step's stderr verbatim beneath it.
 func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, committed bool, failure presenter.StageFailure, cause error) error {
 	deps.Presenter.StageFailed(failure)
 	var uncommitted *uncommittedChangelog
-	if errors.As(cause, &uncommitted) {
-		deps.run.Left(record.ChangelogFileName + notCommitted + " · " + nothingPushed)
-	}
-	if committed {
+	switch {
+	case committed:
 		resetChangelogCommit(ctx, deps, start)
+	case errors.As(cause, &uncommitted):
+		putBackChangelog(ctx, deps, start.Root, uncommitted)
 	}
 	return abort(cause)
+}
+
+// putBackChangelog returns a CHANGELOG.md the regenerate rewrote and never committed
+// to HEAD's content, in the index and the work tree, or removes it where the rewrite
+// created it, touching no other path and leaving HEAD where it stands. Like the reset
+// it runs as recovery past a cancellation, and is narrated as the rail's unwind,
+// Quiet as plain has no line for it. A failure warns with the manual step, and the
+// close says the rewrite is still there.
+func putBackChangelog(ctx context.Context, deps ReleaseDeps, root string, left *uncommittedChangelog) {
+	ctx = context.WithoutCancel(ctx)
+	file := []string{record.ChangelogFileName}
+	tracked, untracked, undone := file, []string(nil), "restored "+record.ChangelogFileName
+	if left.created {
+		undone = "removed " + record.ChangelogFileName
+		if !left.staged {
+			tracked, untracked = nil, file
+		}
+	}
+	if len(putBack(ctx, deps, root, tracked, untracked, left.staged)) > 0 {
+		deps.Presenter.Unwound(presenter.Unwind{Key: stageUnwind, Quiet: true})
+		deps.run.Unwound(manualCleanup + " · " + record.ChangelogFileName + notCommitted + " · " + nothingPushed)
+		return
+	}
+	deps.Presenter.Unwound(presenter.Unwind{Undone: undone, Key: stageUnwind, Quiet: true})
+	deps.run.Unwound(backWhereItStarted + " · " + nothingPushed)
 }
 
 // resetChangelogCommit resets the changelog commit a failure left back to start.
@@ -447,31 +479,24 @@ func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, com
 // signal, so the changelog commit is rolled back and the repo left clean — the
 // regenerate sibling of the forward Unwind's cancellation resilience.
 //
-// A failed reset is not swallowed: it surfaces a manual-cleanup Warn naming the step
-// the user must run, and why: where HEAD has already left the commit, only the
-// commit's changes are left to drop. Where it never left it, the close names where
-// HEAD stands.
+// The reset takes back exactly what the changelog commit changed and keeps every other
+// change in the tree, staged or not (see resetTo). A failed reset is not swallowed: it
+// surfaces a manual-cleanup Warn naming the step the user must run, and the close
+// names where HEAD stands, never having left the commit; a failure to put the index
+// back as it held the user's changes warns the same way, HEAD back at the start.
 func resetChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarget) {
 	ctx = context.WithoutCancel(ctx)
-	moved, manual, output, err := resetTo(ctx, deps.Mutator, start)
-	event := presenter.Unwind{Key: stageUnwind, Quiet: true}
-	if moved {
-		event.Undone = "reset the changelog commit"
-	}
+	staged, manual, output, err := resetTo(ctx, deps.Mutator, start, "to drop the leftover changelog commit")
 	if err != nil {
-		manual.why = "to drop the leftover changelog commit"
-		if moved {
-			manual.why = "to drop the changelog commit's leftover changes"
-		}
-		warnUnwindIncomplete(deps.Presenter, output, manual)
-	}
-	deps.Presenter.Unwound(event)
-	switch {
-	case err != nil && !moved:
+		warnUnwindIncomplete(deps.Presenter, output, manual...)
+		deps.Presenter.Unwound(presenter.Unwind{Key: stageUnwind, Quiet: true})
 		strandedAt(ctx, deps, "the changelog commit not reset", manualCleanup+" · "+nothingPushed)
 		return
-	case err != nil:
-		deps.run.Unwound(manualCleanup + " · " + nothingPushed)
+	}
+	restaged := restageIfReset(ctx, deps, staged)
+	deps.Presenter.Unwound(presenter.Unwind{Undone: "reset the changelog commit", Key: stageUnwind, Quiet: true})
+	if !restaged {
+		deps.run.Unwound(backWhereItStarted + " · " + manualCleanup + " · " + nothingPushed)
 		return
 	}
 	deps.run.Unwound(backWhereItStarted + " · " + nothingPushed)

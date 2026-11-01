@@ -59,6 +59,7 @@ func regenChangelogWrite() []runner.ScriptedCall {
 	return []runner.ScriptedCall{
 		ScriptedOut("startHEAD"),          // rev-parse HEAD
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // -C root add CHANGELOG.md
 	}
 }
@@ -69,8 +70,11 @@ func seedRegenNotesFileGit(f *runner.FakeRunner) {
 	f.SeedSequence("git", regenChangelogGates("")...)
 	f.SeedSequence("git", regenChangelogWrite()...)
 	f.SeedSequence("git",
-		ScriptedOut(""), // -C root commit -m
-		ScriptedOut(""), // push origin HEAD
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // push origin HEAD
 	)
 	f.Seed("gh", runner.Result{}, nil)
 }
@@ -364,12 +368,9 @@ func TestRegenerateRun_NotesFile_InRepoFileIsKeptOutOfTheChangelogGitSteps(t *te
 	const subject = "docs(changelog): regenerate notes for " + regenRunTag
 	tests := []struct {
 		name string
-		// notesStaged is the staged-edit probe's output for the notes file.
-		notesStaged string
 	}{
 		{name: "an untracked file"},
-		{name: "a tracked file with unstaged edits"},
-		{name: "a tracked file with staged edits", notesStaged: "notes.md\x00"},
+		{name: "a tracked file"},
 	}
 
 	for _, tt := range tests {
@@ -383,8 +384,8 @@ func TestRegenerateRun_NotesFile_InRepoFileIsKeptOutOfTheChangelogGitSteps(t *te
 			f.SeedSequence("git", ScriptedOut("")) // ls-files --ignored (not ignored)
 			f.SeedSequence("git", regenChangelogGates("")...)
 			f.SeedSequence("git", regenChangelogWrite()...)
-			f.SeedSequence("git", keepOutCommit(tt.notesStaged, stagedChangelog)...)
-			f.SeedSequence("git", ScriptedOut("")) // push origin HEAD
+			f.SeedSequence("git", headBeforeCommit, ScriptedOut(""), headAfterCommit, committedPaths) // -C root commit of CHANGELOG.md, the read of the paths it changed
+			f.SeedSequence("git", ScriptedOut(""))                                                    // push origin HEAD
 			f.Seed("gh", runner.Result{}, nil)
 			pub := newFakePublisher()
 			pub.seedExists(regenRunTag, true, nil)
@@ -395,12 +396,11 @@ func TestRegenerateRun_NotesFile_InRepoFileIsKeptOutOfTheChangelogGitSteps(t *te
 			}
 
 			assertGitArgs(t, f, 2, []string{"status", "--porcelain", "--", excludePathspec("notes.md")})
-			if tt.notesStaged == "" {
-				assertCommitAsBuilt(t, f, root, "notes.md", subject)
-			} else {
-				assertCommitKeepsNotesOut(t, f, root, "notes.md", subject, committedChangelog)
-			}
+			assertPathsCommitted(t, f, root, subject, "CHANGELOG.md")
 			assertNotesFileOnlyExcluded(t, f, "notes.md")
+			if lines := stepLines(f); !slices.Contains(lines, committedPathsRead(root, "notes.md")) {
+				t.Errorf("git steps = %q, want the read of the paths the commit changed less the notes file %q", lines, committedPathsRead(root, "notes.md"))
+			}
 			if resetIssued(f) {
 				t.Errorf("a git reset ran after a successful regenerate")
 			}

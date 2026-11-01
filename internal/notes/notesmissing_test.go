@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"mint/internal/notes"
 )
@@ -75,9 +74,9 @@ func TestGenerator_WaveEnds_MissingFilesIncludeUnstartedPartsAndCallsThatFailedA
 		}
 	}
 
-	done, ns := s.startSaving(t, t.Context(), et)
-	et.waitFor(t, "classify "+area(1))
-	time.Sleep(recordGrace)
+	// Every other part in flight is held, so the first outcome recorded is part 1's.
+	done, ns, rec := s.startSaving(t, t.Context(), et)
+	rec.waitRecorded(t, 1)
 	close(release)
 	err := awaitFailure(t, done)
 

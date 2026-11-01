@@ -53,10 +53,10 @@ func TestProbeArgv_IsL1SourceCommandMinusExcludesPlusNumstat(t *testing.T) {
 
 	// Tracked (diff source): probe = command + `--numstat`, NO excludes; L1 = command +
 	// `:(exclude)…`.
-	if got, want := trackedProbeArgs(), []string{"diff", "HEAD", "--numstat", "--", "."}; !argsEqual(got, want) {
+	if got, want := trackedProbeArgs(headRef), []string{"diff", "HEAD", "--numstat", "--", "."}; !argsEqual(got, want) {
 		t.Errorf("trackedProbeArgs = %v, want the command + --numstat with NO excludes %v", got, want)
 	}
-	if got, want := sourceArgs(trackedBaseArgs(), exclude), []string{"diff", "HEAD", "--", ".", ":(exclude)*.min.js"}; !argsEqual(got, want) {
+	if got, want := sourceArgs(trackedBaseArgs(headRef), exclude), []string{"diff", "HEAD", "--", ".", ":(exclude)*.min.js"}; !argsEqual(got, want) {
 		t.Errorf("tracked L1 sourceArgs = %v, want %v", got, want)
 	}
 
@@ -86,7 +86,7 @@ func TestProbeArgv_DerivesFromSharedBase(t *testing.T) {
 		got  []string
 	}{
 		{"staged", stagedBaseArgs(), stagedProbeArgs()},
-		{"tracked", trackedBaseArgs(), trackedProbeArgs()},
+		{"tracked", trackedBaseArgs(headRef), trackedProbeArgs(headRef)},
 	} {
 		// The diff probe must be the base with exactly one extra element, `--numstat`,
 		// and the verb/refspec/selector must be the SAME elements (no re-spelling).
@@ -195,7 +195,7 @@ func TestEmptinessVerdictAgreesWithL1Source_PerMode(t *testing.T) {
 			// Emptiness verdict via the preflight path.
 			rp := runner.NewFakeRunner()
 			rp.SeedSequence("git", scriptedResults(tc.probeOut)...)
-			_, found, err := readDiffStat(ctx, rp, "", tc.mode)
+			_, found, err := readDiffStat(ctx, rp, "", tc.mode, headRef)
 			if err != nil {
 				t.Fatalf("readDiffStat returned error: %v", err)
 			}
@@ -241,7 +241,7 @@ func TestProbeArgs_MatchesNamedBuilders(t *testing.T) {
 		want []string
 	}{
 		{"staged", sourceSpec{base: stagedBaseArgs(), kind: diffSource}, stagedProbeArgs()},
-		{"tracked", sourceSpec{base: trackedBaseArgs(), kind: diffSource}, trackedProbeArgs()},
+		{"tracked", sourceSpec{base: trackedBaseArgs(headRef), kind: diffSource}, trackedProbeArgs(headRef)},
 		{"untracked", sourceSpec{base: untrackedBaseArgs(), kind: untrackedListSource}, untrackedProbeArgs()},
 	} {
 		if got := probeArgs(tc.spec); !argsEqual(got, tc.want) {

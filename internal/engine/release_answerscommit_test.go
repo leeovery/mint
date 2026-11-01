@@ -36,9 +36,10 @@ var (
 	configIgnored    = ScriptedOut("")
 )
 
-// answersCommitCalls is git's answers to whether it ignores .mint.toml, then to
-// staging and committing it.
-var answersCommitCalls = []runner.ScriptedCall{configNotIgnored, ScriptedOut(""), ScriptedOut("")}
+// answersCommitCalls is git's answers to whether the user changed .mint.toml and
+// whether it ignores the file, then to staging and committing it, and to the read of
+// the paths the commit changed.
+var answersCommitCalls = []runner.ScriptedCall{unchangedFiles, configNotIgnored, ScriptedOut(""), headBeforeCommit, ScriptedOut(""), headAfterCommit, committedPaths}
 
 // withAnswersCommit is git's answers to a release whose pauses follow the first of
 // calls: the notes diff they ask about, the answers commit, then the rest of calls.
@@ -89,12 +90,16 @@ func TestRelease_AnswersCommit_SitsBetweenTheArtifactCommitAndTheBookkeepingComm
 	if got := commitSubjectsIn(f, root); !slices.Equal(got, want) {
 		t.Fatalf("commits = %q, want %q", got, want)
 	}
-	answersAt := indexOfCmd(f, "git", "-C", root, "commit", "-m", answersSubject(tag))
-	if stage := f.Invocations()[answersAt-1]; commandLine(stage) != commandLine(runner.Invocation{Name: "git", Args: []string{"-C", root, "add", config.FileName}}) {
-		t.Errorf("the call before the answers commit = %q, want .mint.toml staged by path alone", commandLine(stage))
+	// Each of mint's own commits names its paths alone; the pre_tag artifact commit
+	// alone takes what the index holds, as `add -A` staged it.
+	assertPathsCommitted(t, f, root, answersSubject(tag), config.FileName)
+	assertPathsCommitted(t, f, root, "🌿 Release "+tag, "CHANGELOG.md")
+	answersAt := indexOfCmd(f, "git", pathsCommit(root, answersSubject(tag))...)
+	if stage := f.Invocations()[answersAt-2]; commandLine(stage) != commandLine(runner.Invocation{Name: "git", Args: []string{"-C", root, "add", config.FileName}}) {
+		t.Errorf("the call before the answers commit's read of HEAD = %q, want .mint.toml staged by path alone", commandLine(stage))
 	}
 	pushAt := indexOfCmd(f, "git", "push", "--atomic", "origin", "HEAD", tag)
-	bookkeepingAt := indexOfCmd(f, "git", "-C", root, "commit", "-m", "🌿 Release "+tag)
+	bookkeepingAt := indexOfCmd(f, "git", pathsCommit(root, "🌿 Release "+tag)...)
 	if pushAt == -1 || pushAt < bookkeepingAt {
 		t.Errorf("the atomic push (at %d) does not follow the three commits (bookkeeping at %d)", pushAt, bookkeepingAt)
 	}
@@ -180,7 +185,7 @@ func TestRelease_AFailedAnswersCommit_NarratesNoAnswersLine(t *testing.T) {
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
 	_, _, err := answeredRelease(t, rec, "",
-		[]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), configNotIgnored, ScriptedOut(""), ScriptedNonZero()},
+		[]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), unchangedFiles, configNotIgnored, ScriptedOut(""), headBeforeCommit, ScriptedNonZero()},
 		"docs/design/: design documents\n", aiBody)
 	if err == nil {
 		t.Fatal("Release succeeded with the answers commit failing")

@@ -59,8 +59,12 @@ func TestRegenerateWrite_NilPublisher_Both_StillWritesChangelogSkipsProvider(t *
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // commit
+		headAfterCommit,                   // HEAD after it
+		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}

@@ -3,7 +3,7 @@ package commit
 // This file holds commit's REUSABLE editor file-roundtrip routine — the way the
 // "no AI message" fallback cases and the gate's `e` action open an editor against a
 // temp file. It MIRRORS the engine's EditorLauncher.Edit precedent (temp file →
-// strings.Fields argv + path → RunInteractive → read-back, bracketed by the
+// argv + path → RunInteractive → read-back, bracketed by the
 // presenter's spinner suspend/resume) WITHOUT importing the engine's release-coupled
 // policy: editor resolution comes from commit's own ResolveEditor (git's full
 // precedence via `git var GIT_EDITOR`), and the routine itself NEVER stages or
@@ -21,6 +21,7 @@ import (
 	"os"
 	"strings"
 
+	"mint/internal/cmdline"
 	"mint/internal/presenter"
 	"mint/internal/runner"
 )
@@ -38,9 +39,11 @@ import (
 //   - Aborted/quit editor (a launched-but-failed run, e.g. `:cq`) → ("", false, nil):
 //     a NO-OP signal, NOT an error, so the caller treats it as a true no-op rather
 //     than routing it to fail-loud.
-//   - Missing/unlaunchable editor (ErrNoEditor from resolution, or
-//     runner.ErrCommandNotFound from the launch) → ("", false, err): SURFACED to the
-//     caller (matched via errors.Is). Routing that to fail-loud is task 3-5, NOT here.
+//   - Missing/unlaunchable editor (ErrNoEditor from resolution, or an
+//     *editorOpenError: a command that can't be split, or a launch failing with
+//     runner.ErrCommandNotFound or runner.ErrNotStarted) → ("", false, err):
+//     SURFACED to the caller (see editorUnopenable). Routing that to fail-loud is
+//     task 3-5, NOT here.
 //   - A genuine IO failure (temp-file write/read) → ("", false, err).
 //
 // The terminal hand-off is bracketed by the presenter's SuspendSpinner before the
@@ -54,6 +57,16 @@ func OpenEditor(ctx context.Context, r runner.CommandRunner, p presenter.Present
 		// caller (3-5 routes it to fail-loud / graceful-degrade). Nothing is opened.
 		return "", false, err
 	}
+	// The value may carry quoting and args ("'/Applications/Sublime Text.app/…/subl'
+	// -w"): it is split as a POSIX shell splits words, but run with no shell, so
+	// nothing else in it is expanded. The buffer travels via the file, never stdin.
+	words, err := cmdline.Split(editor)
+	if err != nil {
+		return "", false, &editorOpenError{command: editor, err: err}
+	}
+	if len(words) == 0 {
+		return "", false, ErrNoEditor
+	}
 
 	tmpPath, err := writeEditorTempFile(initial)
 	if err != nil {
@@ -63,12 +76,8 @@ func OpenEditor(ctx context.Context, r runner.CommandRunner, p presenter.Present
 	// useful to go and a leaked temp file is harmless, so it is deliberately discarded.
 	defer func() { _ = os.Remove(tmpPath) }()
 
-	// The resolved value may carry args (e.g. "code --wait"): split on whitespace into
-	// program + args and append the temp path as the FINAL arg. The buffer travels via
-	// the file, never stdin.
-	fields := strings.Fields(editor)
-	name := fields[0]
-	args := append(fields[1:], tmpPath)
+	name := words[0]
+	args := append(words[1:], tmpPath)
 
 	// Bracket the terminal hand-off: stop the spinner before the editor takes the
 	// terminal, restart it afterwards (deferred so it runs even on a launch error).
@@ -76,10 +85,11 @@ func OpenEditor(ctx context.Context, r runner.CommandRunner, p presenter.Present
 	defer p.ResumeSpinner()
 
 	if launchErr := r.RunInteractive(ctx, name, args...); launchErr != nil {
-		// A missing binary is surfaced to the caller (3-5 routes it); it is NOT the same
-		// as a quit/abort and must not be swallowed as a no-op.
-		if errors.Is(launchErr, runner.ErrCommandNotFound) {
-			return "", false, fmt.Errorf("launching editor %q: %w", name, launchErr)
+		// An editor that is missing or never started is surfaced to the caller (3-5
+		// routes it); it is NOT the same as a quit/abort and must not be swallowed as a
+		// no-op.
+		if errors.Is(launchErr, runner.ErrCommandNotFound) || errors.Is(launchErr, runner.ErrNotStarted) {
+			return "", false, &editorOpenError{command: editor, words: words, err: launchErr}
 		}
 		// Any other launch failure is a quit/abort (the editor ran and exited non-zero):
 		// report a non-normal exit as a NO-OP signal, not an error.
@@ -91,6 +101,43 @@ func OpenEditor(ctx context.Context, r runner.CommandRunner, p presenter.Present
 		return "", false, fmt.Errorf("reading edited message: %w", err)
 	}
 	return string(saved), true, nil
+}
+
+// editorOpenError is the editor command git named that could not be opened, err
+// saying why: it can't be split into words (words nil), or the program it names is
+// missing or never started.
+type editorOpenError struct {
+	command string
+	words   []string
+	err     error
+}
+
+func (e *editorOpenError) Error() string {
+	if e.words == nil {
+		return fmt.Sprintf("reading editor command %q: %v", e.command, e.err)
+	}
+	return fmt.Sprintf("launching editor %q: %v", e.words[0], e.err)
+}
+
+func (e *editorOpenError) Unwrap() error { return e.err }
+
+// shellOnly reports whether the command leans on a shell mint doesn't run: a word
+// opening with ~, or holding a $.
+func (e *editorOpenError) shellOnly() bool {
+	for _, word := range e.words {
+		if strings.HasPrefix(word, "~") || strings.Contains(word, "$") {
+			return true
+		}
+	}
+	return false
+}
+
+// editorUnopenable reports whether err is OpenEditor saying no editor could be
+// opened: git names none, or the command it names can't be split, or names a
+// program that is missing or never started.
+func editorUnopenable(err error) bool {
+	var unopened *editorOpenError
+	return errors.Is(err, ErrNoEditor) || errors.As(err, &unopened)
 }
 
 // writeEditorTempFile writes body to a fresh "mint-commit-*.txt" temp file and

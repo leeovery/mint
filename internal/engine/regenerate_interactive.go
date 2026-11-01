@@ -308,8 +308,8 @@ func regenerateRun(ctx context.Context, deps ReleaseDeps, resolve PublisherResol
 		VersionKey:  req.VersionKey,
 		Body:        body,
 		Regenerator: produceRegenerator(req.ProduceRegenerator, source, chunkNotes.regenRun(regens)),
-		KeepOut:     keepOut,
 		LowerCap:    stage.lowerCap(),
+		KeepOut:     keepOut,
 		regens:      regens,
 		chunkNotes:  chunkNotes,
 	})

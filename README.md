@@ -107,7 +107,7 @@ Cuts a release. An attended run asks you twice: once to confirm the version, onc
 3. **Build.** The `pre_tag` hook runs, and whatever it leaves in the tree is committed as `chore(release): pre-tag artifacts for v1.4.1`.
 4. **Write the notes.** Mint checks for [files that don't belong in the notes](#files-that-dont-belong-in-the-notes), then the AI writes the notes from the diff since the last tag.
 5. **Review.** The notes review gate shows you the notes.
-6. **Record.** The new version goes into `version_file` and the notes into `CHANGELOG.md`, committed together as `🌿 Release v1.4.1`.
+6. **Record.** The new version goes into `version_file` and the notes into `CHANGELOG.md`, committed together as `🌿 Release v1.4.1`. If you changed either file while mint ran, it stops before writing, so your change is never overwritten.
 7. **Tag and push.** Mint tags and pushes the branch and the tag in one `git push --atomic`. This is the point of no return.
 8. **Publish.** The GitHub release is created, then the `post_release` hook runs.
 
@@ -216,7 +216,9 @@ Short flags bundle: `-Ap`, `-Apy` and `-ay` all work. `-a` and `-A` can't be com
 
 At the gate: **`y`** accept (Enter also accepts), **`n`** abort, **`e`** edit in your editor (back to the gate after), **`r`** regenerate, with an optional line of extra context. At a terminal each is a single keypress; with `--plain` or piped output, type the key and press Enter. Ctrl-C aborts.
 
-When there's no AI message to show (`--no-ai`, a failed or timed-out AI call, a prompt over `max_prompt_bytes`, a diff that `diff_exclude` empties, or a failed `r`), mint opens your editor on an empty message, and saving it is the accept. An empty save aborts. The editor is git's: `GIT_EDITOR`, `core.editor`, `$VISUAL`, `$EDITOR`, then `vi`. An unattended run with no message to commit fails instead.
+A repo's first commit asks no AI: its diff is the whole repo, so mint proposes `Initial commit` at the same gate, and `r` asks the AI for a message instead.
+
+When there's no AI message to show (`--no-ai`, a failed or timed-out AI call, a prompt over `max_prompt_bytes`, a diff that `diff_exclude` empties, or a failed `r`), mint opens your editor on an empty message, and saving it is the accept. An empty save aborts. The editor is git's: `GIT_EDITOR`, `core.editor`, `$VISUAL`, `$EDITOR`, then `vi`. An unattended run with no message to commit fails instead, and so does a run whose editor can't be opened, saying why and how to go on.
 
 `-p` runs a plain `git push` after the commit. If the push fails, mint keeps the commit, shows git's own error, and exits `1`.
 
@@ -524,7 +526,7 @@ A command with no quotes or backslashes splits exactly as it always has, on runs
 ## Safety Model
 
 - **Mutate nothing until accept.** `mint commit` works out the would-be-committed diff read-only; staging (`git add`) happens only after you accept. Declining is a true no-op.
-- **Surgical unwind before the point of no return.** Everything `mint release` does before the atomic push is tracked. On any failure or abort before the push (Ctrl-C included), mint resets its own commits, deletes its tag and restores your autostash, never touching your work, and reports exactly what it undid. The one exception is the exclusion check's answers: once recorded, their commit stays on the branch, re-committed on the starting commit, and the unwind says it kept it; where git ignores an untracked `.mint.toml`, their uncommitted write is left in place.
+- **Surgical unwind before the point of no return.** Everything `mint release` does before the atomic push is tracked. On any failure or abort before the push (Ctrl-C included), mint resets its own commits and whatever it wrote or staged that no commit holds yet (the changelog, the version file, `pre_tag`'s artifacts), deletes its tag and restores your autostash, keeping every change you made while it ran, staged or not, and reports exactly what it undid. Where you changed a file one of its commits changed, git refuses the reset, so mint leaves its commits in place, loses nothing of yours, and says what to run. The one exception is the exclusion check's answers: once recorded, their commit stays on the branch, re-committed on the starting commit, and the unwind says it kept it; where git ignores an untracked `.mint.toml`, their uncommitted write is left in place.
 - **One atomic push.** Branch and tag go up in a single `git push --atomic`; there's no moment where the tag exists without its commit.
 - **Never unwind after the push.** A failed GitHub release or `post_release` hook only warns, and the release stands. A failed `mint commit -p` push keeps the commit.
 - **Lock-resilient mutations.** Every `git` mutation retries a held `.git` lock and clears provably stale ones.

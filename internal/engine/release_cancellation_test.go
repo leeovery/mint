@@ -34,7 +34,7 @@ func TestRelease_CancelledBeforePush_Surgical_Resets(t *testing.T) {
 	// leaving it positioned at the conditional gh-auth gate / tag / push. The unwind
 	// then resets the one tracked commit.
 	seedHappyGitThroughCommit(f, root, "main", "v0.0.1")
-	f.SeedSequence("git", ScriptedOut("")) // unwind: reset --hard startingSHA
+	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: status (nothing staged), reset --keep startingSHA
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -52,7 +52,7 @@ func TestRelease_CancelledBeforePush_Surgical_Resets(t *testing.T) {
 		t.Errorf("a cancelled context crossed the PONR; the atomic push must never run; got %v", commandLines(f.Invocations()))
 	}
 	// The surgical unwind reset the one tracked bookkeeping commit back to the clean start.
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if !invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("cancellation before the push did not run the surgical unwind reset; got %v", commandLines(f.Invocations()))
 	}
 	// No tag was created before the cancellation, so none is deleted.
@@ -78,7 +78,8 @@ func TestRelease_CancelledBeforePush_Autostash_UnwindsThenPops(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedAutostashThroughTag(f, root, "main", "v0.0.1")
 	f.SeedSequence("git",
-		ScriptedOut(""), // unwind: reset --hard startingSHA
+		ScriptedOut(""), // unwind: status (nothing staged)
+		ScriptedOut(""), // unwind: reset --keep startingSHA
 		stashPopped(),   // stash pop on TOP of the clean state
 	)
 	f.Seed("gh", runner.Result{}, nil)
@@ -94,7 +95,7 @@ func TestRelease_CancelledBeforePush_Autostash_UnwindsThenPops(t *testing.T) {
 	if invokedWith(f, "git", "push", "--atomic", "origin", "HEAD", "v0.0.1") {
 		t.Errorf("a cancelled context crossed the PONR; the atomic push must never run; got %v", commandLines(f.Invocations()))
 	}
-	resetAt := indexOfCmd(f, "git", "reset", "--hard", startingSHA)
+	resetAt := indexOfCmd(f, "git", "reset", "--keep", startingSHA)
 	popAt := indexOfCmd(f, "git", "stash", "pop")
 	if resetAt == -1 {
 		t.Fatalf("cancellation did not run the surgical unwind reset; got %v", commandLines(f.Invocations()))

@@ -10,6 +10,9 @@ package engine_test
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"mint/internal/engine"
@@ -75,13 +78,22 @@ func seedNormalAINotes(f *runner.FakeRunner) {
 
 // seedRecordTagPush scripts the mutation tail shared by the prior-tag happy paths:
 // the bookkeeping commit, the annotated tag, and the atomic push. The gh auth +
-// release create are seeded by the caller on the "gh" timeline.
+// release create are seeded by the caller on the "gh" timeline. Where root's config,
+// written first, sets a version_file, the record stage reads how git spells it ahead
+// of the rest.
 func seedRecordTagPush(f *runner.FakeRunner, root string) {
+	if config, err := os.ReadFile(filepath.Join(root, ".mint.toml")); err == nil && strings.Contains(string(config), "version_file") {
+		f.SeedSequence("git", noOtherSpelling)
+	}
 	f.SeedSequence("git",
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit -m
-		ScriptedOut(""), // tag -a v1.2.4 -F -
-		ScriptedOut(""), // push --atomic origin HEAD v1.2.4
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // -C root add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // tag -a v1.2.4 -F -
+		ScriptedOut(""),  // push --atomic origin HEAD v1.2.4
 	)
 }
 
@@ -392,7 +404,7 @@ func TestRelease_PriorTag_GateAccept_ProceedsToRecord(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release "+nextTag) {
+	if !invokedWith(f, "git", pathsCommit(root, "🌿 Release "+nextTag)...) {
 		t.Errorf("gate accept did not reach Record (no bookkeeping commit)")
 	}
 	if !invokedWith(f, "git", "tag", "-a", "--cleanup=verbatim", nextTag, "-F", "-") {
@@ -431,7 +443,7 @@ func TestRelease_PriorTag_GateAbort_LeavesRepoClean(t *testing.T) {
 	if recorded(rec, presentertest.KindUnwound) {
 		t.Errorf("prior-tag gate-no before any mutation emitted an Unwound; nothing was made to undo")
 	}
-	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+	if invokedWith(f, "git", "reset", "--keep", startingSHA) {
 		t.Errorf("prior-tag gate-no issued a `git reset`; nothing to reset")
 	}
 	assertNoMutation(t, f)

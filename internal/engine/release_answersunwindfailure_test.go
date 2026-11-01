@@ -54,10 +54,14 @@ func assertUnwoundWithOneWarning(t *testing.T, rec *presentertest.RecordingPrese
 // push, leaving the answers commit one below the tip.
 func pushRejectedAfterTheTag() []runner.ScriptedCall {
 	return []runner.ScriptedCall{
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit -m
-		ScriptedOut(""), // tag -a v1.3.0 -F -
-		pushRejected(),  // push --atomic origin HEAD v1.3.0
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // -C root add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // tag -a v1.3.0 -F -
+		pushRejected(),   // push --atomic origin HEAD v1.3.0
 	}
 }
 
@@ -65,7 +69,8 @@ func pushRejectedAfterTheTag() []runner.ScriptedCall {
 var answersCommitRead = ScriptedOut(answersSHA + "\n")
 
 // assertAnswersCommitReadFirst fails unless the unwind reads the answers commit's sha
-// as rev immediately before its first mutation.
+// as rev immediately before its first step: its tag delete, or its reset's read of
+// what is staged.
 func assertAnswersCommitReadFirst(t *testing.T, f *runner.FakeRunner, rev string) {
 	t.Helper()
 	want := "git rev-parse " + rev
@@ -78,7 +83,8 @@ func assertAnswersCommitReadFirst(t *testing.T, f *runner.FakeRunner, rev string
 	if read == -1 {
 		t.Fatalf("no read of %s; got %v", rev, commandLines(f.Invocations()))
 	}
-	first := indexOfCmd(f, "git", "reset", "--hard", startingSHA)
+	// Nothing is staged, so the reset's read of what the index holds is the step before it.
+	first := indexOfCmd(f, "git", "reset", "--keep", startingSHA) - 1
 	if del := indexOfCmd(f, "git", "tag", "-d", minorTagV130); del != -1 && del < first {
 		first = del
 	}
@@ -96,14 +102,15 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitFails_WarnsTheStepThatCommi
 		stderr string
 	}{
 		{name: "staging fails", git: []runner.ScriptedCall{gitFailing(stageStderr)}, stderr: stageStderr},
-		{name: "committing fails", git: []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)}, stderr: commitStderr},
+		{name: "committing fails", git: []runner.ScriptedCall{ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr)}, stderr: commitStderr},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, []presenter.Choice{presenter.ChoiceNo})
 			a := newAnsweredAbort(t, rec, preTagHookConfig)
-			a.f.SeedSequence("git", append([]runner.ScriptedCall{answersCommitRead, ScriptedOut("")}, tc.git...)...)
+			a.f.SeedSequence("git", answersCommitRead, nothingStaged, ScriptedOut("")) // the sha, the reset
+			a.f.SeedSequence("git", tc.git...)
 
 			err := a.release(t.Context())
 
@@ -113,7 +120,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitFails_WarnsTheStepThatCommi
 				Row:    "automatic recovery failed",
 				Failed: true,
 				Message: "automatic recovery failed; manually commit the exclusion answers mint wrote to .mint.toml (`git -C " + a.root +
-					" add .mint.toml` then `git -C " + a.root + " commit -m '" + answersSubject(minorTagV130) + "'`)",
+					" add .mint.toml` then `git -C " + a.root + " commit -m '" + answersSubject(minorTagV130) + "' -- .mint.toml`)",
 				Output: tc.stderr,
 			}
 			assertUnwoundWithOneWarning(t, rec, err, want, "reset 2 commits; manual cleanup required")
@@ -132,6 +139,31 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitFails_WarnsTheStepThatCommi
 	}
 }
 
+func TestRelease_UnwindAfterAnswering_WhenTheReCommitFailsInARootWithASpace_WarnsTheStepWithTheRootQuoted(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "My App")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatalf("creating %s: %v", root, err)
+	}
+	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, []presenter.Choice{presenter.ChoiceNo})
+	a := newAnsweredAbortIn(t, root, rec, preTagHookConfig)
+	a.f.SeedSequence("git", answersCommitRead, nothingStaged, ScriptedOut(""), ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr)) // the sha, the reset, the add, the commit
+
+	err := a.release(t.Context())
+
+	want := presenter.Warning{
+		Label:  "unwind incomplete",
+		Key:    "unwind",
+		Row:    "automatic recovery failed",
+		Failed: true,
+		Message: "automatic recovery failed; manually commit the exclusion answers mint wrote to .mint.toml (`git -C '" + root +
+			"' add .mint.toml` then `git -C '" + root + "' commit -m '" + answersSubject(minorTagV130) + "' -- .mint.toml`)",
+		Output: commitStderr,
+	}
+	assertUnwoundWithOneWarning(t, rec, err, want, "reset 2 commits; manual cleanup required")
+}
+
 // unreadableConfigRunner plays git's part in the unwind's reset, leaving .mint.toml
 // under root a directory the re-commit cannot read.
 type unreadableConfigRunner struct {
@@ -140,7 +172,7 @@ type unreadableConfigRunner struct {
 }
 
 func (r *unreadableConfigRunner) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
-	if name == "git" && slices.Equal(args, []string{"reset", "--hard", startingSHA}) {
+	if name == "git" && slices.Equal(args, []string{"reset", "--keep", startingSHA}) {
 		path := filepath.Join(r.root, config.FileName)
 		if err := os.Remove(path); err != nil {
 			return runner.Result{ExitCode: 1}, err
@@ -188,7 +220,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitCannotWriteTheAnswers_Warns
 			a.deps.Mutator, a.deps.Releaser = mut, release.NewReleaser(mut)
 			a.f.SeedSequence("git", tc.tail...)
 			a.f.Seed("gh", runner.Result{}, nil)
-			a.f.SeedSequence("git", slices.Concat([]runner.ScriptedCall{answersCommitRead}, tc.beforeReset, []runner.ScriptedCall{ScriptedOut("")})...)
+			a.f.SeedSequence("git", slices.Concat([]runner.ScriptedCall{answersCommitRead}, tc.beforeReset, []runner.ScriptedCall{nothingStaged, ScriptedOut("")})...)
 
 			err := a.release(t.Context())
 
@@ -203,7 +235,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitCannotWriteTheAnswers_Warns
 			}
 			assertUnwoundWithOneWarning(t, rec, err, want, tc.summary)
 			assertAnswersCommitReadFirst(t, a.f, tc.rev)
-			reset := indexOfCmd(a.f, "git", "reset", "--hard", startingSHA)
+			reset := indexOfCmd(a.f, "git", "reset", "--keep", startingSHA)
 			if after := a.f.Invocations()[reset+1:]; len(after) != 0 {
 				t.Errorf("after the reset = %q, want no git call", commandLines(after))
 			}
@@ -245,22 +277,21 @@ func TestRelease_UnwindAfterAnswering_WhenTheResetFails_DoesNotReCommitAndNamesT
 			a := newAnsweredAbort(t, rec, preTagHookConfig)
 			a.f.SeedSequence("git", tc.tail...)
 			a.f.Seed("gh", runner.Result{}, nil)
-			a.f.SeedSequence("git", slices.Concat([]runner.ScriptedCall{answersCommitRead}, tc.beforeReset, []runner.ScriptedCall{gitFailing(resetStderr)})...)
+			a.f.SeedSequence("git", slices.Concat([]runner.ScriptedCall{answersCommitRead}, tc.beforeReset, []runner.ScriptedCall{nothingStaged, gitFailing(resetStderr)})...)
 
 			err := a.release(t.Context())
 
 			want := presenter.Warning{
-				Label:  "unwind incomplete",
-				Key:    "unwind",
-				Row:    "automatic recovery failed",
-				Failed: true,
-				Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
-					"`), then put your exclusion answers back on top (`git cherry-pick " + answersSHA + "`)",
-				Output: resetStderr,
+				Label:   "unwind incomplete",
+				Key:     "unwind",
+				Row:     "automatic recovery failed",
+				Failed:  true,
+				Message: "automatic recovery failed; manually " + keepSteps + ", then put your exclusion answers back on top (`git cherry-pick " + answersSHA + "`)",
+				Output:  resetStderr,
 			}
 			assertUnwoundWithOneWarning(t, rec, err, want, tc.summary)
 			assertAnswersCommitReadFirst(t, a.f, tc.rev)
-			reset := indexOfCmd(a.f, "git", "reset", "--hard", startingSHA)
+			reset := indexOfCmd(a.f, "git", "reset", "--keep", startingSHA)
 			if reset == -1 {
 				t.Fatalf("no reset to the starting commit; got %v", commandLines(a.f.Invocations()))
 			}
@@ -281,23 +312,21 @@ func TestRelease_UnwindAfterAnswering_WhenTheShaCannotBeRead_StillResetsAndNames
 	a := newAnsweredAbort(t, rec, preTagHookConfig)
 	a.f.SeedSequence("git", pushRejectedAfterTheTag()...)
 	a.f.Seed("gh", runner.Result{}, nil)
-	a.f.SeedSequence("git", gitFailing("fatal: bad revision 'HEAD~1'\n"), ScriptedOut(""), gitFailing(resetStderr))
+	a.f.SeedSequence("git", gitFailing("fatal: bad revision 'HEAD~1'\n"), ScriptedOut(""), nothingStaged, gitFailing(resetStderr))
 
 	err := a.release(t.Context())
 
 	want := presenter.Warning{
-		Label:  "unwind incomplete",
-		Key:    "unwind",
-		Row:    "automatic recovery failed",
-		Failed: true,
-		Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
-			"`), then put your exclusion answers back on top (`git cherry-pick ORIG_HEAD~1`)",
-		Output: resetStderr,
+		Label:   "unwind incomplete",
+		Key:     "unwind",
+		Row:     "automatic recovery failed",
+		Failed:  true,
+		Message: "automatic recovery failed; manually " + keepSteps + ", then put your exclusion answers back on top (`git cherry-pick ORIG_HEAD~1`)",
+		Output:  resetStderr,
 	}
 	assertUnwoundWithOneWarning(t, rec, err, want, "deleted tag "+minorTagV130+"; manual cleanup required")
-	assertManualSteps(t, rec,
-		presenter.NextMove{Lead: "Reset HEAD back to " + startingSHA + ":", Command: "git reset --hard " + startingSHA},
-		presenter.NextMove{Lead: "Put your exclusion answers back on top:", Command: "git cherry-pick ORIG_HEAD~1"},
-	)
+	assertManualSteps(t, rec, slices.Concat(keepMoves, []presenter.NextMove{
+		{Lead: "Put your exclusion answers back on top:", Command: "git cherry-pick ORIG_HEAD~1"},
+	})...)
 	assertAnswersCommitReadFirst(t, a.f, "HEAD~1")
 }

@@ -99,7 +99,7 @@ func TestRegenerateChangelog_CommitSubjectIsRegenerateNotForward(t *testing.T) {
 	seedChangelog(t, dir, kacPreamble+"\n## [1.4.0] - 2026-01-01\n\nStale body.\n")
 
 	r := runner.NewFakeRunner()
-	r.Seed("git", runner.Result{}, nil)
+	r.SeedSequence("git", ScriptedOut(""), headBeforeCommit, ScriptedOut(""), headAfterCommit, committedPaths) // add, HEAD, commit, HEAD, the paths it changed
 
 	committed, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "1.4.0", "v1.4.0", regenChangelogDate(), "Refreshed body.", "")
 	if err != nil {
@@ -110,8 +110,8 @@ func TestRegenerateChangelog_CommitSubjectIsRegenerateNotForward(t *testing.T) {
 	}
 
 	invs := r.Invocations()
-	if len(invs) != 2 {
-		t.Fatalf("invocations = %d, want 2 (git add then git commit)\n got: %v", len(invs), invs)
+	if len(invs) != 5 {
+		t.Fatalf("invocations = %d, want 5 (git add, the read of HEAD, git commit, the read of HEAD, then the read of what it changed)\n got: %v", len(invs), invs)
 	}
 
 	wantAdd := []string{"-C", dir, "add", "CHANGELOG.md"}
@@ -119,12 +119,15 @@ func TestRegenerateChangelog_CommitSubjectIsRegenerateNotForward(t *testing.T) {
 		t.Errorf("stage invocation = %s %v, want git %v (changelog only)", add.Name, add.Args, wantAdd)
 	}
 
-	wantCommit := []string{"-C", dir, "commit", "-m", "docs(changelog): regenerate notes for v1.4.0"}
-	if commit := invs[1]; commit.Name != "git" || !slices.Equal(commit.Args, wantCommit) {
-		t.Errorf("commit invocation = %s %v, want git %v", commit.Name, commit.Args, wantCommit)
+	wantCommit := pathsCommit(dir, "docs(changelog): regenerate notes for v1.4.0")
+	if commit := invs[2]; commit.Name != "git" || !slices.Equal(commit.Args, wantCommit) || commit.Stdin != ":(top,literal)CHANGELOG.md\x00" {
+		t.Errorf("commit invocation = %s %v stdin %q, want git %v naming CHANGELOG.md alone", commit.Name, commit.Args, commit.Stdin, wantCommit)
+	}
+	if got := commandLine(invs[4]); got != committedPathsRead(dir) {
+		t.Errorf("after the commit = %q, want the read of the paths it changed %q", got, committedPathsRead(dir))
 	}
 
-	subject := invs[1].Args[len(invs[1].Args)-1]
+	subject := invs[2].Args[4]
 	if strings.Contains(subject, "Release ") {
 		t.Errorf("commit subject = %q, must NOT reuse the forward `{commit_prefix} Release {tag}` subject", subject)
 	}

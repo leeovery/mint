@@ -113,8 +113,12 @@ func TestRegenerateWrite_AHealWritesTheReleaseFromTheNotesJustPushed(t *testing.
 			f.SeedSequence("git",
 				runner.ScriptedCall{Result: runner.Result{Stdout: "startHEAD"}},  // rev-parse HEAD
 				runner.ScriptedCall{Result: runner.Result{Stdout: "2024-02-15"}}, // the tag's date
+				runner.ScriptedCall{}, // the read of whether the user changed CHANGELOG.md: no
 				runner.ScriptedCall{}, // add
+				runner.ScriptedCall{Result: runner.Result{Stdout: "beforesha\n"}}, // HEAD before the commit
 				runner.ScriptedCall{}, // commit
+				runner.ScriptedCall{Result: runner.Result{Stdout: "aftersha\n"}}, // HEAD after it
+				runner.ScriptedCall{}, // the read of the paths the commit changed: none
 				runner.ScriptedCall{}, // push: the changelog is public
 			)
 			rec := &presentertest.RecordingPresenter{NextChoices: tc.choices, NextLines: []string{""}}

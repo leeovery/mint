@@ -115,8 +115,12 @@ func TestRegenerateWrite_EmitsBlockingPushStage(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD (capture clean start)
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short (historical date)
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // -C dir add CHANGELOG.md
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // -C dir commit -m docs(changelog): ...
+		headAfterCommit,                   // HEAD after it
+		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}

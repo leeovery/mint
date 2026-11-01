@@ -122,17 +122,24 @@ func (in *askedInput) Read(p []byte) (int, error) {
 	return in.r.Read(p)
 }
 
+// commitReviews are the runs whose screen is held as their question waits, by the
+// frame's name.
+var commitReviews = map[string]string{
+	"commit-pushed-100": "commit-review-100",
+	"commit-first-100":  "commit-first-review-100",
+}
+
 // TestCommit_Frames holds each commit run's whole screen once it is over, and the -Ap
-// run's screen as its question waits: the message hanging off the rail under the
-// question, the stages to come and the end station below.
+// run's and the first commit's screens as their question waits: the message hanging
+// off the rail under the question, the stages to come and the end station below.
 func TestCommit_Frames(t *testing.T) {
 	t.Parallel()
 
 	drawn := map[string]string{}
 	for name, r := range commitRuns {
 		var asked func(*frametest.Terminal)
-		if name == "commit-pushed-100" {
-			asked = func(term *frametest.Terminal) { drawn["commit-review-100"] = term.ANSI() }
+		if review, ok := commitReviews[name]; ok {
+			asked = func(term *frametest.Terminal) { drawn[review] = term.ANSI() }
 		}
 		screen, err := drawCommit(t, r, asked)
 		if aborted := err != nil; aborted != r.aborted {
