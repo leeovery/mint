@@ -316,8 +316,7 @@ func TestRun_Rail_ABranchWithNoCommitsYetStartsAndLandsOnTheBranch(t *testing.T)
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 128, Stdout: "HEAD\n"}, Err: errors.New("exit status 128")}, // git rev-parse HEAD --abbrev-ref HEAD
 		runner.ScriptedCall{Result: runner.Result{Stdout: "main\n"}},                                                    // git symbolic-ref --short -q HEAD
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                                                       // git diff --cached --numstat (non-empty index)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}},                                 // git diff --cached
-		runner.ScriptedCall{}, // git commit -F -
+		runner.ScriptedCall{}, // git commit -F - (a first commit asks no AI, so reads no diff for it)
 		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	rec, _, err := railCommit(t, r, presenter.ChoiceYes, noFlags)

@@ -292,6 +292,22 @@ var commitRuns = map[string]commitRun{
 		w.f.SeedSequence("git", failing(runPushRejected)) // push
 		return w.commit(t, func(d *commit.Deps) { d.Push = true })
 	}},
+	// commit -A on a branch with no commits yet: its first commit's message, proposed
+	// with no AI call, accepted, then everything staged and committed.
+	"commit-first-100": {answers: "y\n", run: func(t *testing.T, w *commitWorld) error {
+		writeLines(t, filepath.Join(w.deps.Root, "README.md"), 12)
+		writeLines(t, filepath.Join(w.deps.Root, "main.go"), 40)
+		w.f.SeedSequence("git",
+			failing("fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\n"), // rev-parse HEAD --abbrev-ref HEAD
+			out("main\n"), // symbolic-ref --short -q HEAD
+			out("4b825dc642cb6eb9a060e54bf8d69288fbee4904\n"), // hash-object -t tree /dev/null
+			out(""),                         // diff <empty tree> --numstat -- .
+			out("README.md\x00main.go\x00"), // ls-files --others --exclude-standard -z -- .
+			out(""),                         // add -A
+		)
+		w.committed()
+		return w.commit(t, func(d *commit.Deps) { d.Staging = commit.AddAll })
+	}},
 	// commit -Ap with the message declined: nothing staged, nothing committed.
 	"commit-declined-100": {answers: "n\n", aborted: true, run: func(t *testing.T, w *commitWorld) error {
 		w.started()

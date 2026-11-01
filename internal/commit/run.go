@@ -68,6 +68,13 @@ const (
 	excludedNoteMessage = "all changes are excluded from the AI context — opening editor"
 )
 
+// A first commit's message, the convention for one, and the source the message node
+// names for it, as release names a body nothing generated.
+const (
+	initialCommitMessage = "Initial commit\n"
+	firstCommitDefault   = "the first commit's default"
+)
+
 // generateStageName is the blocking stage wrapping the AI generate/regenerate call
 // — the run's one slow step, so it carries the Rail's spinner (plain prints the
 // terse start line). Both the first generation and the gate's `r` regeneration use
@@ -264,9 +271,13 @@ type Deps struct {
 	Clock func() time.Time
 	// run closes the run Run opened, branch is the branch HEAD stood at when it opened,
 	// the branch the commit lands on, and stat the preflight's count of what it carries.
-	run    *runclose.Run
-	branch string
-	stat   diffStat
+	// unborn is whether that branch has no commits yet, the commit its first, and
+	// against what the tracked source compares the working tree against there.
+	run     *runclose.Run
+	branch  string
+	stat    diffStat
+	unborn  bool
+	against string
 }
 
 // editorUnavailable is the SINGLE "will the interactive editor refuse to open?" predicate.
@@ -303,7 +314,8 @@ func (d Deps) clock() func() time.Time {
 //     applies the size guard to it, and calls the L2 transport. The AI infers the type;
 //     scope is off by default; the body returns verbatim. --no-ai skips this (and the
 //     gate) for the $EDITOR fallback; an AI transport failure or a composed prompt over
-//     max_prompt_bytes routes to the SAME fallback.
+//     max_prompt_bytes routes to the SAME fallback. A branch with no commits yet asks
+//     no AI: its first commit is proposed "Initial commit".
 //  4. Show the minted message (ShowMessage) and present the Continue? review gate
 //     (reviewLoop, with its e edit and r regenerate re-entries) — BOTH before the
 //     mutation half, so an accept proceeds and a decline aborts with nothing mutated
@@ -343,7 +355,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 	// The run starts from the branch and commit HEAD stands at, read in one call, and
 	// its stages are known from the flags alone, so they are laid out at once.
 	head := gitrepo.ResolveHead(ctx, deps.Runner)
-	deps.branch = head.Branch
+	deps.branch, deps.unborn = head.Branch, head.Unborn()
 	deps.run.Start(presenter.RunInfo{
 		Project: projectName(root),
 		Action:  commitAction,
@@ -367,7 +379,11 @@ func mintCommit(ctx context.Context, deps Deps) error {
 	//
 	// Reading a large tree takes a moment, so the rail shows the diff running.
 	showRunning(p, stageDiff, "reading the changes…", false)
-	stat, err := checkSomethingToCommit(ctx, deps.Runner, root, deps.Staging)
+	deps.against, err = trackedAgainst(ctx, deps.Runner, root, deps.Staging, deps.unborn)
+	if err != nil {
+		return surface(p, "preflight", err)
+	}
+	stat, err := checkSomethingToCommit(ctx, deps.Runner, root, deps.Staging, deps.against)
 	if err != nil {
 		return surface(p, "preflight", err)
 	}
@@ -381,6 +397,14 @@ func mintCommit(ctx context.Context, deps Deps) error {
 	// deferred until the save event), against an EMPTY buffer (no synthetic stub).
 	if deps.NoAI {
 		return runEditorFallback(ctx, deps, root, "")
+	}
+
+	// A first commit is proposed git's conventional message with no AI call: its diff is
+	// the whole repo, which would seldom fit the AI's size cap. The review is as usual,
+	// `r` asking the AI then.
+	if deps.unborn {
+		p.StageSucceeded(presenter.StageSuccess{Name: generateStageName, Key: stageMessage, Detail: firstCommitDefault})
+		return reviewAndCommit(ctx, deps, cfg, root, initialCommitMessage)
 	}
 
 	// The AI call is the run's one SLOW step, so it gets a blocking stage: the Rail
@@ -443,7 +467,11 @@ func mintCommit(ctx context.Context, deps Deps) error {
 		return surfaceTimed(p, "generate", err, generated.elapsed())
 	}
 	generated.done("generated")
+	return reviewAndCommit(ctx, deps, cfg, root, body)
+}
 
+// reviewAndCommit reviews the proposed body and, on accept, commits the final one.
+func reviewAndCommit(ctx context.Context, deps Deps, cfg config.Config, root, body string) error {
 	// The minted message is shown for review and the Continue? gate is presented in the
 	// engine-owned review LOOP — both BEFORE the commit sink, so the core invariant
 	// (mutate nothing until accept) holds: a decline aborts with nothing mutated. The
@@ -795,8 +823,15 @@ func resolveRoot(ctx context.Context, deps Deps) (string, error) {
 // per-key resolution (cfg.AICommandFor(VerbCommit) / cfg.TimeoutFor(VerbCommit)) — so
 // production leaves deps.Transport nil and gets the real engine.
 func generateMessage(ctx context.Context, deps Deps, cfg config.Config, root string) (string, error) {
+	return runGenerator(deps, cfg, root).Generate(ctx, cfg)
+}
+
+// runGenerator is the run's Generator, its tracked source comparing against what the
+// run read it should.
+func runGenerator(deps Deps, cfg config.Config, root string) *Generator {
 	generator := NewGenerator(deps.Runner, commitTransport(deps, cfg), root, deps.Staging)
-	return generator.Generate(ctx, cfg)
+	generator.against = deps.against
+	return generator
 }
 
 // regenerateMessage is the gate's `r` (regenerate-with-context) re-run: it builds the
@@ -808,8 +843,7 @@ func generateMessage(ctx context.Context, deps Deps, cfg config.Config, root str
 // does NOT re-run the retry. The one-time context is a local string only: it is never
 // persisted to cfg/[commit].context, and a subsequent `r` passes a fresh line.
 func regenerateMessage(ctx context.Context, deps Deps, cfg config.Config, root, oneTimeContext string) (string, error) {
-	generator := NewGenerator(deps.Runner, commitTransport(deps, cfg), root, deps.Staging)
-	return generator.GenerateWithContext(ctx, cfg, oneTimeContext)
+	return runGenerator(deps, cfg, root).GenerateWithContext(ctx, cfg, oneTimeContext)
 }
 
 // startGenerateStage narrates the start of the blocking "message" stage (the AI

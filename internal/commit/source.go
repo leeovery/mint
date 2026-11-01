@@ -27,6 +27,14 @@ package commit
 // each live in exactly one place; the preflight probe argv is provably the L1 source
 // COMMAND minus the diff_exclude tail, plus the `--numstat` the counting probe adds.
 
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"mint/internal/runner"
+)
+
 // sourceKind classifies a per-mode source so the two consumers render it correctly: a
 // diffSource is a `git diff …` whose stdout IS the diff (preflight adds `--numstat` to
 // it), while an untrackedListSource is a `git ls-files --others …` enumeration whose
@@ -61,12 +69,36 @@ func stagedBaseArgs() []string {
 	return []string{"diff", "--cached", "--", "."}
 }
 
-// trackedBaseArgs is the All (-a) / AddAll (-A) tracked source prefix: `git diff HEAD
-// -- .` — tracked modifications + deletions against HEAD (no untracked). Spelled ONCE;
-// the L1 diff render (renderSource) and trackedProbeArgs (preflight) both derive from it
-// — the L1 render appends the diff_exclude tail, the probe appends only `--numstat`.
-func trackedBaseArgs() []string {
-	return []string{"diff", "HEAD", "--", "."}
+// trackedBaseArgs is the All (-a) / AddAll (-A) tracked source prefix: `git diff
+// <against> -- .` — tracked modifications + deletions against against, HEAD or, on a
+// branch with no commits yet, the empty tree (see trackedAgainst); no untracked.
+// Spelled ONCE; the L1 diff render (renderSource) and trackedProbeArgs (preflight) both
+// derive from it — the L1 render appends the diff_exclude tail, the probe appends only
+// `--numstat`.
+func trackedBaseArgs(against string) []string {
+	return []string{"diff", against, "--", "."}
+}
+
+// headRef is what the tracked source compares the working tree against on a branch
+// with commits.
+const headRef = "HEAD"
+
+// trackedAgainst is what mode's tracked source compares the working tree against:
+// HEAD, or, on a branch with no commits yet (unborn), the empty tree, as every file
+// the first commit carries is new there. git names the empty tree, so it is right for
+// the repo's object format, and hash-object without -w writes nothing. Staged-only
+// reads the index alone, which git already compares against the empty tree on an
+// unborn branch, so it reads nothing.
+func trackedAgainst(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode, unborn bool) (string, error) {
+	if !unborn || mode == StagedOnly {
+		return headRef, nil
+	}
+	args := []string{"hash-object", "-t", "tree", "/dev/null"}
+	res, err := r.RunInDir(ctx, root, nil, "git", args...)
+	if err != nil {
+		return "", fmt.Errorf("checking %v: %w", args, err)
+	}
+	return strings.TrimSpace(res.Stdout), nil
 }
 
 // untrackedBaseArgs is the AddAll (-A) untracked source prefix: `git ls-files --others
@@ -90,13 +122,15 @@ func untrackedBaseArgs() []string {
 //     combined diff uses; the preflight reads both and finds the set empty only when
 //     both are).
 //   - StagedOnly (the default): the staged diff alone.
-func sourcesForMode(mode StagingMode) []sourceSpec {
+//
+// The tracked diff compares against against (see trackedAgainst).
+func sourcesForMode(mode StagingMode, against string) []sourceSpec {
 	switch mode {
 	case All:
-		return []sourceSpec{{base: trackedBaseArgs(), kind: diffSource}}
+		return []sourceSpec{{base: trackedBaseArgs(against), kind: diffSource}}
 	case AddAll:
 		return []sourceSpec{
-			{base: trackedBaseArgs(), kind: diffSource},
+			{base: trackedBaseArgs(against), kind: diffSource},
 			{base: untrackedBaseArgs(), kind: untrackedListSource},
 		}
 	default:

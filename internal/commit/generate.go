@@ -70,6 +70,9 @@ type Generator struct {
 	transport Transport
 	root      string
 	mode      StagingMode
+	// against is what the tracked source compares the working tree against (see
+	// trackedAgainst): HEAD unless a run on a branch with no commits yet sets it.
+	against string
 }
 
 // NewGenerator builds a Generator over the L1 git runner, the L2 transport, the repo
@@ -78,7 +81,7 @@ type Generator struct {
 // transport. The mode selects the L1 source: StagedOnly (the Phase 1 default) reads the
 // index; All/AddAll compute the would-be-staged worktree diff READ-ONLY.
 func NewGenerator(r runner.CommandRunner, transport Transport, root string, mode StagingMode) *Generator {
-	return &Generator{runner: r, transport: transport, root: root, mode: mode}
+	return &Generator{runner: r, transport: transport, root: root, mode: mode, against: headRef}
 }
 
 // Generate produces the AI commit-message body for the would-be-committed diff,
@@ -192,7 +195,7 @@ func checkPromptSize(prompt string, maxBytes int) error {
 // agree no matter where mint was invoked.
 func (g *Generator) sourceDiff(ctx context.Context, diffExclude []string) (string, error) {
 	var b strings.Builder
-	for _, spec := range sourcesForMode(g.mode) {
+	for _, spec := range sourcesForMode(g.mode, g.against) {
 		rendered, err := g.renderSource(ctx, spec, diffExclude)
 		if err != nil {
 			return "", err

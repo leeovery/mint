@@ -11,8 +11,11 @@ const commitCommand = "commit"
 // printed a plan for a commit.
 func commitPlan(deps Deps) presenter.Plan {
 	message := "written by the AI"
-	if deps.NoAI {
+	switch {
+	case deps.NoAI:
 		message = "written in your editor"
+	case deps.unborn:
+		message = firstCommitDefault
 	}
 	stages := []presenter.PlanStage{
 		{Key: stageDiff, Name: stageDiff, Detail: stagingDetail(deps.Staging)},
