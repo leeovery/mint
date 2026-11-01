@@ -5,9 +5,11 @@ import (
 	"errors"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
+	"mint/internal/cmdline"
 	"mint/internal/commit"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -143,7 +145,7 @@ func TestOpenEditor_WritesInitialBufferLaunchesResolvedEditorReadsBack(t *testin
 }
 
 // TestOpenEditor_SplitsEditorArgsAndAppendsPath proves a multi-word editor command
-// (e.g. "code --wait") is split on whitespace into program + args, with the temp
+// (e.g. "code --wait") is split into program + args, with the temp
 // path appended as the FINAL arg — never fed via stdin.
 func TestOpenEditor_SplitsEditorArgsAndAppendsPath(t *testing.T) {
 	t.Parallel()
@@ -167,6 +169,60 @@ func TestOpenEditor_SplitsEditorArgsAndAppendsPath(t *testing.T) {
 	}
 	if !strings.Contains(launch.Args[1], "mint-") {
 		t.Errorf("final arg = %q, want the appended temp path", launch.Args[1])
+	}
+}
+
+// The editor command is split into words as a POSIX shell splits them, so a quoted
+// path or an escaped space reaches the launch as one program word, as git runs it.
+func TestOpenEditor_SplitsTheEditorCommandAsAShellWould(t *testing.T) {
+	t.Parallel()
+
+	const sublime = "/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl"
+	tests := []struct {
+		name    string
+		command string
+		want    []string
+	}{
+		{name: "a quoted path", command: "'" + sublime + "' -w", want: []string{sublime, "-w"}},
+		{name: "an escaped space", command: `/Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl -w`, want: []string{sublime, "-w"}},
+		{name: "double quotes", command: `"` + sublime + `" --wait --new-window`, want: []string{sublime, "--wait", "--new-window"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			er := newEditorRunner(tt.command, "feat: x\n")
+
+			if _, _, err := commit.OpenEditor(context.Background(), er, &presentertest.RecordingPresenter{}, ""); err != nil {
+				t.Fatalf("OpenEditor returned unexpected error: %v", err)
+			}
+
+			if len(er.launches) != 1 {
+				t.Fatalf("RunInteractive launch count = %d, want exactly 1", len(er.launches))
+			}
+			launch := er.launches[0]
+			got := append([]string{launch.Name}, launch.Args[:len(launch.Args)-1]...)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("launched %q, want %q then the temp path", got, tt.want)
+			}
+		})
+	}
+}
+
+// An editor command that can't be split is surfaced before anything is written or
+// launched.
+func TestOpenEditor_AnUnsplittableCommandIsSurfaced(t *testing.T) {
+	t.Parallel()
+
+	er := newEditorRunner("'/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl -w", "feat: x\n")
+
+	_, _, err := commit.OpenEditor(context.Background(), er, &presentertest.RecordingPresenter{}, "")
+
+	if !errors.Is(err, cmdline.ErrUnterminatedQuote) {
+		t.Errorf("OpenEditor error = %v, want it to match cmdline.ErrUnterminatedQuote", err)
+	}
+	if len(er.launches) != 0 {
+		t.Errorf("RunInteractive launched %d time(s), want none", len(er.launches))
 	}
 }
 
