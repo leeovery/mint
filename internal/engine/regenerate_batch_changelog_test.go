@@ -328,7 +328,8 @@ func TestRegenerateAllValidated_Changelog_StageFailure_AbortsNoCommit(t *testing
 		ScriptedOut(batchV2Date), // for-each-ref creatordate:short v2
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 128}, Err: errors.New("fatal: pathspec error")}, // add fails
-		ScriptedOut(""), // the put-back of the rebuild
+		ScriptedOut("CHANGELOG.md\x00"), // ls-files: git holds CHANGELOG.md
+		ScriptedOut(""),                 // the put-back of the rebuild
 	)...)
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}

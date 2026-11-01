@@ -39,12 +39,16 @@ var regenRestoreCases = []regenRestoreCase{
 	{name: "a commit that fails, the file created", commitFails: true, restores: true, undone: "removed CHANGELOG.md"},
 }
 
-// failingTail scripts the stage and commit, the one failing, then the put-back where
-// git is asked for it.
+// failingTail scripts the stage and commit, the one failing, then, where the file was
+// never staged, git naming it among those it holds, and the put-back where git is
+// asked for it.
 func (tc regenRestoreCase) failingTail() []runner.ScriptedCall {
 	tail := []runner.ScriptedCall{gitFailing(stageStderr)}
 	if tc.commitFails {
 		tail = []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)}
+	}
+	if tc.restores && !tc.commitFails {
+		tail = append(tail, ScriptedOut("CHANGELOG.md\x00"))
 	}
 	if tc.restores {
 		tail = append(tail, ScriptedOut(""))
@@ -53,16 +57,26 @@ func (tc regenRestoreCase) failingTail() []runner.ScriptedCall {
 }
 
 // wantTail is the git steps from the stage on: the stage, the commit where the stage
-// went through, then the put-back where git is asked for it, and no reset.
+// went through, else the read of whether git holds the file it wrote over, then the
+// put-back where git is asked for it, and no reset.
 func (tc regenRestoreCase) wantTail(dir string) []string {
 	want := []string{"git -C " + dir + " add CHANGELOG.md"}
 	if tc.commitFails {
 		want = append(want, "git -C "+dir+" commit -m docs(changelog): regenerate notes for "+regenWriteTag+" --pathspec-from-file=- --pathspec-file-nul")
 	}
+	if tc.restores && !tc.commitFails {
+		want = append(want, knownChangelog(dir))
+	}
 	if tc.restores {
 		want = append(want, putBack(dir))
 	}
 	return want
+}
+
+// knownChangelog is the read of whether git holds CHANGELOG.md, in the repo at dir,
+// in HEAD or the index.
+func knownChangelog(dir string) string {
+	return "git -C " + dir + " ls-files -z --cached --with-tree=HEAD -- :(top,literal)CHANGELOG.md"
 }
 
 // assertGitTailFrom fails unless the git steps from the first that is want's first are
@@ -146,6 +160,28 @@ func TestRegenerateWrite_APutBackThatFails_SaysSoWithTheManualStep(t *testing.T)
 	assertAbortNonZero(t, err)
 	step := "git restore --source=HEAD --staged --worktree -- ':(top,literal)CHANGELOG.md'"
 	onlyWarning(t, rec, unwindIncomplete("restore CHANGELOG.md to HEAD (`"+step+"`)", stageStderr))
+	if got := unwoundText(t, rec); got != "" {
+		t.Errorf("Unwound = %q, want nothing claimed undone", got)
+	}
+}
+
+// A CHANGELOG.md git holds no copy of, one it ignores, is left as the rewrite left it,
+// and said so, with no restore git would refuse.
+func TestRegenerateWrite_AStageThatFails_AChangelogGitHoldsNoCopyOf_IsLeftAndSaidSo(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	seedChangelog(t, dir, regenNotesStaleChangelog)
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git", ScriptedOut("startHEAD"), ScriptedOut(regenWriteHistorical)) // rev-parse HEAD, for-each-ref
+	f.SeedSequence("git", gitFailing(stageStderr), ScriptedOut(""))                    // add, ls-files naming nothing
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
+
+	assertAbortNonZero(t, err)
+	assertGitTailFrom(t, f, []string{"git -C " + dir + " add CHANGELOG.md", knownChangelog(dir)})
+	onlyWarning(t, rec, unwindIncomplete("put back CHANGELOG.md, which mint wrote over and git holds no copy of", ""))
 	if got := unwoundText(t, rec); got != "" {
 		t.Errorf("Unwound = %q, want nothing claimed undone", got)
 	}

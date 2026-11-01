@@ -101,6 +101,12 @@ func (r restoreRepo) restore(outcome runner.ScriptedCall, paths ...string) gitSt
 	return gitStep{r.git("restore --source=HEAD --staged --worktree -- " + literalPathspecsOf(paths)), outcome}
 }
 
+// knownRead is the unwind asking which of paths, files mint wrote over and never
+// staged, git holds in HEAD or the index, git answering known.
+func (r restoreRepo) knownRead(known string, paths ...string) gitStep {
+	return gitStep{r.git("ls-files -z --cached --with-tree=HEAD -- " + literalPathspecsOf(paths)), ScriptedOut(known)}
+}
+
 // stagedRead is the unwind reading which paths mint staged, the notes file left out,
 // git answering staged.
 func (r restoreRepo) stagedRead(staged runner.ScriptedCall) gitStep {
@@ -150,6 +156,8 @@ type treeFailure struct {
 	config string
 	// changelogUnreadable makes CHANGELOG.md a directory, so the changelog write fails.
 	changelogUnreadable bool
+	// changelogBefore puts a CHANGELOG.md in the repo before the run writes over it.
+	changelogBefore bool
 	// fails is the git steps from the stage's start to its failure.
 	fails func(restoreRepo) []gitStep
 	// restores is the unwind's steps putting back what mint wrote or staged, git
@@ -171,7 +179,7 @@ var (
 		changelogUnreadable: true,
 		fails:               func(restoreRepo) []gitStep { return nil },
 		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
-			return []gitStep{r.restore(outcome, "VERSION")}
+			return []gitStep{r.knownRead("VERSION\x00", "VERSION"), r.restore(outcome, "VERSION")}
 		},
 		undone:      "restored VERSION",
 		afterCommit: "reset 1 commit and restored VERSION",
@@ -200,13 +208,14 @@ var (
 			return []gitStep{{r.git("add CHANGELOG.md VERSION"), gitFailing(stageStderr)}}
 		},
 		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
-			return []gitStep{r.restore(outcome, "VERSION")}
+			return []gitStep{r.knownRead("VERSION\x00", "VERSION"), r.restore(outcome, "VERSION")}
 		},
 		created:     "CHANGELOG.md",
 		undone:      "restored VERSION and removed CHANGELOG.md",
 		afterCommit: "reset 1 commit, restored VERSION and removed CHANGELOG.md",
 		end:         "back where it started · nothing pushed",
-		unrestored:  "manual cleanup required · VERSION + CHANGELOG.md written, not committed · nothing pushed",
+		// The restore fails, but CHANGELOG.md, which mint created, is still removed.
+		unrestored: "manual cleanup required · VERSION written, not committed · nothing pushed",
 	}
 	artifactsCommitFails = treeFailure{
 		name:   "pre_tag's changes staged, then their commit failing",
@@ -272,6 +281,9 @@ func (r restoringRun) releaseTo(t *testing.T, p presenter.Presenter) (*runner.Fa
 		if err := os.Mkdir(filepath.Join(root, "CHANGELOG.md"), 0o755); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if r.failure.changelogBefore {
+		writeRepoFile(t, root, "CHANGELOG.md", "# Changelog\n")
 	}
 	f := runner.NewFakeRunner()
 	seedProvider(f)
@@ -704,4 +716,62 @@ func TestRelease_ARestoreWithNoCommit_PlainTranscripts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A version_file written as a path git would not match literally is named as git names
+// it: the stage, the commit and the unwind's put-back all match the file.
+func TestRelease_AnUncleanVersionFilePath_IsNamedAsGitNamesIt(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range []string{"./VERSION", "sub/../VERSION", "/VERSION"} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			tf := stagedBookkeepingFails
+			tf.config = "[release]\nversion_file = \"" + path + "\"\n"
+			run := restoringRun{repo: restoreRepo{root: t.TempDir()}, failure: tf}
+			rec, f, err := run.release(t)
+
+			assertTreeRestored(t, rec, err, tf.undone, tf.end)
+			assertGitTail(t, f, commandLinesOf(run.tail()))
+			want := ":(top,literal)CHANGELOG.md\x00:(top,literal)VERSION\x00"
+			if got := stdinOf(t, f, "git", pathsCommit(run.repo.root, bookkeepingSubject)...); got != want {
+				t.Errorf("bookkeeping commit stdin = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// A file mint wrote over that git holds no copy of, in neither HEAD nor the index,
+// such as a CHANGELOG.md git ignores, is left as mint wrote it, and said so; the files
+// git can restore are still put back, and only what is left is narrated as left.
+func TestRelease_AFailureBeforeAnyCommit_AFileGitHoldsNoCopyOf_IsLeftAndTheRestPutBack(t *testing.T) {
+	t.Parallel()
+
+	tf := treeFailure{
+		config:          plainVersionFile,
+		changelogBefore: true,
+		fails: func(r restoreRepo) []gitStep {
+			return []gitStep{{r.git("add CHANGELOG.md VERSION"), gitFailing(stageStderr)}}
+		},
+		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
+			return []gitStep{r.knownRead("VERSION\x00", "VERSION", "CHANGELOG.md"), r.restore(outcome, "VERSION")}
+		},
+	}
+	run := restoringRun{repo: restoreRepo{root: t.TempDir()}, failure: tf}
+	rec, f, err := run.release(t)
+
+	assertAbortNonZero(t, err)
+	assertGitTail(t, f, commandLinesOf(run.tail()))
+	onlyWarning(t, rec, presenter.Warning{
+		Label:   "unwind incomplete",
+		Message: "automatic recovery failed; manually put back CHANGELOG.md, which mint wrote over and git holds no copy of",
+		Key:     "unwind",
+		Failed:  true,
+		Row:     "automatic recovery failed",
+	})
+	if got := unwoundEvent(t, rec); got.Undone != "restored VERSION" || got.Repo != "manual cleanup required" {
+		t.Errorf("Unwound = %+v, want VERSION restored and the cleanup left to do", got)
+	}
+	assertClosesUnwound(t, rec, "manual cleanup required · CHANGELOG.md written, not committed · nothing pushed")
 }

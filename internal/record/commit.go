@@ -63,7 +63,8 @@ func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string, k
 // versionFile path is configured) — mint never `git add`s an untouched or absent
 // path. Whatever changed is staged in ONE `git -C {dir} add {paths…}` invocation,
 // so the version file is NEVER given its own separate commit — it is always folded
-// here alongside the changelog.
+// here alongside the changelog. versionFile is named as git names it (RepoPath), so
+// the commit's literal pathspec matches it.
 //
 // COMBINED NO-OP: when neither the changelog nor the version file changed there is
 // nothing to stage, so CommitBookkeeping is a no-op and creates NO commit — mint

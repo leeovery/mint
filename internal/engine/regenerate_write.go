@@ -449,7 +449,7 @@ func putBackChangelog(ctx context.Context, deps ReleaseDeps, root string, left *
 			tracked, untracked = nil, file
 		}
 	}
-	if !restoreFiles(ctx, deps, root, tracked, untracked) {
+	if len(putBack(ctx, deps, root, tracked, untracked, left.staged)) > 0 {
 		deps.Presenter.Unwound(presenter.Unwind{Key: stageUnwind, Quiet: true})
 		deps.run.Unwound(manualCleanup + " · " + record.ChangelogFileName + notCommitted + " · " + nothingPushed)
 		return

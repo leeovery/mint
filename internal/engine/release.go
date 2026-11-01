@@ -770,7 +770,10 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// running.
 	made.wrote = true
 	showRunning(p, stageRecord, "recording the release…")
-	projection, err := record.ProjectVersionFile(root, cfg.Release.VersionFile, cfg.Release.VersionPattern, versionKey)
+	// Named as git names it from here on, so the commit's and the unwind's literal
+	// pathspecs match the file.
+	versionFile := record.RepoPath(root, cfg.Release.VersionFile)
+	projection, err := record.ProjectVersionFile(root, versionFile, cfg.Release.VersionPattern, versionKey)
 	if err != nil {
 		// Post-mutation, pre-PONR: route through the surgical unwind so any commit
 		// already in made is reset back to the clean start. A failed projection writes
@@ -778,7 +781,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}
 	versionChanged := projection.Changed
-	made.recordWrite(cfg.Release.VersionFile, versionChanged, projection.Created)
+	made.recordWrite(versionFile, versionChanged, projection.Created)
 
 	// When changelog=false WriteChangelog no-ops (Changed:false). When the version file
 	// also nets no change, CommitBookkeeping makes NO commit — the tag then points at
@@ -800,8 +803,8 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// the same rule CommitBookkeeping's no-op branch consumes — tells the spine whether
 	// HEAD just moved, so made.Commits is bumped exactly when a commit landed —
 	// tracked, not inferred by probing git.
-	bookkeepingCommitted := record.BookkeepingWillCommit(cfg.Release.VersionFile, writeResult.Changed, versionChanged)
-	if err := record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, cfg.Release.VersionFile, writeResult.Changed, versionChanged); err != nil {
+	bookkeepingCommitted := record.BookkeepingWillCommit(versionFile, writeResult.Changed, versionChanged)
+	if err := record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, versionFile, writeResult.Changed, versionChanged); err != nil {
 		var uncommitted *record.UncommittedError
 		made.recordStaged = errors.As(err, &uncommitted)
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
