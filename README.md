@@ -107,7 +107,7 @@ Cuts a release. An attended run asks you twice: once to confirm the version, onc
 3. **Build.** The `pre_tag` hook runs, and whatever it leaves in the tree is committed as `chore(release): pre-tag artifacts for v1.4.1`.
 4. **Write the notes.** Mint checks for [files that don't belong in the notes](#files-that-dont-belong-in-the-notes), then the AI writes the notes from the diff since the last tag.
 5. **Review.** The notes review gate shows you the notes.
-6. **Record.** The new version goes into `version_file` and the notes into `CHANGELOG.md`, committed together as `🌿 Release v1.4.1`.
+6. **Record.** The new version goes into `version_file` and the notes into `CHANGELOG.md`, committed together as `🌿 Release v1.4.1`. If you changed either file while mint ran, it stops before writing, so your change is never overwritten.
 7. **Tag and push.** Mint tags and pushes the branch and the tag in one `git push --atomic`. This is the point of no return.
 8. **Publish.** The GitHub release is created, then the `post_release` hook runs.
 
