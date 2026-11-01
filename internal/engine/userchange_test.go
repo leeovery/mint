@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"mint/internal/engine"
@@ -106,9 +107,10 @@ func TestRelease_ARecordThatWritesNothing_ReadsNoFileForChanges(t *testing.T) {
 	if err := engine.Release(t.Context(), newDeps(rec, f), engine.ReleaseOptions{Now: fixedClock}); err != nil {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
-	for _, inv := range invocationsNamed(f, "git") {
-		if slices.Contains(inv.Args, "--untracked-files=all") {
-			t.Errorf("a record writing nothing read %q", inv.Args)
+	guardRead := strings.TrimSuffix(userChangesRead(root), " ")
+	for _, line := range stepLines(f) {
+		if strings.HasPrefix(line, guardRead) {
+			t.Errorf("a record writing nothing read %q", line)
 		}
 	}
 }

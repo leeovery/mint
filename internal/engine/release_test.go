@@ -78,7 +78,7 @@ func spellingRead(root, path string) string {
 
 // userChangesRead is the read unchangedFiles answers for paths, in the repo at root.
 func userChangesRead(root string, paths ...string) string {
-	return "git -C " + root + " --no-optional-locks status --porcelain -z --untracked-files=all --no-renames -- " + literalPathspecsOf(paths)
+	return "git -C " + root + " --no-optional-locks status --porcelain -z --no-renames -- " + literalPathspecsOf(paths)
 }
 
 // committedPathsRead is the read committedPaths answers, in the repo at root.

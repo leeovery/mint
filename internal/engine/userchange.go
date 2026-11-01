@@ -39,13 +39,15 @@ func recordPaths(versionFile string, changelog bool) []string {
 // untracked: as the run starts from a clean tree, such a change was made while it ran,
 // by the user or a tool of theirs. HEAD holds every commit mint made this run, so what
 // mint wrote and committed earlier counts as no change. A file git ignores shows no
-// change, so it is never refused. The error is a *userChangeError naming the changed
+// change, so it is never refused. Untracked files are read as the clean-tree gate reads
+// them, under the user's status.showUntrackedFiles, so a file the gate let through is
+// never refused here: with it set to no, an untracked file shows no change. The error is a *userChangeError naming the changed
 // files, or the read's own failure.
 func refuseUserChanges(ctx context.Context, m *git.Mutator, root string, paths ...string) error {
 	if len(paths) == 0 {
 		return nil
 	}
-	args := []string{"-C", root, "--no-optional-locks", "status", "--porcelain", "-z", "--untracked-files=all", "--no-renames", "--"}
+	args := []string{"-C", root, "--no-optional-locks", "status", "--porcelain", "-z", "--no-renames", "--"}
 	for _, path := range paths {
 		args = append(args, git.LiteralPathspec(path))
 	}
