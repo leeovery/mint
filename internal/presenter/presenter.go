@@ -198,7 +198,8 @@ type Presenter interface {
 	// never sets an exit code.
 	Prompt(gate Gate) (Choice, error)
 	// AskLine is the FREE-TEXT input seam: it renders a one-line prompt (the
-	// engine-supplied prompt label, framed per mode), reads ONE raw line from the
+	// engine-supplied prompt label, framed per mode: plain adds ": ", the rail " › ",
+	// so the label ends in no punctuation of its own), reads ONE raw line from the
 	// SAME persistent input reader Prompt uses, and returns the line VERBATIM with
 	// only the trailing newline (and any preceding carriage return) stripped.
 	// Unlike Prompt there is no choice set, no default, and no re-prompt loop —

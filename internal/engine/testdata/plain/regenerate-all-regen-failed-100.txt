@@ -15,7 +15,7 @@ What changed in v1.1.0, in a line.
 
 --- end notes ---
 Use these notes? [Y/n/e/r]
-Add one-time context for regeneration (optional):: 
+Add one-time context for regeneration (optional): 
 regenerate: FAILED - AI returned empty notes
 --- stderr ---
 regenerate: FAILED - AI returned empty notes
