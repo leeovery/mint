@@ -752,8 +752,12 @@ func resetTo(ctx context.Context, m *git.Mutator, target resetTarget, why string
 // --index, which brings back what was staged, a staged deletion included, as it was.
 // The pop is offered only for a stash that saved something, as a reset that failed
 // for another reason may leave nothing to stash, and a pop then would apply some older
-// stash. git can't stash a file marked intent-to-add, so intents, the files the index
-// read found marked, are unmarked first and marked again last.
+// stash. --index applies the staged part strictly, so where a staged change meets the
+// lines mint's commits wrote, the very case that makes --keep refuse, git answers
+// "conflicts in index. Try without --index." and keeps the stash; a plain pop then
+// brings the changes back, the one to mint's lines as a merge conflict. git can't
+// stash a file marked intent-to-add, so intents, the files the index read found
+// marked, are unmarked first and marked again last.
 func keepSteps(sha, why string, intents []string) []manualStep {
 	var steps []manualStep
 	if len(intents) > 0 {
@@ -766,6 +770,10 @@ func keepSteps(sha, why string, intents []string) []manualStep {
 		manualStep{does: "stash your changes", commands: []string{"git stash"}},
 		manualStep{does: "reset HEAD back to " + sha, commands: []string{"git reset --keep " + sha}, why: why},
 		manualStep{does: "bring your changes back, staged as they were, if the stash saved any", commands: []string{"git stash pop --index"}},
+		manualStep{
+			does:     `if git answers "conflicts in index", bring them back instead, not staged as they were, and any to mint's lines as a conflict to resolve`,
+			commands: []string{"git stash pop"},
+		},
 	)
 	if len(intents) > 0 {
 		steps = append(steps, manualStep{

@@ -27,3 +27,6 @@
      git reset --keep startsha
    Bring your changes back, staged as they were, if the stash saved any:
      git stash pop --index
+   If git answers "conflicts in index", bring them back instead, not staged as they were, and any
+   to mint's lines as a conflict to resolve:
+     git stash pop

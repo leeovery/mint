@@ -44,16 +44,21 @@ func indexHolds(entries ...string) runner.ScriptedCall {
 // keepStepsTo are the manual steps a failed reset of mint's commits back to sha leaves,
 // as plain's warning says them, why saying what the reset is for ("" for nothing):
 // stash the user's changes, reset, then pop the stash with --index, the pop only for a
-// stash that saved something. keepSteps and keepMoves are them for the starting commit,
-// the second as next moves.
+// stash that saved something, and without it where git can't apply the staged part.
+// keepSteps and keepMoves are them for the starting commit, the second as next moves.
 func keepStepsTo(sha, why string) string {
 	reset := "reset HEAD back to " + sha + " (`git reset --keep " + sha + "`)"
 	if why != "" {
 		reset += " " + why
 	}
 	return "stash your changes (`git stash`), then " + reset +
-		", then bring your changes back, staged as they were, if the stash saved any (`git stash pop --index`)"
+		", then bring your changes back, staged as they were, if the stash saved any (`git stash pop --index`)" +
+		", then " + popFallback + " (`git stash pop`)"
 }
+
+// popFallback is the step after the pop with --index, for where git can't apply the
+// stash's staged part.
+const popFallback = `if git answers "conflicts in index", bring them back instead, not staged as they were, and any to mint's lines as a conflict to resolve`
 
 var (
 	keepSteps = keepStepsTo(startingSHA, "")
@@ -61,6 +66,7 @@ var (
 		{Lead: "Stash your changes:", Command: "git stash"},
 		{Lead: "Reset HEAD back to " + startingSHA + ":", Command: "git reset --keep " + startingSHA},
 		{Lead: "Bring your changes back, staged as they were, if the stash saved any:", Command: "git stash pop --index"},
+		{Lead: "I" + popFallback[1:] + ":", Command: "git stash pop"},
 	}
 )
 
