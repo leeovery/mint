@@ -69,7 +69,7 @@ func TestRegenerateChangelog_ExistingVersion_ReplacedInPlaceNoDuplicate(t *testi
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{}, nil)
 
-	committed, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "0.0.2", "v0.0.2", regenChangelogDate(), "New second body.")
+	committed, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "0.0.2", "v0.0.2", regenChangelogDate(), "New second body.", "")
 	if err != nil {
 		t.Fatalf("RegenerateChangelog returned unexpected error: %v", err)
 	}
@@ -99,9 +99,9 @@ func TestRegenerateChangelog_CommitSubjectIsRegenerateNotForward(t *testing.T) {
 	seedChangelog(t, dir, kacPreamble+"\n## [1.4.0] - 2026-01-01\n\nStale body.\n")
 
 	r := runner.NewFakeRunner()
-	r.Seed("git", runner.Result{}, nil)
+	r.SeedSequence("git", ScriptedOut(""), headBeforeCommit, ScriptedOut(""), headAfterCommit, committedPaths) // add, HEAD, commit, HEAD, the paths it changed
 
-	committed, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "1.4.0", "v1.4.0", regenChangelogDate(), "Refreshed body.")
+	committed, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "1.4.0", "v1.4.0", regenChangelogDate(), "Refreshed body.", "")
 	if err != nil {
 		t.Fatalf("RegenerateChangelog returned unexpected error: %v", err)
 	}
@@ -110,8 +110,8 @@ func TestRegenerateChangelog_CommitSubjectIsRegenerateNotForward(t *testing.T) {
 	}
 
 	invs := r.Invocations()
-	if len(invs) != 3 {
-		t.Fatalf("invocations = %d, want 3 (git add, git commit, then the read of what it changed)\n got: %v", len(invs), invs)
+	if len(invs) != 5 {
+		t.Fatalf("invocations = %d, want 5 (git add, the read of HEAD, git commit, the read of HEAD, then the read of what it changed)\n got: %v", len(invs), invs)
 	}
 
 	wantAdd := []string{"-C", dir, "add", "CHANGELOG.md"}
@@ -120,14 +120,14 @@ func TestRegenerateChangelog_CommitSubjectIsRegenerateNotForward(t *testing.T) {
 	}
 
 	wantCommit := pathsCommit(dir, "docs(changelog): regenerate notes for v1.4.0")
-	if commit := invs[1]; commit.Name != "git" || !slices.Equal(commit.Args, wantCommit) || commit.Stdin != ":(top,literal)CHANGELOG.md\x00" {
+	if commit := invs[2]; commit.Name != "git" || !slices.Equal(commit.Args, wantCommit) || commit.Stdin != ":(top,literal)CHANGELOG.md\x00" {
 		t.Errorf("commit invocation = %s %v stdin %q, want git %v naming CHANGELOG.md alone", commit.Name, commit.Args, commit.Stdin, wantCommit)
 	}
-	if got := commandLine(invs[2]); got != committedPathsRead(dir) {
+	if got := commandLine(invs[4]); got != committedPathsRead(dir) {
 		t.Errorf("after the commit = %q, want the read of the paths it changed %q", got, committedPathsRead(dir))
 	}
 
-	subject := invs[1].Args[4]
+	subject := invs[2].Args[4]
 	if strings.Contains(subject, "Release ") {
 		t.Errorf("commit subject = %q, must NOT reuse the forward `{commit_prefix} Release {tag}` subject", subject)
 	}
@@ -148,7 +148,7 @@ func TestRegenerateChangelog_NoNetChange_MakesNoCommit(t *testing.T) {
 
 	r := runner.NewFakeRunner()
 
-	committed, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "0.0.2", "v0.0.2", regenChangelogDate(), "Unchanged body.")
+	committed, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "0.0.2", "v0.0.2", regenChangelogDate(), "Unchanged body.", "")
 	if err != nil {
 		t.Fatalf("RegenerateChangelog returned unexpected error: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestRegenerateChangelog_NeverCutsTag(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{}, nil)
 
-	if _, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "2.0.0", "v2.0.0", regenChangelogDate(), "New body."); err != nil {
+	if _, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "2.0.0", "v2.0.0", regenChangelogDate(), "New body.", ""); err != nil {
 		t.Fatalf("RegenerateChangelog returned unexpected error: %v", err)
 	}
 
@@ -199,7 +199,7 @@ func TestRegenerateChangelog_AtMostOneCommit(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{}, nil)
 
-	if _, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "3.1.0", "v3.1.0", regenChangelogDate(), "After."); err != nil {
+	if _, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "3.1.0", "v3.1.0", regenChangelogDate(), "After.", ""); err != nil {
 		t.Fatalf("RegenerateChangelog returned unexpected error: %v", err)
 	}
 
@@ -225,7 +225,7 @@ func TestRegenerateChangelog_CreatesAbsentFile(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{}, nil)
 
-	committed, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "0.0.1", "v0.0.1", regenChangelogDate(), "Initial release.")
+	committed, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "0.0.1", "v0.0.1", regenChangelogDate(), "Initial release.", "")
 	if err != nil {
 		t.Fatalf("RegenerateChangelog returned unexpected error: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestRegenerateChangelog_StageFails_SurfacesErrorBeforeCommit(t *testing.T) 
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stderr: "fatal: pathspec error\n", ExitCode: 128}, errors.New("exit status 128"))
 
-	committed, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "1.0.0", "v1.0.0", regenChangelogDate(), "New.")
+	committed, err := engine.RegenerateChangelog(t.Context(), regenMutator(r), dir, "1.0.0", "v1.0.0", regenChangelogDate(), "New.", "")
 	if err == nil {
 		t.Fatal("RegenerateChangelog returned nil error, want the git add failure surfaced")
 	}

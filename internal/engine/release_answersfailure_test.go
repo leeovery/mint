@@ -39,7 +39,7 @@ type answersFailure struct {
 var (
 	writeFails  = answersFailure{name: "writing .mint.toml", readOnly: true}
 	stageFails  = answersFailure{name: "staging .mint.toml", git: []runner.ScriptedCall{configNotIgnored, gitFailing(stageStderr)}}
-	commitFails = answersFailure{name: "committing .mint.toml", git: []runner.ScriptedCall{configNotIgnored, ScriptedOut(""), gitFailing(commitStderr)}}
+	commitFails = answersFailure{name: "committing .mint.toml", git: []runner.ScriptedCall{configNotIgnored, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr)}}
 )
 
 // failedAnswers is a run whose Exclude answer to docs/design/ could not be recorded.

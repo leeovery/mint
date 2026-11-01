@@ -49,6 +49,7 @@ func TestRelease_AFailedBookkeepingCommitShowsGitsStderrVerbatimBeneathItsFailur
 	f.SeedSequence("git",
 		unchangedFiles,       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),      // -C root add CHANGELOG.md
+		headBeforeCommit,     // HEAD before the commit
 		gitFailing(unsigned), // -C root commit -m
 		ScriptedOut(""),      // unwind: status (nothing staged)
 		ScriptedOut(""),      // unwind: reset --keep startingSHA

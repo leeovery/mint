@@ -22,7 +22,7 @@ func TestRegenerateWrite_AFailedChangelogCommitShowsGitsStderrVerbatimBeneathIts
 	seedChangelog(t, dir, regenNotesStaleChangelog)
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git", regenChangelogWrite()...)
-	f.SeedSequence("git", gitFailing(unsignedStderr)) // -C root commit -m
+	f.SeedSequence("git", headBeforeCommit, gitFailing(unsignedStderr)) // HEAD before the commit, -C root commit -m
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
 	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
@@ -48,6 +48,7 @@ func TestRegenerateAllValidated_AFailedRebuildCommitShowsGitsStderrVerbatimBenea
 		ScriptedOut(batchV3Date),   // for-each-ref creatordate:short v3
 		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // add CHANGELOG.md
+		headBeforeCommit,           // HEAD before the commit
 		gitFailing(unsignedStderr), // commit
 	)...)
 	rec := &presentertest.RecordingPresenter{}

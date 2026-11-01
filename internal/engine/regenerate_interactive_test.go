@@ -453,7 +453,9 @@ func TestRegenerateRun_InteractiveChangelog_RunsCommitPushGates(t *testing.T) {
 		ScriptedOut("2024-02-15"), // for-each-ref creatordate:short (historical date)
 		unchangedFiles,            // the read of whether the user changed the files mint writes
 		ScriptedOut(""),           // add CHANGELOG.md
+		headBeforeCommit,          // HEAD before the commit
 		ScriptedOut(""),           // commit
+		headAfterCommit,           // HEAD after it
 		committedPaths,            // the paths the commit changed
 		ScriptedOut(""),           // push origin HEAD
 	)

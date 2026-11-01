@@ -107,11 +107,13 @@ func (a *answeredAbort) unwound(beforeReset ...runner.ScriptedCall) *answeredAbo
 	a.f.SeedSequence("git", ScriptedOut(answersSHA+"\n"))
 	a.f.SeedSequence("git", beforeReset...)
 	a.f.SeedSequence("git",
-		ScriptedOut(""), // status (nothing staged)
-		ScriptedOut(""), // reset --keep startsha
-		ScriptedOut(""), // -C root add .mint.toml
-		ScriptedOut(""), // -C root commit -m answers
-		committedPaths,  // the paths the commit changed
+		ScriptedOut(""),  // status (nothing staged)
+		ScriptedOut(""),  // reset --keep startsha
+		ScriptedOut(""),  // -C root add .mint.toml
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m answers
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
 	)
 	return a
 }
@@ -139,7 +141,9 @@ func assertAnswersKept(t *testing.T, rec *presentertest.RecordingPresenter, a *a
 	after := a.f.Invocations()[reset+1:]
 	want := []string{
 		"git -C " + a.root + " add " + config.FileName,
+		headRead(a.root),
 		"git -C " + a.root + " commit -m " + answersSubject(minorTagV130) + " --pathspec-from-file=- --pathspec-file-nul",
+		headRead(a.root),
 		committedPathsRead(a.root),
 	}
 	if got := commandLines(after); !slices.Equal(got, want) {
@@ -302,18 +306,20 @@ func TestRelease_FailuresBeforeThePushAfterAnswering_KeepTheAnswersCommit(t *tes
 	}{
 		{
 			name:    "the bookkeeping commit fails",
-			tail:    []runner.ScriptedCall{unchangedFiles, ScriptedOut(""), gitFailing(commitStderr), ScriptedOut("")}, // the user-change read, add, commit, unwind: restore CHANGELOG.md
+			tail:    []runner.ScriptedCall{unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), ScriptedOut("")}, // the user-change read, add, commit, unwind: restore CHANGELOG.md
 			summary: "reset 2 commits and removed CHANGELOG.md; kept your exclusion answers in .mint.toml; repo clean",
 		},
 		{
 			name: "the push is rejected after the tag",
 			tail: []runner.ScriptedCall{
-				unchangedFiles,  // the read of whether the user changed the files mint writes
-				ScriptedOut(""), // -C root add CHANGELOG.md
-				ScriptedOut(""), // -C root commit -m
-				committedPaths,  // the paths the commit changed
-				ScriptedOut(""), // tag -a v1.3.0 -F -
-				pushRejected(),  // push --atomic origin HEAD v1.3.0
+				unchangedFiles,   // the read of whether the user changed the files mint writes
+				ScriptedOut(""),  // -C root add CHANGELOG.md
+				headBeforeCommit, // HEAD before the commit
+				ScriptedOut(""),  // -C root commit -m
+				headAfterCommit,  // HEAD after it
+				committedPaths,   // the paths the commit changed
+				ScriptedOut(""),  // tag -a v1.3.0 -F -
+				pushRejected(),   // push --atomic origin HEAD v1.3.0
 			},
 			beforeReset: []runner.ScriptedCall{ScriptedOut("")}, // tag -d v1.3.0
 			summary:     "reset 3 commits and deleted tag " + minorTagV130 + "; kept your exclusion answers in .mint.toml; repo clean",

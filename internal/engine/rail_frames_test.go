@@ -174,11 +174,13 @@ func (w *railWorld) notes() {
 // recorded scripts the bookkeeping commit, the provider's detection and the tag.
 func (w *railWorld) recorded() {
 	w.f.SeedSequence("git",
-		unchangedFiles,  // the read of whether the user changed the files mint writes
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit -m
-		committedPaths,  // the paths the commit changed
-		ScriptedOut(""), // tag -a v1.3.0 -F -
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // -C root add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // tag -a v1.3.0 -F -
 	)
 }
 
@@ -486,6 +488,7 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("git",
 			unchangedFiles,           // the read of whether the user changed the files mint writes
 			ScriptedOut(""),          // -C root add CHANGELOG.md
+			headBeforeCommit,         // HEAD before the commit
 			gitFailing(commitStderr), // -C root commit -m
 			ScriptedOut(""),          // unwind: restore CHANGELOG.md
 		)
@@ -501,6 +504,7 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("git",
 			unchangedFiles,           // the read of whether the user changed the files mint writes
 			ScriptedOut(""),          // -C root add CHANGELOG.md
+			headBeforeCommit,         // HEAD before the commit
 			gitFailing(commitStderr), // -C root commit -m
 			gitFailing(stageStderr),  // unwind: restore CHANGELOG.md
 		)
@@ -658,7 +662,9 @@ var railRuns = map[string]railRun{
 			ScriptedOut(""),              // unwind: status (nothing staged)
 			ScriptedOut(""),              // unwind: reset --keep startsha
 			ScriptedOut(""),              // unwind: -C root add .mint.toml
+			headBeforeCommit,             // HEAD before the commit
 			ScriptedOut(""),              // unwind: -C root commit -m
+			headAfterCommit,              // HEAD after it
 			committedPaths,               // the paths the commit changed
 		)
 		return w.release(t, nil)

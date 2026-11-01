@@ -96,7 +96,9 @@ func TestRegenerateWrite_Changelog_PushIsPlainNoTag(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short (historical date)
 		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // -C dir add CHANGELOG.md
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // -C dir commit -m docs(changelog): ...
+		headAfterCommit,                   // HEAD after it
 		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)
@@ -137,7 +139,9 @@ func TestRegenerateWrite_Changelog_UsesHistoricalDateNotToday(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
 		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // commit
+		headAfterCommit,                   // HEAD after it
 		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)
@@ -206,7 +210,9 @@ func TestRegenerateWrite_PrePushFailure_ResetsCommit(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
 		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // commit (the changelog commit lands)
+		headAfterCommit,                   // HEAD after it
 		committedPaths,                    // the paths the commit changed
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
 		ScriptedOut(""), // unwind: status (nothing staged)
@@ -246,7 +252,9 @@ func TestRegenerateWrite_RecoveryResetFails_WarnsManualCleanup(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
 		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // commit (the changelog commit lands)
+		headAfterCommit,                   // HEAD after it
 		committedPaths,                    // the paths the commit changed
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
 		nothingStaged, // the reset's read of what the index holds
@@ -282,7 +290,9 @@ func TestRegenerateWrite_ProviderFailureAfterPush_WarnOnly(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
 		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // commit
+		headAfterCommit,                   // HEAD after it
 		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD (PONR crossed)
 	)
@@ -320,7 +330,9 @@ func TestRegenerateWrite_Both_ChangelogPushBeforeProvider(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
 		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
+		headBeforeCommit,                  // HEAD before the commit
 		ScriptedOut(""),                   // commit
+		headAfterCommit,                   // HEAD after it
 		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)

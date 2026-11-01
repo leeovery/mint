@@ -87,10 +87,13 @@ func (r restoreRepo) keepingOut() string {
 	return " -- " + excludePathspec(r.notes)
 }
 
-// commitPaths is mint's commit of the paths it names under subject, whatever the notes
-// file holds, git answering it with outcome.
-func (r restoreRepo) commitPaths(subject string, outcome runner.ScriptedCall, paths ...string) gitStep {
-	return gitStep{r.git("commit -m "+subject+" --pathspec-from-file=- --pathspec-file-nul") + piped(paths...), outcome}
+// failedCommitPaths is mint's commit of the paths it names under subject, whatever the
+// notes file holds, after its read of HEAD, git failing it with failure.
+func (r restoreRepo) failedCommitPaths(subject string, failure runner.ScriptedCall, paths ...string) []gitStep {
+	return []gitStep{
+		{headRead(r.root), headBeforeCommit},
+		{r.git("commit -m "+subject+" --pathspec-from-file=- --pathspec-file-nul") + piped(paths...), failure},
+	}
 }
 
 // commit is the artifact commit of what is staged under subject, as CommitStaged makes it,
@@ -108,12 +111,13 @@ func (r restoreRepo) commit(subject, staged string, outcome runner.ScriptedCall)
 	steps := []gitStep{
 		{probe, ScriptedOut(r.notes + "\x00")},
 		{r.git("diff --cached --name-only -z --no-renames" + r.keepingOut()), ScriptedOut(staged)},
+		{headRead(r.root), headBeforeCommit},
 		{r.git("commit -m "+subject+" --pathspec-from-file=- --pathspec-file-nul") + piped(strings.FieldsFunc(staged, func(r rune) bool { return r == 0 })...), outcome},
 	}
 	if outcome.Err != nil {
 		return steps
 	}
-	return append(steps, gitStep{committedPathsRead(r.root), committedPaths})
+	return append(steps, gitStep{headRead(r.root), headAfterCommit}, gitStep{committedPathsRead(r.root, r.notes), committedPaths})
 }
 
 // artifacts is the pre_tag hook leaving bundle.js changed and mint committing it,
@@ -238,7 +242,7 @@ var (
 		config: plainVersionFile,
 		fails: func(r restoreRepo) []gitStep {
 			return append([]gitStep{r.spellingRead(), r.recordChecked(), {r.git("add CHANGELOG.md VERSION"), ScriptedOut("")}},
-				r.commitPaths(bookkeepingSubject, gitFailing(commitStderr), "CHANGELOG.md", "VERSION"))
+				r.failedCommitPaths(bookkeepingSubject, gitFailing(commitStderr), "CHANGELOG.md", "VERSION")...)
 		},
 		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
 			return []gitStep{r.restore(outcome, "VERSION", "CHANGELOG.md")}

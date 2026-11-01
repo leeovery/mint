@@ -54,7 +54,9 @@ func seedPriorTagNotesFileGit(f *runner.FakeRunner, root string) {
 // AI-path step (exclusion, size check, chunking, generation) starts from.
 func gitDiffInvoked(f *runner.FakeRunner) bool {
 	for _, inv := range f.Invocations() {
-		if inv.Name == "git" && slices.Contains(inv.Args, "diff") {
+		// The read of the paths a commit of mint's changed is a diff of two commits, not
+		// of the release's range.
+		if inv.Name == "git" && slices.Contains(inv.Args, "diff") && !slices.Contains(inv.Args, "--diff-filter=d") {
 			return true
 		}
 	}

@@ -34,7 +34,9 @@ func seedVersionFileFold(f *runner.FakeRunner, root, releaseBranch, tag, version
 		noOtherSpelling,                      // the read of how git spells the version file
 		unchangedFiles,                       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                      // -C root add CHANGELOG.md {versionFile} (folded)
+		headBeforeCommit,                     // HEAD before the commit
 		ScriptedOut(""),                      // -C root commit -m {commit_prefix} Release {tag}
+		headAfterCommit,                      // HEAD after it
 		committedPaths,                       // the paths the commit changed
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}

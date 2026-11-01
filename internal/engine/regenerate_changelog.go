@@ -51,14 +51,15 @@ import (
 // When the write nets a change, the changelog is staged in ONE `git -C {root} add
 // CHANGELOG.md` and committed alone with subject `docs(changelog): regenerate notes for
 // {tag}` through the lock-resilient Mutator, leaving everything else the index holds
-// staged and out of the commit; committed is true. When the write nets NO change,
-// nothing is staged or committed and committed is false.
+// staged and out of the commit, and keepOut, the notes file, out of the index match
+// after it; committed is true. When the write nets NO change, nothing is staged or
+// committed and committed is false.
 //
 // A failed write is surfaced; a failed `git add` or commit is surfaced as an
 // *uncommittedChangelog, which resetAndAbort puts back; a failed stage short-circuits
 // before the commit so it can never produce a commit. A commit that landed with the
 // index left behind it is a *record.IndexBehindError, committed true.
-func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, tag string, date time.Time, body string) (committed bool, err error) {
+func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, tag string, date time.Time, body string, keepOut git.Exclusion) (committed bool, err error) {
 	writeResult, err := record.WriteChangelog(root, versionKey, date, body, true)
 	if err != nil {
 		return false, fmt.Errorf("regenerating changelog for %s: %w", tag, err)
@@ -69,7 +70,7 @@ func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, 
 		return false, nil
 	}
 
-	if err := stageAndCommitChangelog(ctx, m, root, regenerateChangelogSubject(tag), writeResult.Created); err != nil {
+	if err := stageAndCommitChangelog(ctx, m, root, regenerateChangelogSubject(tag), writeResult.Created, keepOut); err != nil {
 		var behind *record.IndexBehindError
 		return errors.As(err, &behind), fmt.Errorf("regenerating changelog for %s: %w", tag, err)
 	}

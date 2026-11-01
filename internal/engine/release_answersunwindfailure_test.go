@@ -54,12 +54,14 @@ func assertUnwoundWithOneWarning(t *testing.T, rec *presentertest.RecordingPrese
 // push, leaving the answers commit one below the tip.
 func pushRejectedAfterTheTag() []runner.ScriptedCall {
 	return []runner.ScriptedCall{
-		unchangedFiles,  // the read of whether the user changed the files mint writes
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit -m
-		committedPaths,  // the paths the commit changed
-		ScriptedOut(""), // tag -a v1.3.0 -F -
-		pushRejected(),  // push --atomic origin HEAD v1.3.0
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // -C root add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // tag -a v1.3.0 -F -
+		pushRejected(),   // push --atomic origin HEAD v1.3.0
 	}
 }
 
@@ -100,7 +102,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitFails_WarnsTheStepThatCommi
 		stderr string
 	}{
 		{name: "staging fails", git: []runner.ScriptedCall{gitFailing(stageStderr)}, stderr: stageStderr},
-		{name: "committing fails", git: []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)}, stderr: commitStderr},
+		{name: "committing fails", git: []runner.ScriptedCall{ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr)}, stderr: commitStderr},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -146,7 +148,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitFailsInARootWithASpace_Warn
 	}
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, []presenter.Choice{presenter.ChoiceNo})
 	a := newAnsweredAbortIn(t, root, rec, preTagHookConfig)
-	a.f.SeedSequence("git", answersCommitRead, nothingStaged, ScriptedOut(""), ScriptedOut(""), gitFailing(commitStderr)) // the sha, the reset, the add, the commit
+	a.f.SeedSequence("git", answersCommitRead, nothingStaged, ScriptedOut(""), ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr)) // the sha, the reset, the add, the commit
 
 	err := a.release(t.Context())
 

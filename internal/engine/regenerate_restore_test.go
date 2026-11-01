@@ -47,7 +47,7 @@ var regenRestoreCases = []regenRestoreCase{
 func (tc regenRestoreCase) failingTail() []runner.ScriptedCall {
 	tail := []runner.ScriptedCall{unchangedFiles, gitFailing(stageStderr)}
 	if tc.commitFails {
-		tail = []runner.ScriptedCall{unchangedFiles, ScriptedOut(""), gitFailing(commitStderr)}
+		tail = []runner.ScriptedCall{unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr)}
 	}
 	if tc.restores && !tc.commitFails {
 		tail = append(tail, ScriptedOut("CHANGELOG.md\x00"))
@@ -56,13 +56,13 @@ func (tc regenRestoreCase) failingTail() []runner.ScriptedCall {
 }
 
 // wantTail is the git steps from the read of whether the user changed CHANGELOG.md on:
-// that read, the stage, the commit where the stage went through, else the read of
-// whether git holds the file it wrote over, then the put-back where git is asked for
-// it, else the file taken out of the index, and no reset.
+// that read, the stage, the read of HEAD and the commit where the stage went through,
+// else the read of whether git holds the file it wrote over, then the put-back where
+// git is asked for it, else the file taken out of the index, and no reset.
 func (tc regenRestoreCase) wantTail(dir string) []string {
 	want := []string{userChangesRead(dir, "CHANGELOG.md"), "git -C " + dir + " add CHANGELOG.md"}
 	if tc.commitFails {
-		want = append(want, "git -C "+dir+" commit -m docs(changelog): regenerate notes for "+regenWriteTag+" --pathspec-from-file=- --pathspec-file-nul"+piped("CHANGELOG.md"))
+		want = append(want, headRead(dir), "git -C "+dir+" commit -m docs(changelog): regenerate notes for "+regenWriteTag+" --pathspec-from-file=- --pathspec-file-nul"+piped("CHANGELOG.md"))
 	}
 	if tc.restores && !tc.commitFails {
 		want = append(want, knownChangelog(dir))
@@ -131,7 +131,7 @@ func TestRegenerateWrite_ACommitThatFails_PutsBackTheRewriteLeavingTheNotesFile(
 	path := writeNotesFile(t, dir, "NEXT_RELEASE.md", suppliedBody)
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git", regenChangelogWrite()...)
-	f.SeedSequence("git", gitFailing(commitStderr), ScriptedOut("")) // the commit, the put-back
+	f.SeedSequence("git", headBeforeCommit, gitFailing(commitStderr), ScriptedOut("")) // the commit, the put-back
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
@@ -152,7 +152,7 @@ func TestRegenerateWrite_APutBackThatFails_SaysSoWithTheManualStep(t *testing.T)
 	seedChangelog(t, dir, regenNotesStaleChangelog)
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git", regenChangelogWrite()...)
-	f.SeedSequence("git", gitFailing(commitStderr), gitFailing(stageStderr)) // commit, the put-back
+	f.SeedSequence("git", headBeforeCommit, gitFailing(commitStderr), gitFailing(stageStderr)) // commit, the put-back
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
@@ -200,6 +200,7 @@ func TestRegenerateAllValidated_Changelog_ACommitThatFails_PutsBackTheRebuild(t 
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
 		unchangedFiles,           // the read of whether the user changed the files mint writes
 		ScriptedOut(""),          // add CHANGELOG.md
+		headBeforeCommit,         // HEAD before the commit
 		gitFailing(commitStderr), // commit
 		ScriptedOut(""),          // the put-back
 	)...)

@@ -91,11 +91,13 @@ func seedRebuildGit(f *runner.FakeRunner, dates ...string) {
 		calls = append(calls, ScriptedOut(d)) // for-each-ref creatordate:short per version
 	}
 	calls = append(calls,
-		unchangedFiles,  // the read of whether the user changed the files mint writes
-		ScriptedOut(""), // add CHANGELOG.md
-		ScriptedOut(""), // commit
-		committedPaths,  // the paths the commit changed
-		ScriptedOut(""), // push origin HEAD
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // commit
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // push origin HEAD
 	)
 	f.SeedSequence("git", calls...)
 }
@@ -290,7 +292,9 @@ func TestRegenerateAllValidated_Changelog_PrePushFailure_ResetsCommit(t *testing
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
 		unchangedFiles,           // the read of whether the user changed the files mint writes
 		ScriptedOut(""),          // add CHANGELOG.md
+		headBeforeCommit,         // HEAD before the commit
 		ScriptedOut(""),          // commit (the rebuild commit lands)
+		headAfterCommit,          // HEAD after it
 		committedPaths,           // the paths the commit changed
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
 		ScriptedOut(""), // unwind: status (nothing staged)

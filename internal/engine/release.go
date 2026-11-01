@@ -682,7 +682,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// while the notes run (the cached notes') is a wait it leaves out.
 	stage := startNotesStage(p, deps.clock())
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, tag)
-	answers := &answersCommit{root: root, tag: tag}
+	answers := &answersCommit{root: root, tag: tag, keepOut: keepOut}
 	body, kind, generator, err := resolveBody(ctx, stage.stage.awaiting(deps), root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage, answers)
 	if answers.landed {
 		made.Commits++
@@ -814,7 +814,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// HEAD just moved, so made.Commits is bumped exactly when a commit landed —
 	// tracked, not inferred by probing git.
 	bookkeepingCommitted := record.BookkeepingWillCommit(versionFile, writeResult.Changed, versionChanged)
-	err = record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, versionFile, writeResult.Changed, versionChanged)
+	err = record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, versionFile, writeResult.Changed, versionChanged, start.KeepOut)
 	if err = warnIndexBehind(p, root, stageRecord, err); err != nil {
 		var uncommitted *record.UncommittedError
 		made.recordStaged = errors.As(err, &uncommitted)
@@ -1212,6 +1212,7 @@ func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, tr
 // run to, and edit is the write until a commit holds it or git is found to ignore it.
 type answersCommit struct {
 	root, tag   string
+	keepOut     git.Exclusion
 	globs       config.ReleaseGlobs
 	wrote       bool
 	landed      bool
@@ -1276,7 +1277,7 @@ func (a *answersCommit) write() error {
 }
 
 func (a *answersCommit) commit(ctx context.Context, m *git.Mutator) error {
-	return record.CommitFile(ctx, m, a.root, config.FileName, record.AnswersSubject(a.tag))
+	return record.CommitFile(ctx, m, a.root, config.FileName, record.AnswersSubject(a.tag), a.keepOut)
 }
 
 // committed is the answers commit's err as the run takes it: nil where the commit

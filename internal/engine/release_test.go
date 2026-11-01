@@ -49,15 +49,25 @@ func ScriptedNonZero() runner.ScriptedCall {
 	}
 }
 
-// seedHappyGit scripts a FakeRunner's "git" timeline for a no-tags first-release
-// run through the full spine — every git probe the orchestrator makes resolves
-// the way a clean first-release repo would (publish=true variant). The trailing
-// gh calls (auth status, release create) are seeded by the caller.
-//
-//	root          — `git rev-parse --show-toplevel`
-//	releaseBranch — `git symbolic-ref --short refs/remotes/origin/HEAD`
-//	tag           — the computed tag (e.g. "v0.0.1")
-//
+// The commits HEAD names either side of a commit of mint's, as the fakes answer the
+// reads of HEAD around it (headRead).
+const (
+	beforeCommitSHA = "beforesha"
+	afterCommitSHA  = "aftersha"
+)
+
+// headBeforeCommit and headAfterCommit are git's answers to the reads of HEAD either
+// side of a commit of mint's.
+var (
+	headBeforeCommit = ScriptedOut(beforeCommitSHA + "\n")
+	headAfterCommit  = ScriptedOut(afterCommitSHA + "\n")
+)
+
+// headRead is the read of HEAD either side of a commit of mint's, in the repo at root.
+func headRead(root string) string {
+	return "git -C " + root + " rev-parse HEAD"
+}
+
 // committedPaths is git's answer to the read of the paths a commit of mint's changed,
 // made to match the index to the commit: none, as the fake commit changes nothing, so
 // no restore follows.
@@ -81,11 +91,24 @@ func userChangesRead(root string, paths ...string) string {
 	return "git -C " + root + " --no-optional-locks status --porcelain -z --no-renames -- " + literalPathspecsOf(paths)
 }
 
-// committedPathsRead is the read committedPaths answers, in the repo at root.
-func committedPathsRead(root string) string {
-	return "git -C " + root + " diff-tree --no-commit-id --name-only -r -z HEAD"
+// committedPathsRead is the read committedPaths answers, in the repo at root, less
+// keepOut, the notes file, where one is given.
+func committedPathsRead(root string, keepOut ...string) string {
+	read := "git -C " + root + " diff --name-only -z --no-renames --diff-filter=d " + beforeCommitSHA + " " + afterCommitSHA
+	for _, path := range keepOut {
+		read += " -- :(top,literal,exclude)" + path
+	}
+	return read
 }
 
+// seedHappyGit scripts a FakeRunner's "git" timeline for a no-tags first-release
+// run through the full spine — every git probe the orchestrator makes resolves
+// the way a clean first-release repo would (publish=true variant). The trailing
+// gh calls (auth status, release create) are seeded by the caller.
+//
+//	root          — `git rev-parse --show-toplevel`
+//	releaseBranch — `git symbolic-ref --short refs/remotes/origin/HEAD`
+//	tag           — the computed tag (e.g. "v0.0.1")
 func seedHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 	seedProvider(f)
 	f.SeedSequence("git",
@@ -102,7 +125,9 @@ func seedHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
 		unchangedFiles,                       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
+		headBeforeCommit,                     // HEAD before the commit
 		ScriptedOut(""),                      // -C root commit -m
+		headAfterCommit,                      // HEAD after it
 		committedPaths,                       // the paths the commit changed
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
@@ -216,7 +241,9 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		"git rev-parse HEAD",
 		userChangesRead(root, "CHANGELOG.md"),
 		"git -C " + root + " add CHANGELOG.md",
+		headRead(root),
 		"git -C " + root + " commit -m 🌿 Release v0.0.1 --pathspec-from-file=- --pathspec-file-nul",
+		headRead(root),
 		committedPathsRead(root),
 		"git tag -a --cleanup=verbatim v0.0.1 -F -",
 		"git push --atomic origin HEAD v0.0.1",
@@ -369,11 +396,13 @@ func TestRelease_ContendedLockOnBookkeepingCommit_RecoversAndCompletes(t *testin
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture clean start)
 		unchangedFiles,             // the read of whether the user changed CHANGELOG.md
 		runner.ScriptedCall{Result: runner.Result{Stderr: lockStderr, ExitCode: 128}, Err: errors.New("exit status 128")}, // -C root add CHANGELOG.md — CONTENDED
-		ScriptedOut(""), // -C root add CHANGELOG.md — retry succeeds
-		ScriptedOut(""), // -C root commit -m
-		committedPaths,  // the paths the commit changed
-		ScriptedOut(""), // tag -a v0.0.1 -F -
-		ScriptedOut(""), // push --atomic origin HEAD v0.0.1
+		ScriptedOut(""),  // -C root add CHANGELOG.md — retry succeeds
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // tag -a v0.0.1 -F -
+		ScriptedOut(""),  // push --atomic origin HEAD v0.0.1
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -915,10 +944,12 @@ func seedHappyGitThroughGate(f *runner.FakeRunner, root, releaseBranch, tag stri
 func seedHappyGitThroughCommit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 	seedHappyGitThroughGate(f, root, releaseBranch, tag)
 	f.SeedSequence("git",
-		unchangedFiles,  // the read of whether the user changed the files mint writes
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit -m
-		committedPaths,  // the paths the commit changed
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // -C root add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
 	)
 }
 
@@ -1558,7 +1589,9 @@ func TestRelease_PublishDisabled_NoGhNoPublish(t *testing.T) {
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
+		headBeforeCommit,           // HEAD before the commit
 		ScriptedOut(""),            // -C root commit -m
+		headAfterCommit,            // HEAD after it
 		committedPaths,             // the paths the commit changed
 		ScriptedOut(""),            // tag -a v0.0.1 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
@@ -1886,7 +1919,9 @@ func TestRelease_PublishDisabled_TagStillCarriesBody(t *testing.T) {
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
+		headBeforeCommit,           // HEAD before the commit
 		ScriptedOut(""),            // -C root commit -m
+		headAfterCommit,            // HEAD after it
 		committedPaths,             // the paths the commit changed
 		ScriptedOut(""),            // tag -a v0.0.1 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1

@@ -110,7 +110,9 @@ func keepOutCommit(notesStaged, staged string) []runner.ScriptedCall {
 	return []runner.ScriptedCall{
 		ScriptedOut(notesStaged), // -C root diff --cached -- <notes> (staged edits)
 		ScriptedOut(staged),      // -C root diff --cached --name-only -- :(exclude)<notes>
+		headBeforeCommit,         // HEAD before the commit
 		ScriptedOut(""),          // commit --pathspec-from-file
+		headAfterCommit,          // HEAD after it
 		committedPaths,           // the paths the commit changed
 	}
 }
@@ -161,7 +163,9 @@ func seedInRepoNotesFileGit(f *runner.FakeRunner, root string) {
 		ScriptedOut(startingSHA),   // rev-parse HEAD
 		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
+		headBeforeCommit,           // HEAD before the commit
 		ScriptedOut(""),            // -C root commit of CHANGELOG.md
+		headAfterCommit,            // HEAD after it
 		committedPaths,             // the paths the commit changed
 	)
 	f.SeedSequence("git",
@@ -198,12 +202,14 @@ func firstReleaseGates(root, ignored string, stash ...runner.ScriptedCall) []run
 // whatever the notes file holds, then the tag and push.
 func firstReleaseTail() []runner.ScriptedCall {
 	return []runner.ScriptedCall{
-		unchangedFiles,  // the read of whether the user changed the files mint writes
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit of CHANGELOG.md
-		committedPaths,  // the paths the commit changed
-		ScriptedOut(""), // tag -a v0.0.1 -F -
-		ScriptedOut(""), // push --atomic origin HEAD v0.0.1
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // -C root add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit of CHANGELOG.md
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // tag -a v0.0.1 -F -
+		ScriptedOut(""),  // push --atomic origin HEAD v0.0.1
 	}
 }
 
@@ -255,6 +261,11 @@ func TestRelease_NotesFileInRepo_KeptOutOfTheCleanTreeCheckAndBookkeepingCommit(
 			assertGitArgs(t, f, 3, []string{"-C", root, "add", "CHANGELOG.md"})
 			assertPathsCommitted(t, f, root, "🌿 Release "+nextTag, "CHANGELOG.md")
 			assertNotesFileOnlyExcluded(t, f, tt.file)
+			// A hook that stages every tracked change commits the notes file, and the
+			// index match would put that over its staged state, so the match leaves it out.
+			if lines := stepLines(f); !slices.Contains(lines, committedPathsRead(root, tt.file)) {
+				t.Errorf("git steps = %q, want the read of the paths the commit changed less the notes file %q", lines, committedPathsRead(root, tt.file))
+			}
 			assertFileUnchanged(t, path, suppliedBody)
 			assertRunFinished(t, rec)
 		})

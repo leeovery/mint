@@ -86,12 +86,14 @@ func seedRecordTagPush(f *runner.FakeRunner, root string) {
 		f.SeedSequence("git", noOtherSpelling)
 	}
 	f.SeedSequence("git",
-		unchangedFiles,  // the read of whether the user changed the files mint writes
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit -m
-		committedPaths,  // the paths the commit changed
-		ScriptedOut(""), // tag -a v1.2.4 -F -
-		ScriptedOut(""), // push --atomic origin HEAD v1.2.4
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // -C root add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m
+		headAfterCommit,  // HEAD after it
+		committedPaths,   // the paths the commit changed
+		ScriptedOut(""),  // tag -a v1.2.4 -F -
+		ScriptedOut(""),  // push --atomic origin HEAD v1.2.4
 	)
 }
 

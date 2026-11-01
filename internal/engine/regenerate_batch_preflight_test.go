@@ -49,7 +49,9 @@ func TestRegenerateAllValidated_InteractiveChangelog_RunsCommitPushGatesBeforeRe
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
 		unchangedFiles,           // the read of whether the user changed the files mint writes
 		ScriptedOut(""),          // add CHANGELOG.md
+		headBeforeCommit,         // HEAD before the commit
 		ScriptedOut(""),          // commit
+		headAfterCommit,          // HEAD after it
 		committedPaths,           // the paths the commit changed
 		ScriptedOut(""),          // push origin HEAD
 	)
@@ -212,7 +214,9 @@ func TestRegenerateAllValidated_ChangelogOnly_GateSelectionUnaffectedByPublisher
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
 		unchangedFiles,           // the read of whether the user changed the files mint writes
 		ScriptedOut(""),          // add CHANGELOG.md
+		headBeforeCommit,         // HEAD before the commit
 		ScriptedOut(""),          // commit
+		headAfterCommit,          // HEAD after it
 		committedPaths,           // the paths the commit changed
 		ScriptedOut(""),          // push origin HEAD
 	)

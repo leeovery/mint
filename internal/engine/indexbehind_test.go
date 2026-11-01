@@ -14,21 +14,27 @@ import (
 const matchIndexStderr = "fatal: Unable to write new index file\n"
 
 // indexBehindWarning is the warning a commit of mint's in the repo at root leaves where
-// the index could not be matched to it, labelled label.
-func indexBehindWarning(root, label string) presenter.Warning {
+// the index could not be matched to it, labelled label, its command naming the commits
+// either side of it and leaving out keepOut, a pathspec as the shell takes it.
+func indexBehindWarning(root, label string, keepOut ...string) presenter.Warning {
 	git := "git -C " + root
+	paths := git + " diff --name-only -z --no-renames --diff-filter=d " + beforeCommitSHA + " " + afterCommitSHA
+	for _, spec := range keepOut {
+		paths += " -- " + spec
+	}
 	return presenter.Warning{
 		Label: label,
 		Message: "committed, but the index still holds what the commit hooks staged as it was before them; " +
-			"match it to the commit (`" + git + " diff-tree --no-commit-id --name-only -r -z HEAD | " +
-			git + " --literal-pathspecs restore --source=HEAD --staged --pathspec-from-file=- --pathspec-file-nul && " +
+			"match it to the commit (`" + paths + " | " +
+			git + " --literal-pathspecs restore --source=" + afterCommitSHA + " --staged --pathspec-from-file=- --pathspec-file-nul && " +
 			git + " update-index -q --refresh`)",
 		Output: matchIndexStderr,
 	}
 }
 
-// After the bookkeeping commit, every path it changed has its index entry matched to
-// the commit, so what a commit hook staged reads as no change once the release is out.
+// After the bookkeeping commit, every path changed since HEAD before it has its index
+// entry matched to HEAD after it, so what a commit hook staged reads as no change once
+// the release is out.
 func TestRelease_TheBookkeepingCommit_MatchesTheIndexToEveryPathItChanged(t *testing.T) {
 	t.Parallel()
 
@@ -36,9 +42,11 @@ func TestRelease_TheBookkeepingCommit_MatchesTheIndexToEveryPathItChanged(t *tes
 	f := runner.NewFakeRunner()
 	seedHappyGitThroughGate(f, root, "main", "v0.0.1")
 	f.SeedSequence("git",
-		unchangedFiles,  // the read of whether the user changed the files mint writes
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit -m
+		unchangedFiles,   // the read of whether the user changed the files mint writes
+		ScriptedOut(""),  // -C root add CHANGELOG.md
+		headBeforeCommit, // HEAD before the commit
+		ScriptedOut(""),  // -C root commit -m
+		headAfterCommit,  // HEAD after it
 		ScriptedOut("CHANGELOG.md\x00dist/notes.json\x00"), // the paths the commit changed
 		ScriptedOut(""), // restore --staged
 		ScriptedOut(""), // update-index --refresh
@@ -53,15 +61,19 @@ func TestRelease_TheBookkeepingCommit_MatchesTheIndexToEveryPathItChanged(t *tes
 
 	lines := stepLines(f)
 	commit := slices.Index(lines, "git -C "+root+" commit -m 🌿 Release v0.0.1 --pathspec-from-file=- --pathspec-file-nul"+piped("CHANGELOG.md"))
-	if commit == -1 || len(lines) < commit+4 {
+	if commit < 1 || len(lines) < commit+5 {
 		t.Fatalf("git steps = %q, want the bookkeeping commit then the index matched to it", lines)
 	}
+	if got := lines[commit-1]; got != headRead(root) {
+		t.Errorf("before the commit = %q, want the read of HEAD %q", got, headRead(root))
+	}
 	want := []string{
+		headRead(root),
 		committedPathsRead(root),
-		"git -C " + root + " restore --source=HEAD --staged --pathspec-from-file=- --pathspec-file-nul" + piped("CHANGELOG.md", "dist/notes.json"),
+		"git -C " + root + " restore --source=" + afterCommitSHA + " --staged --pathspec-from-file=- --pathspec-file-nul" + piped("CHANGELOG.md", "dist/notes.json"),
 		"git -C " + root + " update-index -q --refresh",
 	}
-	if got := lines[commit+1 : commit+4]; !slices.Equal(got, want) {
+	if got := lines[commit+1 : commit+5]; !slices.Equal(got, want) {
 		t.Errorf("after the commit = %q, want %q", got, want)
 	}
 	if got := warnings(rec); len(got) != 0 {
@@ -81,7 +93,9 @@ func TestRelease_TheIndexLeftBehindTheBookkeepingCommit_WarnsAndReleases(t *test
 	f.SeedSequence("git",
 		unchangedFiles,                  // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                 // -C root add CHANGELOG.md
+		headBeforeCommit,                // HEAD before the commit
 		ScriptedOut(""),                 // -C root commit -m
+		headAfterCommit,                 // HEAD after it
 		ScriptedOut("CHANGELOG.md\x00"), // the paths the commit changed
 		gitFailing(matchIndexStderr),    // restore --staged
 		ScriptedOut(""),                 // tag -a
@@ -110,7 +124,9 @@ func TestRegenerateRun_TheIndexLeftBehindTheChangelogCommit_WarnsAndPushes(t *te
 	dir := staleChangelogDir(t, "Stale body.\n")
 	rec, err := regenerateChangelogIn(t, dir,
 		ScriptedOut(""),                 // -C root add CHANGELOG.md
+		headBeforeCommit,                // HEAD before the commit
 		ScriptedOut(""),                 // -C root commit -m
+		headAfterCommit,                 // HEAD after it
 		ScriptedOut("CHANGELOG.md\x00"), // the paths the commit changed
 		gitFailing(matchIndexStderr),    // restore --staged
 		ScriptedOut(""),                 // push
@@ -133,7 +149,9 @@ func TestRelease_TheIndexLeftBehindTheAnswersCommit_WarnsAndReleases(t *testing.
 			unchangedFiles,                // the read of whether the user changed .mint.toml
 			configNotIgnored,              // check-ignore .mint.toml
 			ScriptedOut(""),               // add .mint.toml
+			headBeforeCommit,              // HEAD before the commit
 			ScriptedOut(""),               // commit
+			headAfterCommit,               // HEAD after it
 			ScriptedOut(".mint.toml\x00"), // the paths the commit changed
 			gitFailing(matchIndexStderr),  // restore --staged
 			ScriptedOut(""),               // the notes diff, the answers applied
@@ -150,4 +168,46 @@ func TestRelease_TheIndexLeftBehindTheAnswersCommit_WarnsAndReleases(t *testing.
 	if got := countKind(rec, presentertest.KindExclusionAnswersRecorded); got != 1 {
 		t.Errorf("answers lines = %d, want one: the commit landed", got)
 	}
+}
+
+// Where a notes file in the repo is kept out of the run, the warning's command leaves it
+// out of the match too, quoted for the shell.
+func TestRelease_TheIndexLeftBehindWithANotesFileInTheRepo_WarnsLeavingItOut(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeNotesFile(t, root, "notes.md", suppliedBody)
+	f := runner.NewFakeRunner()
+	seedProvider(f)
+	f.SeedSequence("git",
+		ScriptedOut(root),               // rev-parse --show-toplevel
+		ScriptedOut(""),                 // ls-files --ignored (the notes file is not ignored)
+		ScriptedOut("origin/main"),      // symbolic-ref --short origin/HEAD
+		ScriptedOut(priorTag+"\n"),      // tag --list
+		ScriptedHead(),                  // rev-parse HEAD --abbrev-ref HEAD (the start station)
+		ScriptedOut(""),                 // fetch --tags
+		ScriptedOut(""),                 // status --porcelain
+		ScriptedOut("main"),             // rev-parse --abbrev-ref HEAD
+		ScriptedNonZero(),               // rev-parse -q --verify refs/tags/v1.2.4
+		ScriptedOut("0\t1"),             // rev-list left-right count
+		ScriptedOut(""),                 // ls-remote --tags
+		ScriptedOut(startingSHA),        // rev-parse HEAD
+		unchangedFiles,                  // the read of whether the user changed the files mint writes
+		ScriptedOut(""),                 // -C root add CHANGELOG.md
+		headBeforeCommit,                // HEAD before the commit
+		ScriptedOut(""),                 // -C root commit of CHANGELOG.md
+		headAfterCommit,                 // HEAD after it
+		ScriptedOut("CHANGELOG.md\x00"), // the paths the commit changed, less the notes file
+		gitFailing(matchIndexStderr),    // restore --staged
+		ScriptedOut(""),                 // tag -a v1.2.4 -F -
+		ScriptedOut(""),                 // push --atomic origin HEAD v1.2.4
+	)
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), inRepoNotesFileOptions(root, "notes.md")); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	onlyWarning(t, rec, indexBehindWarning(root, "record", "':(top,literal,exclude)notes.md'"))
 }

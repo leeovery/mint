@@ -84,12 +84,14 @@ func (run *releaseSeamRun) seedNotesDiff(diff, nameStatus, numstat string) {
 // seedRecordTagPush scripts the bookkeeping commit, the tag and the atomic push.
 func (run *releaseSeamRun) seedRecordTagPush() {
 	run.f.SeedSequence("git",
-		gitOut(""), // the read of whether the user changed CHANGELOG.md: no
-		gitOut(""), // -C root add CHANGELOG.md
-		gitOut(""), // -C root commit -m
-		gitOut(""), // the read of the paths the commit changed: none
-		gitOut(""), // tag -a v1.2.4 -F -
-		gitOut(""), // push --atomic origin HEAD v1.2.4
+		gitOut(""),            // the read of whether the user changed CHANGELOG.md: no
+		gitOut(""),            // -C root add CHANGELOG.md
+		gitOut("beforesha\n"), // HEAD before the commit
+		gitOut(""),            // -C root commit -m
+		gitOut("aftersha\n"),  // HEAD after it
+		gitOut(""),            // the read of the paths the commit changed: none
+		gitOut(""),            // tag -a v1.2.4 -F -
+		gitOut(""),            // push --atomic origin HEAD v1.2.4
 	)
 }
 

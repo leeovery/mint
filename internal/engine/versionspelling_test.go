@@ -42,7 +42,9 @@ func TestRelease_AVersionFileInAnotherCaseThanGitTracksIt_IsCommittedUnderGitsSp
 		ScriptedOut("VERSION.txt\x00"), // how git spells version.txt
 		unchangedFiles,                 // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                // add
+		headBeforeCommit,               // HEAD before the commit
 		ScriptedOut(""),                // commit
+		headAfterCommit,                // HEAD after it
 		committedPaths,                 // the paths the commit changed
 		ScriptedOut(""),                // tag -a
 		ScriptedOut(""),                // push

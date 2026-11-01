@@ -64,9 +64,9 @@ func seedReadGates(f *runner.FakeRunner, root string) {
 func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 	t.Parallel()
 
-	captured := ScriptedOut(startingSHA)                                                                // rev-parse HEAD (capture the clean start)
-	recorded := []runner.ScriptedCall{unchangedFiles, ScriptedOut(""), ScriptedOut(""), committedPaths} // the user-change read, add CHANGELOG.md, commit, the read of what it changed
-	tagged := []runner.ScriptedCall{ScriptedOut("")}                                                    // tag -a
+	captured := ScriptedOut(startingSHA)                                                                                                   // rev-parse HEAD (capture the clean start)
+	recorded := []runner.ScriptedCall{unchangedFiles, ScriptedOut(""), headBeforeCommit, ScriptedOut(""), headAfterCommit, committedPaths} // the user-change read, add CHANGELOG.md, commit, the read of what it changed
+	tagged := []runner.ScriptedCall{ScriptedOut("")}                                                                                       // tag -a
 	tests := []struct {
 		name     string
 		config   string
@@ -179,7 +179,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 		{
 			name: "the record's writes staged with no commit to reset, which the unwind puts back",
 			git: [][]runner.ScriptedCall{{
-				unchangedFiles, ScriptedOut(""), gitFailing(commitStderr), // the user-change read, add CHANGELOG.md, commit
+				unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), // the user-change read, add CHANGELOG.md, HEAD, commit
 				ScriptedOut(""), // unwind: restore CHANGELOG.md
 			}},
 			outcome: presenter.OutcomeUnwound,
@@ -189,7 +189,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			name:   "the record's writes, a version file among them, staged with no commit to reset, then a restore that fails",
 			config: plainVersionFile,
 			git: [][]runner.ScriptedCall{{
-				noOtherSpelling, unchangedFiles, ScriptedOut(""), gitFailing(commitStderr), // the spelling read, the user-change read, add CHANGELOG.md VERSION, commit
+				noOtherSpelling, unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), // the spelling read, the user-change read, add CHANGELOG.md VERSION, HEAD, commit
 				scriptedMutateFailure(), // unwind: restore VERSION CHANGELOG.md
 			}},
 			outcome: presenter.OutcomeUnwound,
@@ -224,7 +224,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			config: preTagHookConfig + plainVersionFile,
 			git: [][]runner.ScriptedCall{{
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
-				noOtherSpelling, unchangedFiles, ScriptedOut(""), gitFailing(commitStderr), // the spelling read, the user-change read, add VERSION CHANGELOG.md, commit
+				noOtherSpelling, unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), // the spelling read, the user-change read, add VERSION CHANGELOG.md, HEAD, commit
 				ScriptedOut(""), // unwind: restore VERSION CHANGELOG.md
 				ScriptedOut(""), // unwind: status (nothing staged)
 				ScriptedOut(""), // unwind: reset --keep
@@ -253,7 +253,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			config: preTagHookConfig,
 			git: [][]runner.ScriptedCall{{
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
-				unchangedFiles, ScriptedOut(""), gitFailing(commitStderr), // the user-change read, add CHANGELOG.md, commit
+				unchangedFiles, ScriptedOut(""), headBeforeCommit, gitFailing(commitStderr), // the user-change read, add CHANGELOG.md, HEAD, commit
 				ScriptedOut(""),                 // unwind: restore CHANGELOG.md
 				ScriptedOut(""),                 // unwind: status (nothing staged)
 				scriptedMutateFailure(),         // unwind: reset --keep
