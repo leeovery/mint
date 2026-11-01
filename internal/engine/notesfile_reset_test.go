@@ -45,7 +45,7 @@ func keepingResetLines(tt notesResetCase, root, start string) []string {
 	if tt.notesStaged == "" {
 		return []string{read, reset}
 	}
-	return []string{read, "git write-tree", reset, "git restore --source=" + stagedTree + " --staged -- :(top,literal)" + tt.file}
+	return []string{read, "git write-tree", reset, "git restore --source=" + stagedTree + " --staged --pathspec-from-file=- --pathspec-file-nul" + piped(tt.file)}
 }
 
 // assertResetKeptNotesFile fails unless the run's reset was keepingReset's: HEAD moved
@@ -54,7 +54,7 @@ func keepingResetLines(tt notesResetCase, root, start string) []string {
 func assertResetKeptNotesFile(t *testing.T, f *runner.FakeRunner, tt notesResetCase, root, start string) {
 	t.Helper()
 	want := keepingResetLines(tt, root, start)
-	got := commandLines(f.Invocations())
+	got := stepLines(f)
 	at := slices.Index(got, want[0])
 	if at == -1 || len(got) < at+len(want) || !slices.Equal(got[at:at+len(want)], want) {
 		t.Errorf("git steps = %q, want the reset %q", got, want)
@@ -201,7 +201,7 @@ func TestRelease_NotesFileInRepo_Autostash_PushRejected_UnwindsKeepingTheNotesFi
 			assertGitArgs(t, f, 2, []string{"stash", "push", "--include-untracked", "--", excludePathspec(tt.file)})
 			assertResetKeptNotesFile(t, f, tt, root, startingSHA)
 			reset := keepingResetLines(tt, root, startingSHA)
-			got := commandLines(f.Invocations())
+			got := stepLines(f)
 			if last := slices.Index(got, reset[len(reset)-1]); last == -1 || slices.Index(got, "git stash pop") != last+1 {
 				t.Errorf("git steps = %q, want the other changes popped once the reset's %q is done", got, reset)
 			}
@@ -267,9 +267,9 @@ func TestUnwind_Reset_KeepsEveryOtherChangeAndStagesAgainWhatWasStaged(t *testin
 		"git diff --cached --name-only -z --no-renames",
 		"git write-tree",
 		"git reset --keep " + startingSHA,
-		"git restore --source=" + stagedTree + " --staged -- :(top,literal)NEXT_RELEASE.md :(top,literal)src/app.go",
+		"git restore --source=" + stagedTree + " --staged --pathspec-from-file=- --pathspec-file-nul" + piped("NEXT_RELEASE.md", "src/app.go"),
 	}
-	if got := commandLines(f.Invocations()); !slices.Equal(got, want) {
+	if got := stepLines(f); !slices.Equal(got, want) {
 		t.Errorf("git steps = %q, want %q", got, want)
 	}
 	if got, want := unwoundText(t, rec), "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
@@ -318,7 +318,7 @@ func TestUnwind_ResetRefusedOverAChangeOfTheUsers_SaysSoWithTheManualStep(t *tes
 		"git rev-parse HEAD --abbrev-ref HEAD",
 		"git symbolic-ref --short -q HEAD",
 	}
-	if got := commandLines(f.Invocations()); !slices.Equal(got, want) {
+	if got := stepLines(f); !slices.Equal(got, want) {
 		t.Errorf("git steps = %q, want only the refused reset %q", got, want)
 	}
 }

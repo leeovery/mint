@@ -37,6 +37,30 @@ func scripted(steps []gitStep) []runner.ScriptedCall {
 	return out
 }
 
+// piped is the pathspecs a step pipes to git for paths, as stepLine shows them.
+func piped(paths ...string) string {
+	return " <<< " + literalPathspecsOf(paths)
+}
+
+// stepLine is inv as these tests write a git step: its command line, then the
+// NUL-ended entries it pipes on stdin, if any.
+func stepLine(inv runner.Invocation) string {
+	line := commandLine(inv)
+	if inv.Stdin != "" {
+		line += " <<< " + strings.Join(strings.FieldsFunc(inv.Stdin, func(r rune) bool { return r == 0 }), " ")
+	}
+	return line
+}
+
+// stepLines are the git steps f recorded, as stepLine writes them.
+func stepLines(f *runner.FakeRunner) []string {
+	var lines []string
+	for _, inv := range invocationsNamed(f, "git") {
+		lines = append(lines, stepLine(inv))
+	}
+	return lines
+}
+
 func commandLinesOf(steps []gitStep) []string {
 	out := make([]string, len(steps))
 	for i, s := range steps {
@@ -65,8 +89,8 @@ func (r restoreRepo) keepingOut() string {
 
 // commitPaths is mint's commit of the paths it names under subject, whatever the notes
 // file holds, git answering it with outcome.
-func (r restoreRepo) commitPaths(subject string, outcome runner.ScriptedCall) gitStep {
-	return gitStep{r.git("commit -m " + subject + " --pathspec-from-file=- --pathspec-file-nul"), outcome}
+func (r restoreRepo) commitPaths(subject string, outcome runner.ScriptedCall, paths ...string) gitStep {
+	return gitStep{r.git("commit -m "+subject+" --pathspec-from-file=- --pathspec-file-nul") + piped(paths...), outcome}
 }
 
 // commit is the artifact commit of what is staged under subject, as CommitStaged makes it,
@@ -83,7 +107,7 @@ func (r restoreRepo) commit(subject, staged string, outcome runner.ScriptedCall)
 	return []gitStep{
 		{probe, ScriptedOut(r.notes + "\x00")},
 		{r.git("diff --cached --name-only -z --no-renames" + r.keepingOut()), ScriptedOut(staged)},
-		{r.git("commit -m " + subject + " --pathspec-from-file=- --pathspec-file-nul"), outcome},
+		{r.git("commit -m "+subject+" --pathspec-from-file=- --pathspec-file-nul") + piped(strings.FieldsFunc(staged, func(r rune) bool { return r == 0 })...), outcome},
 	}
 }
 
@@ -98,7 +122,7 @@ func (r restoreRepo) artifacts(outcome runner.ScriptedCall) []gitStep {
 
 // restore is the unwind returning exactly paths to HEAD, git answering with outcome.
 func (r restoreRepo) restore(outcome runner.ScriptedCall, paths ...string) gitStep {
-	return gitStep{r.git("restore --source=HEAD --staged --worktree -- " + literalPathspecsOf(paths)), outcome}
+	return gitStep{r.git("restore --source=HEAD --staged --worktree --pathspec-from-file=- --pathspec-file-nul") + piped(paths...), outcome}
 }
 
 // knownRead is the unwind asking which of paths, files mint wrote over and never
@@ -138,7 +162,7 @@ func (r restoreRepo) resetCommits() []gitStep {
 		{read, ScriptedOut(r.notes + "\x00")},
 		{"git write-tree", ScriptedOut(stagedTree + "\n")},
 		reset,
-		{"git restore --source=" + stagedTree + " --staged -- :(top,literal)" + r.notes, ScriptedOut("")},
+		{"git restore --source=" + stagedTree + " --staged --pathspec-from-file=- --pathspec-file-nul" + piped(r.notes), ScriptedOut("")},
 	}
 }
 
@@ -191,7 +215,7 @@ var (
 		config: plainVersionFile,
 		fails: func(r restoreRepo) []gitStep {
 			return append([]gitStep{{r.git("add CHANGELOG.md VERSION"), ScriptedOut("")}},
-				r.commitPaths(bookkeepingSubject, gitFailing(commitStderr)))
+				r.commitPaths(bookkeepingSubject, gitFailing(commitStderr), "CHANGELOG.md", "VERSION"))
 		},
 		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
 			return []gitStep{r.restore(outcome, "VERSION", "CHANGELOG.md")}
@@ -330,7 +354,7 @@ func assertGitTail(t *testing.T, f *runner.FakeRunner, want []string) {
 	var got []string
 	captured := false
 	for _, inv := range invocationsNamed(f, "git") {
-		line := commandLine(inv)
+		line := stepLine(inv)
 		if captured {
 			got = append(got, line)
 		}
@@ -521,7 +545,7 @@ func TestRelease_AFailureBeforeAnyCommit_ARestoreThatFails_SaysSoWithTheManualSt
 
 			assertAbortNonZero(t, err)
 			restoring := tf.restores(repo, failing)
-			paths := strings.TrimPrefix(restoring[len(restoring)-1].line, repo.git("restore --source=HEAD --staged --worktree -- "))
+			_, paths, _ := strings.Cut(restoring[len(restoring)-1].line, " <<< ")
 			names := strings.ReplaceAll(strings.ReplaceAll(paths, ":(top,literal)", ""), " ", " + ")
 			var quoted []string
 			for _, spec := range strings.Fields(paths) {

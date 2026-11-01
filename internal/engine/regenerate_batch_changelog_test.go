@@ -346,7 +346,7 @@ func TestRegenerateAllValidated_Changelog_StageFailure_AbortsNoCommit(t *testing
 			t.Errorf("a batch stage failure issued %v; no commit or push must follow a failed stage", inv.Args)
 		}
 	}
-	if got := commandLines(f.Invocations()); got[len(got)-1] != putBack(dir) {
+	if got := stepLines(f); got[len(got)-1] != putBack(dir) {
 		t.Errorf("git steps = %q, want them to end with the put-back %q", got, putBack(dir))
 	}
 }

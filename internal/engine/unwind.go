@@ -48,6 +48,7 @@ import (
 	"mint/internal/git"
 	"mint/internal/gitrepo"
 	"mint/internal/presenter"
+	"mint/internal/record"
 )
 
 // StartState is the exact clean ref state captured at the START of the mutating
@@ -520,12 +521,11 @@ func restoreToHEAD(ctx context.Context, deps ReleaseDeps, root string, paths []s
 	if len(paths) == 0 {
 		return true
 	}
-	pathspecs := literalPathspecs(paths)
-	args := append([]string{"-C", root, "restore", "--source=HEAD", "--staged", "--worktree", "--"}, pathspecs...)
-	if res, err := deps.Mutator.Mutate(ctx, nil, "git", args...); err != nil {
+	args := append([]string{"-C", root, "restore", "--source=HEAD", "--staged", "--worktree"}, pathspecsOnStdin...)
+	if res, err := deps.Mutator.Mutate(ctx, record.PathspecInput(paths), "git", args...); err != nil {
 		warnUnwindIncomplete(deps.Presenter, failedGitOutput(res.Stderr, err), manualStep{
 			does:     "restore " + strings.Join(paths, " + ") + " to HEAD",
-			commands: []string{"git restore --source=HEAD --staged --worktree -- " + quoteAll(pathspecs)},
+			commands: []string{"git restore --source=HEAD --staged --worktree -- " + quoteAll(literalPathspecs(paths))},
 		})
 		return false
 	}
@@ -561,7 +561,12 @@ func stagedPaths(ctx context.Context, m *git.Mutator, root string, keepOut git.E
 	return strings.FieldsFunc(res.Stdout, func(r rune) bool { return r == 0 }), "", nil
 }
 
-// literalPathspecs are paths as root-anchored literal pathspecs.
+// pathspecsOnStdin has git read a step's pathspecs from stdin (record.PathspecInput),
+// so no count of paths meets the argument limit.
+var pathspecsOnStdin = []string{"--pathspec-from-file=-", "--pathspec-file-nul"}
+
+// literalPathspecs are paths as root-anchored literal pathspecs, as a manual step
+// prints them.
 func literalPathspecs(paths []string) []string {
 	specs := make([]string, len(paths))
 	for i, path := range paths {
@@ -698,12 +703,11 @@ func (s stagedIndex) restage(ctx context.Context, m *git.Mutator) (manual manual
 	if len(s.paths) == 0 {
 		return manualStep{}, "", nil
 	}
-	pathspecs := literalPathspecs(s.paths)
-	args := append([]string{"restore", "--source=" + s.tree, "--staged", "--"}, pathspecs...)
-	if res, err := m.Mutate(ctx, nil, "git", args...); err != nil {
+	args := append([]string{"restore", "--source=" + s.tree, "--staged"}, pathspecsOnStdin...)
+	if res, err := m.Mutate(ctx, record.PathspecInput(s.paths), "git", args...); err != nil {
 		return manualStep{
 			does:     "stage your changes to " + strings.Join(s.paths, " + ") + " again",
-			commands: []string{"git restore --source=" + s.tree + " --staged -- " + quoteAll(pathspecs)},
+			commands: []string{"git restore --source=" + s.tree + " --staged -- " + quoteAll(literalPathspecs(s.paths))},
 		}, failedGitOutput(res.Stderr, err), err
 	}
 	return manualStep{}, "", nil

@@ -15,7 +15,7 @@ import (
 // putBack is the recovery's return of CHANGELOG.md to HEAD in the repo at dir, and
 // nothing else.
 func putBack(dir string) string {
-	return "git -C " + dir + " restore --source=HEAD --staged --worktree -- :(top,literal)CHANGELOG.md"
+	return "git -C " + dir + " restore --source=HEAD --staged --worktree --pathspec-from-file=- --pathspec-file-nul" + piped("CHANGELOG.md")
 }
 
 // regenRestoreCase is a regenerate whose changelog rewrite no commit holds: CHANGELOG.md
@@ -62,7 +62,7 @@ func (tc regenRestoreCase) failingTail() []runner.ScriptedCall {
 func (tc regenRestoreCase) wantTail(dir string) []string {
 	want := []string{"git -C " + dir + " add CHANGELOG.md"}
 	if tc.commitFails {
-		want = append(want, "git -C "+dir+" commit -m docs(changelog): regenerate notes for "+regenWriteTag+" --pathspec-from-file=- --pathspec-file-nul")
+		want = append(want, "git -C "+dir+" commit -m docs(changelog): regenerate notes for "+regenWriteTag+" --pathspec-from-file=- --pathspec-file-nul"+piped("CHANGELOG.md"))
 	}
 	if tc.restores && !tc.commitFails {
 		want = append(want, knownChangelog(dir))
@@ -83,7 +83,7 @@ func knownChangelog(dir string) string {
 // exactly want.
 func assertGitTailFrom(t *testing.T, f *runner.FakeRunner, want []string) {
 	t.Helper()
-	got := commandLines(f.Invocations())
+	got := stepLines(f)
 	at := slices.Index(got, want[0])
 	if at == -1 || !slices.Equal(got[at:], want) {
 		t.Errorf("git steps = %q, want them to end %q", got, want)
@@ -137,7 +137,7 @@ func TestRegenerateWrite_ACommitThatFails_PutsBackTheRewriteLeavingTheNotesFile(
 	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
 
 	assertAbortNonZero(t, err)
-	if got := commandLines(f.Invocations()); got[len(got)-1] != putBack(dir) {
+	if got := stepLines(f); got[len(got)-1] != putBack(dir) {
 		t.Errorf("git steps = %q, want them to end with the put-back %q", got, putBack(dir))
 	}
 	assertNoDiscard(t, f)
@@ -208,7 +208,7 @@ func TestRegenerateAllValidated_Changelog_ACommitThatFails_PutsBackTheRebuild(t 
 		freshChangelogBatchReq(threeVersions(), engine.RegenerateTargetChangelog), true)
 
 	assertAbortNonZero(t, err)
-	got := commandLines(f.Invocations())
+	got := stepLines(f)
 	if got[len(got)-1] != putBack(dir) {
 		t.Errorf("git steps = %q, want them to end with the put-back %q", got, putBack(dir))
 	}
