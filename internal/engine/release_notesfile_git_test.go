@@ -159,6 +159,7 @@ func seedInRepoNotesFileGit(f *runner.FakeRunner, root string) {
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags
 		ScriptedOut(startingSHA),   // rev-parse HEAD
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit of CHANGELOG.md
 		committedPaths,             // the paths the commit changed
@@ -197,6 +198,7 @@ func firstReleaseGates(root, ignored string, stash ...runner.ScriptedCall) []run
 // whatever the notes file holds, then the tag and push.
 func firstReleaseTail() []runner.ScriptedCall {
 	return []runner.ScriptedCall{
+		unchangedFiles,  // the read of whether the user changed the files mint writes
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit of CHANGELOG.md
 		committedPaths,  // the paths the commit changed

@@ -451,6 +451,7 @@ func TestRegenerateRun_InteractiveChangelog_RunsCommitPushGates(t *testing.T) {
 		// Write path.
 		ScriptedOut("startHEAD"),  // rev-parse HEAD (capture clean start)
 		ScriptedOut("2024-02-15"), // for-each-ref creatordate:short (historical date)
+		unchangedFiles,            // the read of whether the user changed the files mint writes
 		ScriptedOut(""),           // add CHANGELOG.md
 		ScriptedOut(""),           // commit
 		committedPaths,            // the paths the commit changed

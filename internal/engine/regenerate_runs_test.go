@@ -144,6 +144,7 @@ func (w *regenWorld) changelogWritten(push runner.ScriptedCall) {
 	w.f.SeedSequence("git",
 		ScriptedOut(startingSHA),  // rev-parse HEAD
 		ScriptedOut("2026-07-01"), // for-each-ref creatordate
+		unchangedFiles,            // the read of whether the user changed the files mint writes
 		ScriptedOut(""),           // add CHANGELOG.md
 		ScriptedOut(""),           // commit
 		committedPaths,            // the paths the commit changed
@@ -253,6 +254,7 @@ func (w *regenWorld) rebuilt(n int, skipped ...string) {
 		}
 	}
 	w.f.SeedSequence("git",
+		unchangedFiles,  // the read of whether the user changed the files mint writes
 		ScriptedOut(""), // add CHANGELOG.md
 		ScriptedOut(""), // commit
 		committedPaths,  // the paths the commit changed

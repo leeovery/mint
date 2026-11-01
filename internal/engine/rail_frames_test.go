@@ -174,6 +174,7 @@ func (w *railWorld) notes() {
 // recorded scripts the bookkeeping commit, the provider's detection and the tag.
 func (w *railWorld) recorded() {
 	w.f.SeedSequence("git",
+		unchangedFiles,  // the read of whether the user changed the files mint writes
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit -m
 		committedPaths,  // the paths the commit changed
@@ -483,6 +484,7 @@ var railRuns = map[string]railRun{
 		w.notes()
 		w.f.SeedSequence("gh", ScriptedOut("")) // auth status
 		w.f.SeedSequence("git",
+			unchangedFiles,           // the read of whether the user changed the files mint writes
 			ScriptedOut(""),          // -C root add CHANGELOG.md
 			gitFailing(commitStderr), // -C root commit -m
 			ScriptedOut(""),          // unwind: restore CHANGELOG.md
@@ -497,6 +499,7 @@ var railRuns = map[string]railRun{
 		w.notes()
 		w.f.SeedSequence("gh", ScriptedOut("")) // auth status
 		w.f.SeedSequence("git",
+			unchangedFiles,           // the read of whether the user changed the files mint writes
 			ScriptedOut(""),          // -C root add CHANGELOG.md
 			gitFailing(commitStderr), // -C root commit -m
 			gitFailing(stageStderr),  // unwind: restore CHANGELOG.md

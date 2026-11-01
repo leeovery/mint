@@ -91,6 +91,7 @@ func seedRebuildGit(f *runner.FakeRunner, dates ...string) {
 		calls = append(calls, ScriptedOut(d)) // for-each-ref creatordate:short per version
 	}
 	calls = append(calls,
+		unchangedFiles,  // the read of whether the user changed the files mint writes
 		ScriptedOut(""), // add CHANGELOG.md
 		ScriptedOut(""), // commit
 		committedPaths,  // the paths the commit changed
@@ -287,6 +288,7 @@ func TestRegenerateAllValidated_Changelog_PrePushFailure_ResetsCommit(t *testing
 		ScriptedOut(batchV1Date), // for-each-ref creatordate:short v1
 		ScriptedOut(batchV2Date), // for-each-ref creatordate:short v2
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
+		unchangedFiles,           // the read of whether the user changed the files mint writes
 		ScriptedOut(""),          // add CHANGELOG.md
 		ScriptedOut(""),          // commit (the rebuild commit lands)
 		committedPaths,           // the paths the commit changed
@@ -329,6 +331,7 @@ func TestRegenerateAllValidated_Changelog_StageFailure_AbortsNoCommit(t *testing
 		ScriptedOut(batchV1Date), // for-each-ref creatordate:short v1
 		ScriptedOut(batchV2Date), // for-each-ref creatordate:short v2
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
+		unchangedFiles,           // the read of whether the user changed CHANGELOG.md
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 128}, Err: errors.New("fatal: pathspec error")}, // add fails
 		ScriptedOut("CHANGELOG.md\x00"), // ls-files: git holds CHANGELOG.md
 		ScriptedOut(""),                 // the put-back of the rebuild
@@ -411,6 +414,7 @@ func TestRegenerateAllValidated_Changelog_ByteIdenticalNoCommit(t *testing.T) {
 		ScriptedOut(batchV1Date),
 		ScriptedOut(batchV2Date),
 		ScriptedOut(batchV3Date),
+		unchangedFiles, // the read of whether the user changed CHANGELOG.md
 	)...)
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}

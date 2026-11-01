@@ -70,7 +70,7 @@ func recordAnswersFailingIn(t *testing.T, root string, config *string, preTag bo
 	if preTag {
 		seedPreTagArtifactCommit(f)
 	}
-	f.SeedSequence("git", ScriptedOut(exportGoDiff+designDocDiff))
+	f.SeedSequence("git", ScriptedOut(exportGoDiff+designDocDiff), unchangedFiles)
 	f.SeedSequence("git", failure.git...)
 	f.SeedSequence("git", ScriptedOut(""), nothingStaged, ScriptedOut("")) // the unwind: the unstage, the staged read, the reset
 	f.SeedSequence("claude", ScriptedOut(designDocAnswer), ScriptedOut(aiBody))

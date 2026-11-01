@@ -46,6 +46,7 @@ func TestRegenerateAllValidated_AFailedRebuildCommitShowsGitsStderrVerbatimBenea
 		ScriptedOut(batchV1Date),   // for-each-ref creatordate:short v1
 		ScriptedOut(batchV2Date),   // for-each-ref creatordate:short v2
 		ScriptedOut(batchV3Date),   // for-each-ref creatordate:short v3
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // add CHANGELOG.md
 		gitFailing(unsignedStderr), // commit
 	)...)

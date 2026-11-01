@@ -39,13 +39,13 @@ var regenRestoreCases = []regenRestoreCase{
 	{name: "a commit that fails, the file created", commitFails: true, restores: true, undone: "removed CHANGELOG.md"},
 }
 
-// failingTail scripts the stage and commit, the one failing, then, where the file was
-// never staged, git naming it among those it holds, and the put-back where git is
-// asked for it.
+// failingTail scripts the read of whether the user changed CHANGELOG.md, the stage and
+// commit, the one failing, then, where the file was never staged, git naming it among
+// those it holds, and the put-back where git is asked for it.
 func (tc regenRestoreCase) failingTail() []runner.ScriptedCall {
-	tail := []runner.ScriptedCall{gitFailing(stageStderr)}
+	tail := []runner.ScriptedCall{unchangedFiles, gitFailing(stageStderr)}
 	if tc.commitFails {
-		tail = []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)}
+		tail = []runner.ScriptedCall{unchangedFiles, ScriptedOut(""), gitFailing(commitStderr)}
 	}
 	if tc.restores && !tc.commitFails {
 		tail = append(tail, ScriptedOut("CHANGELOG.md\x00"))
@@ -56,11 +56,12 @@ func (tc regenRestoreCase) failingTail() []runner.ScriptedCall {
 	return tail
 }
 
-// wantTail is the git steps from the stage on: the stage, the commit where the stage
-// went through, else the read of whether git holds the file it wrote over, then the
-// put-back where git is asked for it, and no reset.
+// wantTail is the git steps from the read of whether the user changed CHANGELOG.md on:
+// that read, the stage, the commit where the stage went through, else the read of
+// whether git holds the file it wrote over, then the put-back where git is asked for
+// it, and no reset.
 func (tc regenRestoreCase) wantTail(dir string) []string {
-	want := []string{"git -C " + dir + " add CHANGELOG.md"}
+	want := []string{userChangesRead(dir, "CHANGELOG.md"), "git -C " + dir + " add CHANGELOG.md"}
 	if tc.commitFails {
 		want = append(want, "git -C "+dir+" commit -m docs(changelog): regenerate notes for "+regenWriteTag+" --pathspec-from-file=- --pathspec-file-nul"+piped("CHANGELOG.md"))
 	}
@@ -174,7 +175,7 @@ func TestRegenerateWrite_AStageThatFails_AChangelogGitHoldsNoCopyOf_IsLeftAndSai
 	seedChangelog(t, dir, regenNotesStaleChangelog)
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git", ScriptedOut("startHEAD"), ScriptedOut(regenWriteHistorical)) // rev-parse HEAD, for-each-ref
-	f.SeedSequence("git", gitFailing(stageStderr), ScriptedOut(""))                    // add, ls-files naming nothing
+	f.SeedSequence("git", unchangedFiles, gitFailing(stageStderr), ScriptedOut(""))    // the user-change read, add, ls-files naming nothing
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
@@ -198,6 +199,7 @@ func TestRegenerateAllValidated_Changelog_ACommitThatFails_PutsBackTheRebuild(t 
 		ScriptedOut(batchV1Date), // for-each-ref creatordate:short v1
 		ScriptedOut(batchV2Date), // for-each-ref creatordate:short v2
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
+		unchangedFiles,           // the read of whether the user changed the files mint writes
 		ScriptedOut(""),          // add CHANGELOG.md
 		gitFailing(commitStderr), // commit
 		ScriptedOut(""),          // the put-back

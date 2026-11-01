@@ -63,6 +63,15 @@ func ScriptedNonZero() runner.ScriptedCall {
 // no restore follows.
 var committedPaths = ScriptedOut("")
 
+// unchangedFiles is git's answer to the read of whether the files mint is about to
+// write hold a change it did not make: none, so the write goes ahead.
+var unchangedFiles = ScriptedOut("")
+
+// userChangesRead is the read unchangedFiles answers for paths, in the repo at root.
+func userChangesRead(root string, paths ...string) string {
+	return "git -C " + root + " --no-optional-locks status --porcelain -z --untracked-files=all --no-renames -- " + literalPathspecsOf(paths)
+}
+
 // committedPathsRead is the read committedPaths answers, in the repo at root.
 func committedPathsRead(root string) string {
 	return "git -C " + root + " diff-tree --no-commit-id --name-only -r -z HEAD"
@@ -82,6 +91,7 @@ func seedHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut("0\t1"),                  // rev-list left-right count (ahead only)
 		ScriptedOut(""),                      // ls-remote --tags (tag free remote)
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
+		unchangedFiles,                       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
 		committedPaths,                       // the paths the commit changed
@@ -195,6 +205,7 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		"git remote get-url origin",
 		"gh auth status",
 		"git rev-parse HEAD",
+		userChangesRead(root, "CHANGELOG.md"),
 		"git -C " + root + " add CHANGELOG.md",
 		"git -C " + root + " commit -m 🌿 Release v0.0.1 --pathspec-from-file=- --pathspec-file-nul",
 		committedPathsRead(root),
@@ -347,6 +358,7 @@ func TestRelease_ContendedLockOnBookkeepingCommit_RecoversAndCompletes(t *testin
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags (free)
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture clean start)
+		unchangedFiles,             // the read of whether the user changed CHANGELOG.md
 		runner.ScriptedCall{Result: runner.Result{Stderr: lockStderr, ExitCode: 128}, Err: errors.New("exit status 128")}, // -C root add CHANGELOG.md — CONTENDED
 		ScriptedOut(""), // -C root add CHANGELOG.md — retry succeeds
 		ScriptedOut(""), // -C root commit -m
@@ -894,6 +906,7 @@ func seedHappyGitThroughGate(f *runner.FakeRunner, root, releaseBranch, tag stri
 func seedHappyGitThroughCommit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 	seedHappyGitThroughGate(f, root, releaseBranch, tag)
 	f.SeedSequence("git",
+		unchangedFiles,  // the read of whether the user changed the files mint writes
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit -m
 		committedPaths,  // the paths the commit changed
@@ -1534,6 +1547,7 @@ func TestRelease_PublishDisabled_NoGhNoPublish(t *testing.T) {
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
 		committedPaths,             // the paths the commit changed
@@ -1861,6 +1875,7 @@ func TestRelease_PublishDisabled_TagStillCarriesBody(t *testing.T) {
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
 		committedPaths,             // the paths the commit changed

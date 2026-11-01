@@ -766,13 +766,20 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// adds no git calls; its change is staged by CommitBookkeeping below. An empty
 	// version_file is tag-only and no-ops (versionChanged false).
 	//
+	// Before either write, a change the user made to either file while the run waited
+	// stops it (refuseUserChanges): the write would take the change into mint's commit,
+	// and an unwind would discard it.
+	//
 	// The bookkeeping commit runs the repo's own commit hooks, so the rail shows record
 	// running.
-	made.wrote = true
 	showRunning(p, stageRecord, "recording the release…")
 	// Named as git names it from here on, so the commit's and the unwind's literal
 	// pathspecs match the file.
 	versionFile := record.RepoPath(root, cfg.Release.VersionFile)
+	if err := refuseUserChanges(ctx, deps.Mutator, root, recordPaths(versionFile, cfg.Release.Changelog)...); err != nil {
+		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
+	}
+	made.wrote = true
 	projection, err := record.ProjectVersionFile(root, versionFile, cfg.Release.VersionPattern, versionKey)
 	if err != nil {
 		// Post-mutation, pre-PONR: route through the surgical unwind so any commit
@@ -1216,6 +1223,9 @@ const releaseTable = "[release]"
 func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Answers) error {
 	return func(ctx context.Context, answers notes.Answers) error {
 		const writing = "recording the exclusion answers"
+		if err := refuseUserChanges(ctx, deps.Mutator, a.root, config.FileName); err != nil {
+			return &answersRecordingError{step: writing, err: err, output: gitOutput(err)}
+		}
 		edit, err := beforeEdit(a.root, config.FileName)
 		if err != nil {
 			return &answersRecordingError{step: writing, err: err, output: err.Error()}

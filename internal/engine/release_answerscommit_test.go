@@ -36,9 +36,10 @@ var (
 	configIgnored    = ScriptedOut("")
 )
 
-// answersCommitCalls is git's answers to whether it ignores .mint.toml, then to
-// staging and committing it, and to the read of the paths the commit changed.
-var answersCommitCalls = []runner.ScriptedCall{configNotIgnored, ScriptedOut(""), ScriptedOut(""), committedPaths}
+// answersCommitCalls is git's answers to whether the user changed .mint.toml and
+// whether it ignores the file, then to staging and committing it, and to the read of
+// the paths the commit changed.
+var answersCommitCalls = []runner.ScriptedCall{unchangedFiles, configNotIgnored, ScriptedOut(""), ScriptedOut(""), committedPaths}
 
 // withAnswersCommit is git's answers to a release whose pauses follow the first of
 // calls: the notes diff they ask about, the answers commit, then the rest of calls.
@@ -184,7 +185,7 @@ func TestRelease_AFailedAnswersCommit_NarratesNoAnswersLine(t *testing.T) {
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
 	_, _, err := answeredRelease(t, rec, "",
-		[]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), configNotIgnored, ScriptedOut(""), ScriptedNonZero()},
+		[]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), unchangedFiles, configNotIgnored, ScriptedOut(""), ScriptedNonZero()},
 		"docs/design/: design documents\n", aiBody)
 	if err == nil {
 		t.Fatal("Release succeeded with the answers commit failing")

@@ -78,6 +78,7 @@ func seedNormalAINotes(f *runner.FakeRunner) {
 // release create are seeded by the caller on the "gh" timeline.
 func seedRecordTagPush(f *runner.FakeRunner, root string) {
 	f.SeedSequence("git",
+		unchangedFiles,  // the read of whether the user changed the files mint writes
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit -m
 		committedPaths,  // the paths the commit changed

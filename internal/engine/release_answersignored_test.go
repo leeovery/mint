@@ -38,7 +38,7 @@ func newIgnoredAnswers(t *testing.T, rec *presentertest.RecordingPresenter, conf
 	if preTag {
 		seedPreTagArtifactCommit(f)
 	}
-	f.SeedSequence("git", append([]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), configIgnored, ScriptedOut(exportGoDiff)}, exportOnlyChangeMap...)...)
+	f.SeedSequence("git", append([]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), unchangedFiles, configIgnored, ScriptedOut(exportGoDiff)}, exportOnlyChangeMap...)...)
 	f.SeedSequence("claude", ScriptedOut(designDocAnswer), ScriptedOut(aiBody))
 	f.Seed("gh", runner.Result{}, nil)
 	return &ignoredAnswers{root: root, f: f, rec: rec}
@@ -204,7 +204,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			name:    "the bookkeeping commit failing",
 			config:  ptr(preTagHookConfig + ignoredStartConfig),
 			preTag:  true,
-			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr), ScriptedOut("")}, // add, commit, unwind: restore CHANGELOG.md
+			tail:    []runner.ScriptedCall{unchangedFiles, ScriptedOut(""), gitFailing(commitStderr), ScriptedOut("")}, // the user-change read, add, commit, unwind: restore CHANGELOG.md
 			want:    preTagHookConfig + ignoredAnswered,
 			summary: "reset 1 commit and removed CHANGELOG.md; repo clean",
 			outcome: presenter.OutcomeUnwound,

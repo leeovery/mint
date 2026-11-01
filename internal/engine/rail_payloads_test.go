@@ -579,7 +579,7 @@ func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
 	a := newAnsweredAbort(t, rec, preTagHookConfig)
-	a.f.SeedSequence("git", ScriptedOut(""), gitFailing(commitStderr), ScriptedOut("")) // add, commit, unwind: restore CHANGELOG.md
+	a.f.SeedSequence("git", unchangedFiles, ScriptedOut(""), gitFailing(commitStderr), ScriptedOut("")) // the user-change read, add, commit, unwind: restore CHANGELOG.md
 	a.f.Seed("gh", runner.Result{}, nil)
 	a.unwound()
 
@@ -841,6 +841,7 @@ func TestRegenerateRun_Rail_ARegenerateStartsAtItsTagAndLandsRegenerated(t *test
 		ScriptedOut("0\t1"),                // rev-list left-right count (ahead only)
 		ScriptedOut("startHEAD"),           // rev-parse HEAD (capture clean start)
 		ScriptedOut("2024-02-15"),          // for-each-ref creatordate:short (historical date)
+		unchangedFiles,                     // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                    // add CHANGELOG.md
 		ScriptedOut(""),                    // commit
 		committedPaths,                     // the paths the commit changed
@@ -953,6 +954,7 @@ func regenerateChangelogIn(t *testing.T, dir string, tail ...runner.ScriptedCall
 		ScriptedOut("0\t1"),                // rev-list left-right count (ahead only)
 		ScriptedOut("startHEAD"),           // rev-parse HEAD (capture clean start)
 		ScriptedOut("2024-02-15"),          // for-each-ref creatordate:short (historical date)
+		unchangedFiles,                     // the read of whether the user changed CHANGELOG.md
 	)
 	f.SeedSequence("git", tail...)
 	rec := &presentertest.RecordingPresenter{}

@@ -42,6 +42,7 @@ func seedPreTagDirty(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(" M bundle.js\n"),        // -C root status --porcelain (post-hook: DIRTY)
 		ScriptedOut(""),                      // -C root add -A
 		ScriptedOut(""),                      // -C root commit -m chore(release): pre-tag artifacts
+		unchangedFiles,                       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m {commit_prefix} Release {tag}
 		committedPaths,                       // the paths the commit changed
@@ -69,6 +70,7 @@ func seedPreTagClean(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(""),                      // ls-remote --tags (tag free remote)
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),                      // -C root status --porcelain (post-hook: CLEAN)
+		unchangedFiles,                       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m {commit_prefix} Release {tag}
 		committedPaths,                       // the paths the commit changed

@@ -41,6 +41,7 @@ func seedDowngradeGit(f *runner.FakeRunner, root, releaseBranch, tag, remoteURL 
 		ScriptedOut("0\t1"),                  // rev-list left-right count (ahead only)
 		ScriptedOut(""),                      // ls-remote --tags (tag free remote)
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
+		unchangedFiles,                       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
 		committedPaths,                       // the paths the commit changed
@@ -253,6 +254,7 @@ func TestRelease_Downgrade_NoRemote(t *testing.T) {
 		ScriptedOut("0\t1"),        // rev-list left-right count (ahead only)
 		ScriptedOut(""),            // ls-remote --tags (tag free remote)
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
 		committedPaths,             // the paths the commit changed
@@ -295,6 +297,7 @@ func TestRelease_PublishFalse_SilentTagPush(t *testing.T) {
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
 		committedPaths,             // the paths the commit changed

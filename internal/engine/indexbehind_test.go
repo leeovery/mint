@@ -36,6 +36,7 @@ func TestRelease_TheBookkeepingCommit_MatchesTheIndexToEveryPathItChanged(t *tes
 	f := runner.NewFakeRunner()
 	seedHappyGitThroughGate(f, root, "main", "v0.0.1")
 	f.SeedSequence("git",
+		unchangedFiles,  // the read of whether the user changed the files mint writes
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit -m
 		ScriptedOut("CHANGELOG.md\x00dist/notes.json\x00"), // the paths the commit changed
@@ -78,6 +79,7 @@ func TestRelease_TheIndexLeftBehindTheBookkeepingCommit_WarnsAndReleases(t *test
 	f := runner.NewFakeRunner()
 	seedHappyGitThroughGate(f, root, "main", "v0.0.1")
 	f.SeedSequence("git",
+		unchangedFiles,                  // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                 // -C root add CHANGELOG.md
 		ScriptedOut(""),                 // -C root commit -m
 		ScriptedOut("CHANGELOG.md\x00"), // the paths the commit changed
@@ -128,6 +130,7 @@ func TestRelease_TheIndexLeftBehindTheAnswersCommit_WarnsAndReleases(t *testing.
 	f, root, err := answeredRelease(t, rec, "",
 		[]runner.ScriptedCall{
 			ScriptedOut(designDocDiff),    // the notes diff the pause asks about
+			unchangedFiles,                // the read of whether the user changed .mint.toml
 			configNotIgnored,              // check-ignore .mint.toml
 			ScriptedOut(""),               // add .mint.toml
 			ScriptedOut(""),               // commit

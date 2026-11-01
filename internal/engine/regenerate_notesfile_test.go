@@ -59,6 +59,7 @@ func regenChangelogWrite() []runner.ScriptedCall {
 	return []runner.ScriptedCall{
 		ScriptedOut("startHEAD"),          // rev-parse HEAD
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // -C root add CHANGELOG.md
 	}
 }

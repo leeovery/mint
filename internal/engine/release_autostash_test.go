@@ -91,6 +91,7 @@ func TestRelease_Autostash_StashesBeforeGate_DirtyTreePasses(t *testing.T) {
 		ScriptedOut("0\t1"),        // rev-list left-right count (ahead only)
 		ScriptedOut(""),            // ls-remote --tags (tag free remote)
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
 		committedPaths,             // the paths the commit changed
@@ -244,6 +245,7 @@ func TestRelease_Autostash_NoWIP_IsNoOp(t *testing.T) {
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture clean start)
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
 		committedPaths,             // the paths the commit changed
@@ -474,6 +476,7 @@ func seedAutostashHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string
 		ScriptedOut("0\t1"),                  // rev-list left-right count
 		ScriptedOut(""),                      // ls-remote --tags
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture clean start)
+		unchangedFiles,                       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
 		committedPaths,                       // the paths the commit changed
@@ -500,6 +503,7 @@ func seedAutostashThroughTag(f *runner.FakeRunner, root, releaseBranch, tag stri
 		ScriptedOut("0\t1"),                  // rev-list left-right count
 		ScriptedOut(""),                      // ls-remote --tags
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture clean start)
+		unchangedFiles,                       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
 		committedPaths,                       // the paths the commit changed

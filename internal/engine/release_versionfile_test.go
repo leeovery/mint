@@ -31,6 +31,7 @@ func seedVersionFileFold(f *runner.FakeRunner, root, releaseBranch, tag, version
 		ScriptedOut("0\t1"),                  // rev-list left-right count (ahead only)
 		ScriptedOut(""),                      // ls-remote --tags (tag free remote)
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
+		unchangedFiles,                       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                      // -C root add CHANGELOG.md {versionFile} (folded)
 		ScriptedOut(""),                      // -C root commit -m {commit_prefix} Release {tag}
 		committedPaths,                       // the paths the commit changed
@@ -187,6 +188,7 @@ func TestRelease_VersionFile_NothingNetChanged_NoCommit(t *testing.T) {
 		ScriptedOut("0\t1"),        // rev-list left-right count (ahead only)
 		ScriptedOut(""),            // ls-remote --tags (tag free remote)
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
+		unchangedFiles,             // the read of whether the user changed the files mint writes
 		ScriptedOut(""),            // tag -a v0.0.1 -F - (no commit precedes it)
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
 	)

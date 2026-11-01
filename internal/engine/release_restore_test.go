@@ -125,6 +125,12 @@ func (r restoreRepo) artifacts(outcome runner.ScriptedCall) []gitStep {
 	}, r.commit(pretagArtifactSubject("v0.0.1"), stagedArtifacts, outcome)...)
 }
 
+// recordChecked is the record stage's read of whether the user changed CHANGELOG.md or
+// VERSION, the files it writes, git answering that neither holds a change.
+func (r restoreRepo) recordChecked() gitStep {
+	return gitStep{userChangesRead(r.root, "CHANGELOG.md", "VERSION"), unchangedFiles}
+}
+
 // restore is the unwind returning exactly paths to HEAD, git answering with outcome.
 func (r restoreRepo) restore(outcome runner.ScriptedCall, paths ...string) gitStep {
 	return gitStep{r.git("restore --source=HEAD --staged --worktree --pathspec-from-file=- --pathspec-file-nul") + piped(paths...), outcome}
@@ -206,7 +212,7 @@ var (
 		name:                "the version file projected, then the changelog write failing",
 		config:              plainVersionFile,
 		changelogUnreadable: true,
-		fails:               func(restoreRepo) []gitStep { return nil },
+		fails:               func(r restoreRepo) []gitStep { return []gitStep{r.recordChecked()} },
 		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
 			return []gitStep{r.knownRead("VERSION\x00", "VERSION"), r.restore(outcome, "VERSION")}
 		},
@@ -219,7 +225,7 @@ var (
 		name:   "the bookkeeping commit failing once its files are staged",
 		config: plainVersionFile,
 		fails: func(r restoreRepo) []gitStep {
-			return append([]gitStep{{r.git("add CHANGELOG.md VERSION"), ScriptedOut("")}},
+			return append([]gitStep{r.recordChecked(), {r.git("add CHANGELOG.md VERSION"), ScriptedOut("")}},
 				r.commitPaths(bookkeepingSubject, gitFailing(commitStderr), "CHANGELOG.md", "VERSION"))
 		},
 		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
@@ -234,7 +240,7 @@ var (
 		name:   "the bookkeeping commit failing to stage its files",
 		config: plainVersionFile,
 		fails: func(r restoreRepo) []gitStep {
-			return []gitStep{{r.git("add CHANGELOG.md VERSION"), gitFailing(stageStderr)}}
+			return []gitStep{r.recordChecked(), {r.git("add CHANGELOG.md VERSION"), gitFailing(stageStderr)}}
 		},
 		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
 			return []gitStep{r.knownRead("VERSION\x00", "VERSION"), r.restore(outcome, "VERSION")}
@@ -781,7 +787,7 @@ func TestRelease_AFailureBeforeAnyCommit_AFileGitHoldsNoCopyOf_IsLeftAndTheRestP
 		config:          plainVersionFile,
 		changelogBefore: true,
 		fails: func(r restoreRepo) []gitStep {
-			return []gitStep{{r.git("add CHANGELOG.md VERSION"), gitFailing(stageStderr)}}
+			return []gitStep{r.recordChecked(), {r.git("add CHANGELOG.md VERSION"), gitFailing(stageStderr)}}
 		},
 		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
 			return []gitStep{r.knownRead("VERSION\x00", "VERSION", "CHANGELOG.md"), r.restore(outcome, "VERSION")}

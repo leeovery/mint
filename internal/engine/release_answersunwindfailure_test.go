@@ -54,6 +54,7 @@ func assertUnwoundWithOneWarning(t *testing.T, rec *presentertest.RecordingPrese
 // push, leaving the answers commit one below the tip.
 func pushRejectedAfterTheTag() []runner.ScriptedCall {
 	return []runner.ScriptedCall{
+		unchangedFiles,  // the read of whether the user changed the files mint writes
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit -m
 		committedPaths,  // the paths the commit changed

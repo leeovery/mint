@@ -115,6 +115,7 @@ func TestRegenerateWrite_EmitsBlockingPushStage(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD (capture clean start)
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short (historical date)
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // -C dir add CHANGELOG.md
 		ScriptedOut(""),                   // -C dir commit -m docs(changelog): ...
 		committedPaths,                    // the paths the commit changed

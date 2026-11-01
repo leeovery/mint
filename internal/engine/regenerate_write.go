@@ -333,6 +333,11 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 		return false, surface(p, stageRecord, err)
 	}
 
+	// A change the user made to CHANGELOG.md while the run waited stops it before the
+	// write, which would take the change into mint's commit.
+	if err := refuseUserChanges(ctx, deps.Mutator, root, record.ChangelogFileName); err != nil {
+		return false, surface(p, stageRecord, err)
+	}
 	// The write may leave CHANGELOG.md changed, so the close claims no more than the
 	// recovery below can name.
 	deps.run.Left(noClaim)

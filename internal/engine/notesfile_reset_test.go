@@ -104,7 +104,7 @@ func TestRelease_NotesFileInRepo_GateAbortAfterArtifactCommit_ResetLeavesTheNote
 func seedThroughBookkeepingCommit(f *runner.FakeRunner, root string, stash ...runner.ScriptedCall) {
 	seedProvider(f)
 	f.SeedSequence("git", firstReleaseGates(root, "", stash...)...)
-	f.SeedSequence("git", ScriptedOut(""))                 // -C root add CHANGELOG.md
+	f.SeedSequence("git", unchangedFiles, ScriptedOut("")) // the user-change read, -C root add CHANGELOG.md
 	f.SeedSequence("git", ScriptedOut(""), committedPaths) // -C root commit of CHANGELOG.md, the read of the paths it changed
 	f.Seed("gh", runner.Result{}, nil)
 }

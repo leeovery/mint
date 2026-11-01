@@ -47,6 +47,7 @@ func TestRelease_AFailedBookkeepingCommitShowsGitsStderrVerbatimBeneathItsFailur
 	f := runner.NewFakeRunner()
 	seedHappyGitThroughGate(f, root, "main", "v0.0.1")
 	f.SeedSequence("git",
+		unchangedFiles,       // the read of whether the user changed the files mint writes
 		ScriptedOut(""),      // -C root add CHANGELOG.md
 		gitFailing(unsigned), // -C root commit -m
 		ScriptedOut(""),      // unwind: status (nothing staged)

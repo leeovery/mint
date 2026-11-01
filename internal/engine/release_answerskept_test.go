@@ -297,12 +297,13 @@ func TestRelease_FailuresBeforeThePushAfterAnswering_KeepTheAnswersCommit(t *tes
 	}{
 		{
 			name:    "the bookkeeping commit fails",
-			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr), ScriptedOut("")}, // add, commit, unwind: restore CHANGELOG.md
+			tail:    []runner.ScriptedCall{unchangedFiles, ScriptedOut(""), gitFailing(commitStderr), ScriptedOut("")}, // the user-change read, add, commit, unwind: restore CHANGELOG.md
 			summary: "reset 2 commits and removed CHANGELOG.md; kept your exclusion answers in .mint.toml; repo clean",
 		},
 		{
 			name: "the push is rejected after the tag",
 			tail: []runner.ScriptedCall{
+				unchangedFiles,  // the read of whether the user changed the files mint writes
 				ScriptedOut(""), // -C root add CHANGELOG.md
 				ScriptedOut(""), // -C root commit -m
 				committedPaths,  // the paths the commit changed

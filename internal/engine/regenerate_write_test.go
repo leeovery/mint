@@ -94,6 +94,7 @@ func TestRegenerateWrite_Changelog_PushIsPlainNoTag(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD (capture clean start)
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short (historical date)
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // -C dir add CHANGELOG.md
 		ScriptedOut(""),                   // -C dir commit -m docs(changelog): ...
 		committedPaths,                    // the paths the commit changed
@@ -134,6 +135,7 @@ func TestRegenerateWrite_Changelog_UsesHistoricalDateNotToday(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit
 		committedPaths,                    // the paths the commit changed
@@ -202,6 +204,7 @@ func TestRegenerateWrite_PrePushFailure_ResetsCommit(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD (captured start)
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit (the changelog commit lands)
 		committedPaths,                    // the paths the commit changed
@@ -241,6 +244,7 @@ func TestRegenerateWrite_RecoveryResetFails_WarnsManualCleanup(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD (captured start)
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit (the changelog commit lands)
 		committedPaths,                    // the paths the commit changed
@@ -276,6 +280,7 @@ func TestRegenerateWrite_ProviderFailureAfterPush_WarnOnly(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit
 		committedPaths,                    // the paths the commit changed
@@ -313,6 +318,7 @@ func TestRegenerateWrite_Both_ChangelogPushBeforeProvider(t *testing.T) {
 	f.SeedSequence("git",
 		ScriptedOut("startHEAD"),          // rev-parse HEAD
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		unchangedFiles,                    // the read of whether the user changed the files mint writes
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit
 		committedPaths,                    // the paths the commit changed
