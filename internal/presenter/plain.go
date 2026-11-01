@@ -484,6 +484,11 @@ func (p *PlainPresenter) AskLine(prompt string) (string, error) {
 	p.input.discardTypedAhead()
 	p.writef("%s: ", prompt)
 	line, _, err := p.typedLine()
+	if !isTerminal(p.input.in) {
+		// No terminal echoed the answer and its Enter, so the prompt's row is ended
+		// here, or what plain writes next would join it.
+		p.writef("\n")
+	}
 	return line, err
 }
 

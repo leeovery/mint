@@ -125,8 +125,8 @@ func TestInterrupt_CtrlCAtATypedQuestionClosesTheInput(t *testing.T) {
 }
 
 // TestInterrupt_ALineTypedToItsEnterAnswersAndEndsTheWatch pins that the interrupt's
-// watch changes nothing for a line typed to its Enter: it answers, and the watch
-// stops with the read.
+// watch changes nothing for a line typed to its Enter: it answers, the watch stops
+// with the read, and plain adds no row end, as the terminal echoed the Enter.
 func TestInterrupt_ALineTypedToItsEnterAnswersAndEndsTheWatch(t *testing.T) {
 	t.Parallel()
 	pty, tty := ptytest.Open(t)
@@ -152,6 +152,9 @@ func TestInterrupt_ALineTypedToItsEnterAnswersAndEndsTheWatch(t *testing.T) {
 	}
 	if interrupts.watching() || interrupts.starts != 1 {
 		t.Errorf("watches started %d, still watching %v; want one, over with the read", interrupts.starts, interrupts.watching())
+	}
+	if written := out.String(); written != "What should change?: " {
+		t.Errorf("plain wrote %q, want only the prompt", written)
 	}
 }
 
