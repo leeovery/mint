@@ -111,6 +111,13 @@ func translateRun(ctx context.Context, runErr error, stdout, stderr *bytes.Buffe
 	// Stderr/ExitCode while still branching on the error.
 	var exitErr *exec.ExitError
 	if errors.As(runErr, &exitErr) {
+		// Ctrl-C signals the whole foreground process group, so the child can die
+		// of it before mint's signal handler has cancelled ctx. That death is the
+		// user's cancel, not the command's verdict (a check reading it as "gh is
+		// not authenticated" would be wrong).
+		if diedOfInterrupt(exitErr.ProcessState) {
+			return res, fmt.Errorf("running %q: interrupted: %w", name, context.Canceled)
+		}
 		return res, fmt.Errorf("running %q: exited with code %d: %w", name, res.ExitCode, runErr)
 	}
 
