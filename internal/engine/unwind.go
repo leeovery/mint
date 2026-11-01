@@ -483,7 +483,7 @@ func putBack(ctx context.Context, deps ReleaseDeps, root string, tracked, untrac
 	if !restoreToHEAD(ctx, deps, root, tracked) {
 		left = append(left, tracked...)
 	}
-	return append(left, removeCreated(deps, root, untracked)...)
+	return append(left, removeCreated(ctx, deps, root, untracked)...)
 }
 
 // knownToGit splits paths, files mint wrote over in the repo at root, into those git
@@ -534,14 +534,29 @@ func restoreToHEAD(ctx context.Context, deps ReleaseDeps, root string, paths []s
 	return true
 }
 
-// removeCreated removes paths, files under root mint created that git never held,
-// returning those it could not, each warned with its manual step.
-func removeCreated(deps ReleaseDeps, root string, paths []string) (left []string) {
+// removeCreated removes paths, files under root mint created, from the index and the
+// disk, returning those it could not, each warned with its manual step. The index is
+// cleared whatever mint believes of it: a `git add` that fails part-way, on an ignored
+// path beside them, has already staged the others.
+func removeCreated(ctx context.Context, deps ReleaseDeps, root string, paths []string) (left []string) {
+	if len(paths) == 0 {
+		return nil
+	}
+	args := append([]string{"-C", root, "rm", "--cached", "-q", "--ignore-unmatch"}, pathspecsOnStdin...)
+	if res, err := deps.Mutator.Mutate(ctx, record.PathspecInput(paths), "git", args...); err != nil {
+		warnUnwindIncomplete(deps.Presenter, failedGitOutput(res.Stderr, err), manualStep{
+			does:     "unstage " + strings.Join(paths, " + ") + ", which mint created",
+			commands: []string{"git -C " + cmdline.Quote(root) + " rm --cached -q --ignore-unmatch -- " + quoteAll(literalPathspecs(paths))},
+		})
+		left = slices.Clone(paths)
+	}
 	for _, path := range paths {
 		full := filepath.Join(root, path)
 		if err := os.Remove(full); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			warnUnwindIncomplete(deps.Presenter, err.Error(), manualStep{does: "remove " + full + ", which mint created"})
-			left = append(left, path)
+			if !slices.Contains(left, path) {
+				left = append(left, path)
+			}
 		}
 	}
 	return left

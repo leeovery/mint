@@ -131,6 +131,12 @@ func (r restoreRepo) recordChecked() gitStep {
 	return gitStep{userChangesRead(r.root, "CHANGELOG.md", "VERSION"), unchangedFiles}
 }
 
+// unstageCreated is the unwind taking paths, files mint created, out of the index,
+// whether or not a stage that failed part-way put them there.
+func (r restoreRepo) unstageCreated(paths ...string) gitStep {
+	return gitStep{r.git("rm --cached -q --ignore-unmatch --pathspec-from-file=- --pathspec-file-nul") + piped(paths...), ScriptedOut("")}
+}
+
 // restore is the unwind returning exactly paths to HEAD, git answering with outcome.
 func (r restoreRepo) restore(outcome runner.ScriptedCall, paths ...string) gitStep {
 	return gitStep{r.git("restore --source=HEAD --staged --worktree --pathspec-from-file=- --pathspec-file-nul") + piped(paths...), outcome}
@@ -243,7 +249,7 @@ var (
 			return []gitStep{r.recordChecked(), {r.git("add CHANGELOG.md VERSION"), gitFailing(stageStderr)}}
 		},
 		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
-			return []gitStep{r.knownRead("VERSION\x00", "VERSION"), r.restore(outcome, "VERSION")}
+			return []gitStep{r.knownRead("VERSION\x00", "VERSION"), r.restore(outcome, "VERSION"), r.unstageCreated("CHANGELOG.md")}
 		},
 		created:     "CHANGELOG.md",
 		undone:      "restored VERSION and removed CHANGELOG.md",
@@ -809,4 +815,52 @@ func TestRelease_AFailureBeforeAnyCommit_AFileGitHoldsNoCopyOf_IsLeftAndTheRestP
 		t.Errorf("Unwound = %+v, want VERSION restored and the cleanup left to do", got)
 	}
 	assertClosesUnwound(t, rec, "manual cleanup required · CHANGELOG.md written, not committed · nothing pushed")
+}
+
+// A stage that fails part-way, on an ignored path beside them, has already staged the
+// others, so the files mint created are taken out of the index whatever the stage's
+// error, then off the disk. Where that unstaging fails, the unwind says so with the step
+// that does it, and the close names the file as left.
+func TestRelease_AFailureBeforeAnyCommit_TheFilesMintCreatedLeaveTheIndex(t *testing.T) {
+	t.Parallel()
+
+	const unstageStderr = "fatal: Unable to write new index file\n"
+	for _, tc := range []struct {
+		name    string
+		unstage runner.ScriptedCall
+		warning bool
+		undone  string
+		end     string
+	}{
+		{name: "unstaged", unstage: ScriptedOut(""), undone: "restored VERSION and removed CHANGELOG.md", end: "back where it started · nothing pushed"},
+		{name: "the unstaging failing", unstage: gitFailing(unstageStderr), warning: true, undone: "restored VERSION",
+			end: "manual cleanup required · CHANGELOG.md written, not committed · nothing pushed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tf := bookkeepingStageFails
+			tf.restores = func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
+				unstage := r.unstageCreated("CHANGELOG.md")
+				unstage.call = tc.unstage
+				return []gitStep{r.knownRead("VERSION\x00", "VERSION"), r.restore(outcome, "VERSION"), unstage}
+			}
+			root := t.TempDir()
+			run := restoringRun{repo: restoreRepo{root: root}, failure: tf}
+			rec, f, err := run.release(t)
+
+			assertAbortNonZero(t, err)
+			assertGitTail(t, f, commandLinesOf(run.tail()))
+			if tc.warning {
+				step := "git -C " + root + " rm --cached -q --ignore-unmatch -- ':(top,literal)CHANGELOG.md'"
+				onlyWarning(t, rec, unwindIncomplete("unstage CHANGELOG.md, which mint created (`"+step+"`)", unstageStderr))
+			} else if got := warnings(rec); len(got) != 0 {
+				t.Errorf("warnings = %+v, want none", got)
+			}
+			if got := unwoundEvent(t, rec); got.Undone != tc.undone {
+				t.Errorf("Unwound = %+v, want %q", got, tc.undone)
+			}
+			assertClosesUnwound(t, rec, tc.end)
+		})
+	}
 }

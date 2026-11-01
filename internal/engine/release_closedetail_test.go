@@ -200,7 +200,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			// needed.
 			name:    "files the record created, never staged, with no commit to reset",
 			config:  plainVersionFile,
-			git:     [][]runner.ScriptedCall{{unchangedFiles, gitFailing(stageStderr)}}, // the user-change read, add CHANGELOG.md VERSION
+			git:     [][]runner.ScriptedCall{{unchangedFiles, gitFailing(stageStderr), ScriptedOut("")}}, // the user-change read, add CHANGELOG.md VERSION, unwind: unstage them
 			outcome: presenter.OutcomeUnwound,
 			detail:  "back where it started · nothing pushed",
 		},
@@ -211,6 +211,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
 				unchangedFiles,          // the user-change read
 				gitFailing(stageStderr), // add VERSION CHANGELOG.md
+				ScriptedOut(""),         // unwind: unstage the files mint created
 				ScriptedOut(""),         // unwind: status (nothing staged)
 				ScriptedOut(""),         // unwind: reset --keep
 			}},
@@ -237,6 +238,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
 				unchangedFiles,                  // the user-change read
 				gitFailing(stageStderr),         // add VERSION CHANGELOG.md
+				ScriptedOut(""),                 // unwind: unstage the files mint created
 				ScriptedOut(""),                 // unwind: status (nothing staged)
 				scriptedMutateFailure(),         // unwind: reset --keep
 				ScriptedOut("9f3e2a1c4b\nmain"), // where HEAD stands

@@ -26,8 +26,9 @@ type regenRestoreCase struct {
 	existed bool
 	// commitFails is the commit failing, the rewrite staged; else the stage fails.
 	commitFails bool
-	// restores reports that git is asked to put the file back; else it is removed from
-	// the disk, git never having held it.
+	// restores reports that git is asked to put the file back; else it is taken out of
+	// the index, which a stage that failed part-way may have put it in, and removed from
+	// the disk.
 	restores bool
 	undone   string
 }
@@ -41,7 +42,8 @@ var regenRestoreCases = []regenRestoreCase{
 
 // failingTail scripts the read of whether the user changed CHANGELOG.md, the stage and
 // commit, the one failing, then, where the file was never staged, git naming it among
-// those it holds, and the put-back where git is asked for it.
+// those it holds, and the put-back where git is asked for it, else the file taken out of
+// the index.
 func (tc regenRestoreCase) failingTail() []runner.ScriptedCall {
 	tail := []runner.ScriptedCall{unchangedFiles, gitFailing(stageStderr)}
 	if tc.commitFails {
@@ -50,16 +52,13 @@ func (tc regenRestoreCase) failingTail() []runner.ScriptedCall {
 	if tc.restores && !tc.commitFails {
 		tail = append(tail, ScriptedOut("CHANGELOG.md\x00"))
 	}
-	if tc.restores {
-		tail = append(tail, ScriptedOut(""))
-	}
-	return tail
+	return append(tail, ScriptedOut(""))
 }
 
 // wantTail is the git steps from the read of whether the user changed CHANGELOG.md on:
 // that read, the stage, the commit where the stage went through, else the read of
 // whether git holds the file it wrote over, then the put-back where git is asked for
-// it, and no reset.
+// it, else the file taken out of the index, and no reset.
 func (tc regenRestoreCase) wantTail(dir string) []string {
 	want := []string{userChangesRead(dir, "CHANGELOG.md"), "git -C " + dir + " add CHANGELOG.md"}
 	if tc.commitFails {
@@ -69,9 +68,9 @@ func (tc regenRestoreCase) wantTail(dir string) []string {
 		want = append(want, knownChangelog(dir))
 	}
 	if tc.restores {
-		want = append(want, putBack(dir))
+		return append(want, putBack(dir))
 	}
-	return want
+	return append(want, "git -C "+dir+" rm --cached -q --ignore-unmatch --pathspec-from-file=- --pathspec-file-nul"+piped("CHANGELOG.md"))
 }
 
 // knownChangelog is the read of whether git holds CHANGELOG.md, in the repo at dir,
