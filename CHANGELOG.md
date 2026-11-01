@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-11-01
+
+Failed releases now back out cleanly without touching your own work.
+
+✨ Added
+- `mint commit` on a repo with no commits proposes `Initial commit` at the review gate with no AI call — press `r` to ask the AI for a message instead.
+- Clear failure when the commit editor can't be opened — says why there is no message and no editor, and offers ways on (set an editor, or commit with your own message).
+
+🔧 Changed
+- Release unwind now restores only what mint wrote or staged (changelog, version file, `pre_tag` artifacts) and keeps every change you made while it ran, staged or not — where you changed a file mint's commits touched, git refuses the reset and mint says what to run.
+- Release and changelog-regenerate commits now take only mint's own files — anything else you have staged stays staged and out of the commit.
+- Editor commands with quotes, such as `'/path/Sublime Text.app/subl' -w`, are now split like a shell would, with no shell run.
+- A commit that lands with the index left behind it now warns with the command to match the index, instead of failing the run.
+
+🐛 Fixed
+- Release no longer overwrites changes you make to `CHANGELOG.md`, the version file or `.mint.toml` while it runs — it stops before writing and tells you to commit or stash them.
+- `version_file` now matches the file's case as git tracks it on case-insensitive filesystems, so the release commit includes it.
+- Ctrl-C during a command mint runs no longer gets misread as that command failing.
+- The `r` prompt in plain mode now ends its line properly when input is piped or ended with Ctrl-C/Ctrl-D, so later output no longer joins the prompt row.
+
 ## [0.2.1] - 2026-10-30
 
 🔧 Changed
