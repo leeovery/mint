@@ -364,12 +364,9 @@ func TestRegenerateRun_NotesFile_InRepoFileIsKeptOutOfTheChangelogGitSteps(t *te
 	const subject = "docs(changelog): regenerate notes for " + regenRunTag
 	tests := []struct {
 		name string
-		// notesStaged is the staged-edit probe's output for the notes file.
-		notesStaged string
 	}{
 		{name: "an untracked file"},
-		{name: "a tracked file with unstaged edits"},
-		{name: "a tracked file with staged edits", notesStaged: "notes.md\x00"},
+		{name: "a tracked file"},
 	}
 
 	for _, tt := range tests {
@@ -383,7 +380,7 @@ func TestRegenerateRun_NotesFile_InRepoFileIsKeptOutOfTheChangelogGitSteps(t *te
 			f.SeedSequence("git", ScriptedOut("")) // ls-files --ignored (not ignored)
 			f.SeedSequence("git", regenChangelogGates("")...)
 			f.SeedSequence("git", regenChangelogWrite()...)
-			f.SeedSequence("git", keepOutCommit(tt.notesStaged, stagedChangelog)...)
+			f.SeedSequence("git", ScriptedOut("")) // -C root commit of CHANGELOG.md
 			f.SeedSequence("git", ScriptedOut("")) // push origin HEAD
 			f.Seed("gh", runner.Result{}, nil)
 			pub := newFakePublisher()
@@ -395,11 +392,7 @@ func TestRegenerateRun_NotesFile_InRepoFileIsKeptOutOfTheChangelogGitSteps(t *te
 			}
 
 			assertGitArgs(t, f, 2, []string{"status", "--porcelain", "--", excludePathspec("notes.md")})
-			if tt.notesStaged == "" {
-				assertCommitAsBuilt(t, f, root, "notes.md", subject)
-			} else {
-				assertCommitKeepsNotesOut(t, f, root, "notes.md", subject, committedChangelog)
-			}
+			assertPathsCommitted(t, f, root, subject, "CHANGELOG.md")
 			assertNotesFileOnlyExcluded(t, f, "notes.md")
 			if resetIssued(f) {
 				t.Errorf("a git reset ran after a successful regenerate")

@@ -63,7 +63,13 @@ func (r restoreRepo) keepingOut() string {
 	return " -- " + excludePathspec(r.notes)
 }
 
-// commit is the commit of what is staged under subject, as CommitStaged makes it,
+// commitPaths is mint's commit of the paths it names under subject, whatever the notes
+// file holds, git answering it with outcome.
+func (r restoreRepo) commitPaths(subject string, outcome runner.ScriptedCall) gitStep {
+	return gitStep{r.git("commit -m " + subject + " --pathspec-from-file=- --pathspec-file-nul"), outcome}
+}
+
+// commit is the artifact commit of what is staged under subject, as CommitStaged makes it,
 // git answering it with outcome; staged is the staged-path list it reads where the
 // notes file has staged edits.
 func (r restoreRepo) commit(subject, staged string, outcome runner.ScriptedCall) []gitStep {
@@ -177,7 +183,7 @@ var (
 		config: plainVersionFile,
 		fails: func(r restoreRepo) []gitStep {
 			return append([]gitStep{{r.git("add CHANGELOG.md VERSION"), ScriptedOut("")}},
-				r.commit(bookkeepingSubject, "CHANGELOG.md\x00VERSION\x00", gitFailing(commitStderr))...)
+				r.commitPaths(bookkeepingSubject, gitFailing(commitStderr)))
 		},
 		restores: func(r restoreRepo, outcome runner.ScriptedCall) []gitStep {
 			return []gitStep{r.restore(outcome, "VERSION", "CHANGELOG.md")}

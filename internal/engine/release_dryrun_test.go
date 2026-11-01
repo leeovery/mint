@@ -83,7 +83,7 @@ func TestRelease_DryRun_NoMutation_FirstRelease(t *testing.T) {
 
 	assertNoMutation(t, f)
 	// No bookkeeping commit (no `git -C root commit` and no staging add).
-	if invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+	if invokedWith(f, "git", pathsCommit(root, "🌿 Release v0.0.1")...) {
 		t.Errorf("dry-run made the bookkeeping commit")
 	}
 	if invokedWith(f, "git", "-C", root, "add", "CHANGELOG.md") {

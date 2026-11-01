@@ -172,8 +172,7 @@ func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t
 	reset := keepStepTo("startHEAD") + " to drop the leftover changelog commit"
 	pushRejected := runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}
 	tests := []struct {
-		name    string
-		keepOut git.Exclusion
+		name string
 		// recovery are the reset's git steps, the last of them failing.
 		recovery []runner.ScriptedCall
 		action   string
@@ -209,7 +208,6 @@ func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t
 			// HEAD has left the commit, so only the notes file's staged state is left to
 			// put back.
 			name:     "the restage after the reset went through",
-			keepOut:  "notes.md",
 			recovery: []runner.ScriptedCall{ScriptedOut("notes.md\x00"), ScriptedOut(stagedTree + "\n"), ScriptedOut(""), gitFailing(recoveryStderr)},
 			action:   "stage your changes to notes.md again (`git restore --source=" + stagedTree + " --staged -- ':(top,literal)notes.md'`)",
 			output:   recoveryStderr,
@@ -225,17 +223,11 @@ func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t
 			seedChangelog(t, dir, regenNotesStaleChangelog)
 			f := runner.NewFakeRunner()
 			f.SeedSequence("git", regenChangelogWrite()...)
-			if tt.keepOut == "" {
-				f.SeedSequence("git", ScriptedOut("")) // -C root commit -m
-			} else {
-				f.SeedSequence("git", keepOutCommit(string(tt.keepOut)+"\x00", stagedChangelog)...)
-			}
+			f.SeedSequence("git", ScriptedOut("")) // -C root commit of CHANGELOG.md
 			f.SeedSequence("git", append([]runner.ScriptedCall{pushRejected}, tt.recovery...)...)
 			rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
-			req := freshWriteReq(engine.RegenerateTargetChangelog)
-			req.KeepOut = tt.keepOut
-			err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, req)
+			err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
 
 			assertAbortNonZero(t, err)
 			onlyWarning(t, rec, unwindIncomplete(tt.action, tt.output))

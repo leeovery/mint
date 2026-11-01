@@ -89,12 +89,16 @@ func TestRelease_AnswersCommit_SitsBetweenTheArtifactCommitAndTheBookkeepingComm
 	if got := commitSubjectsIn(f, root); !slices.Equal(got, want) {
 		t.Fatalf("commits = %q, want %q", got, want)
 	}
-	answersAt := indexOfCmd(f, "git", "-C", root, "commit", "-m", answersSubject(tag))
+	// Each of mint's own commits names its paths alone; the pre_tag artifact commit
+	// alone takes what the index holds, as `add -A` staged it.
+	assertPathsCommitted(t, f, root, answersSubject(tag), config.FileName)
+	assertPathsCommitted(t, f, root, "🌿 Release "+tag, "CHANGELOG.md")
+	answersAt := indexOfCmd(f, "git", pathsCommit(root, answersSubject(tag))...)
 	if stage := f.Invocations()[answersAt-1]; commandLine(stage) != commandLine(runner.Invocation{Name: "git", Args: []string{"-C", root, "add", config.FileName}}) {
 		t.Errorf("the call before the answers commit = %q, want .mint.toml staged by path alone", commandLine(stage))
 	}
 	pushAt := indexOfCmd(f, "git", "push", "--atomic", "origin", "HEAD", tag)
-	bookkeepingAt := indexOfCmd(f, "git", "-C", root, "commit", "-m", "🌿 Release "+tag)
+	bookkeepingAt := indexOfCmd(f, "git", pathsCommit(root, "🌿 Release "+tag)...)
 	if pushAt == -1 || pushAt < bookkeepingAt {
 		t.Errorf("the atomic push (at %d) does not follow the three commits (bookkeeping at %d)", pushAt, bookkeepingAt)
 	}

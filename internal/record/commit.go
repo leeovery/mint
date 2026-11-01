@@ -2,7 +2,6 @@ package record
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -76,10 +75,10 @@ func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string, k
 // This bookkeeping commit is kept DISTINCT from the pre_tag hook-artifact commit
 // (CommitDirtyTree), which precedes it with its own chore subject.
 //
-// A keepOut path is left out of the commit, so edits to it the operator had already
-// staged neither ride in the commit nor lose their staged state (see CommitStaged).
-// Should nothing else be staged, it fails rather than report a commit it never made.
-func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, tag, versionFile string, changelogChanged, versionChanged bool, keepOut git.Exclusion) error {
+// The commit takes the staged paths alone (CommitPaths), so whatever else the index
+// holds, a notes file's edits or the user's own, neither rides in it nor loses its
+// staged state.
+func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, tag, versionFile string, changelogChanged, versionChanged bool) error {
 	// The no-op branch consumes the SAME shared predicate the engine spine consults
 	// to fold the resulting commit into its tracked state, so the two can never desync.
 	if !BookkeepingWillCommit(versionFile, changelogChanged, versionChanged) {
@@ -93,12 +92,8 @@ func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, t
 	}
 
 	subject := BookkeepingSubject(commitPrefix, tag)
-	committed, err := CommitStaged(ctx, m, dir, subject, keepOut)
-	if err != nil {
+	if err := CommitPaths(ctx, m, dir, subject, paths); err != nil {
 		return &UncommittedError{err: fmt.Errorf("committing release bookkeeping %q: %w", subject, err)}
-	}
-	if !committed {
-		return &UncommittedError{err: fmt.Errorf("committing release bookkeeping %q: %w", subject, ErrNothingStaged)}
 	}
 	return nil
 }
@@ -112,17 +107,44 @@ func (e *UncommittedError) Error() string { return e.err.Error() }
 // Unwrap exposes the commit's failure so errors.Is and errors.As match it.
 func (e *UncommittedError) Unwrap() error { return e.err }
 
-// CommitFile stages path in dir by name and commits it with subject. The commit takes
-// the whole index, so it carries path alone only when nothing else is staged. A failed
-// step's error carries git's stderr as a *GitError.
+// CommitFile stages path in dir by name and commits it alone with subject
+// (CommitPaths). A failed step's error carries git's stderr as a *GitError.
 func CommitFile(ctx context.Context, m *git.Mutator, dir, path, subject string) error {
 	if res, err := m.Mutate(ctx, nil, "git", "-C", dir, "add", path); err != nil {
 		return fmt.Errorf("staging %s: %w", path, &GitError{Stderr: res.Stderr, err: err})
 	}
-	if res, err := m.Mutate(ctx, nil, "git", "-C", dir, "commit", "-m", subject); err != nil {
-		return fmt.Errorf("committing %q: %w", subject, &GitError{Stderr: res.Stderr, err: err})
+	if err := CommitPaths(ctx, m, dir, subject, []string{path}); err != nil {
+		return fmt.Errorf("committing %q: %w", subject, err)
 	}
 	return nil
+}
+
+// CommitPaths commits exactly paths in dir with subject, as `git commit` given
+// pathspecs does: their content in the work tree and nothing else the index holds,
+// which stays staged and uncommitted, so a change the user stages while mint runs
+// never rides in mint's commit. The paths reach git on stdin (PathspecInput), so no
+// count of them meets the argument limit. Each must be known to git already: a new
+// file is staged first. On this pathspec route git runs the commit hooks against a
+// temporary index, so a hook that re-stages its rewrite leaves the real index behind.
+// A failed commit's error carries git's stderr as a *GitError.
+func CommitPaths(ctx context.Context, m *git.Mutator, dir, subject string, paths []string) error {
+	if res, err := m.Mutate(ctx, PathspecInput(paths), "git", "-C", dir, "commit", "-m", subject, "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
+		return NewGitError(res.Stderr, err)
+	}
+	return nil
+}
+
+// PathspecInput is paths as git reads them under `--pathspec-from-file=-
+// --pathspec-file-nul`: each a root-anchored literal pathspec ended by a NUL. The magic
+// goes on each entry rather than `--literal-pathspecs`, which would export
+// GIT_LITERAL_PATHSPECS to the commit hooks and break their globs.
+func PathspecInput(paths []string) []byte {
+	var b strings.Builder
+	for _, path := range paths {
+		b.WriteString(git.LiteralPathspec(path))
+		b.WriteByte(0)
+	}
+	return []byte(b.String())
 }
 
 // IsIgnored reports whether git ignores path in dir: untracked and matched by an ignore
@@ -156,9 +178,6 @@ func (e *GitError) Error() string { return e.err.Error() }
 // Unwrap exposes the runner error so errors.Is matches it.
 func (e *GitError) Unwrap() error { return e.err }
 
-// ErrNothingStaged reports a commit that had nothing to take once keepOut was left out.
-var ErrNothingStaged = errors.New("nothing staged to commit")
-
 // CommitStaged commits the index in dir with subject, reporting whether a commit was
 // made. Only when keepOut has staged edits does it name the other staged paths on
 // stdin instead: a bare exclusion pathspec on `git commit` would commit the work-tree
@@ -188,7 +207,8 @@ func CommitStaged(ctx context.Context, m *git.Mutator, dir, subject string, keep
 	if staged.Stdout == "" {
 		return false, nil
 	}
-	if res, err := m.Mutate(ctx, literalPathspecs(staged.Stdout), "git", "-C", dir, "commit", "-m", subject, "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
+	paths := strings.Split(strings.TrimSuffix(staged.Stdout, "\x00"), "\x00")
+	if res, err := m.Mutate(ctx, PathspecInput(paths), "git", "-C", dir, "commit", "-m", subject, "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
 		return false, NewGitError(res.Stderr, err)
 	}
 	return true, nil
@@ -204,18 +224,6 @@ func hasStagedEdits(ctx context.Context, m *git.Mutator, dir string, keepOut git
 		return false, fmt.Errorf("checking %s for staged edits: %w", keepOut, err)
 	}
 	return res.Stdout != "", nil
-}
-
-// literalPathspecs turns a NUL-terminated path list into NUL-terminated root-anchored
-// literal pathspecs. The magic goes on each entry rather than `--literal-pathspecs`,
-// which would export GIT_LITERAL_PATHSPECS to the commit hooks and break their globs.
-func literalPathspecs(paths string) []byte {
-	var b strings.Builder
-	for _, path := range strings.Split(strings.TrimSuffix(paths, "\x00"), "\x00") {
-		b.WriteString(git.LiteralPathspec(path))
-		b.WriteByte(0)
-	}
-	return []byte(b.String())
 }
 
 // BookkeepingSubject is the SINGLE source of the release-bookkeeping commit subject

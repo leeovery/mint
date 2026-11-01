@@ -9,7 +9,9 @@ import (
 	"mint/internal/runner"
 )
 
-func TestCommitFile_StagesThePathByNameThenCommitsWithSubject(t *testing.T) {
+// The commit names the path alone, so a change the user staged elsewhere stays staged
+// and out of it.
+func TestCommitFile_StagesThePathByNameThenCommitsItAloneWithSubject(t *testing.T) {
 	t.Parallel()
 
 	r := runner.NewFakeRunner()
@@ -20,17 +22,11 @@ func TestCommitFile_StagesThePathByNameThenCommitsWithSubject(t *testing.T) {
 		t.Fatalf("CommitFile returned unexpected error: %v", err)
 	}
 
-	want := [][]string{
-		{"-C", dir, "add", ".mint.toml"},
-		{"-C", dir, "commit", "-m", "chore(release): release-notes path answers for v1.3.0"},
+	invs := r.Invocations()
+	if len(invs) != 2 || !slices.Equal(invs[0].Args, []string{"-C", dir, "add", ".mint.toml"}) || invs[0].Stdin != "" {
+		t.Fatalf("git calls = %v, want the stage of .mint.toml then its commit", invs)
 	}
-	var got [][]string
-	for _, inv := range r.Invocations() {
-		got = append(got, inv.Args)
-	}
-	if !slices.EqualFunc(got, want, slices.Equal) {
-		t.Errorf("git calls = %q, want %q", got, want)
-	}
+	assertPathsCommit(t, invs[1], dir, "chore(release): release-notes path answers for v1.3.0", ".mint.toml")
 }
 
 func TestCommitFile_StageFails_MakesNoCommit(t *testing.T) {

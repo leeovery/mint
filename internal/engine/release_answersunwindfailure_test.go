@@ -116,7 +116,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitFails_WarnsTheStepThatCommi
 				Row:    "automatic recovery failed",
 				Failed: true,
 				Message: "automatic recovery failed; manually commit the exclusion answers mint wrote to .mint.toml (`git -C " + a.root +
-					" add .mint.toml` then `git -C " + a.root + " commit -m '" + answersSubject(minorTagV130) + "'`)",
+					" add .mint.toml` then `git -C " + a.root + " commit -m '" + answersSubject(minorTagV130) + "' -- .mint.toml`)",
 				Output: tc.stderr,
 			}
 			assertUnwoundWithOneWarning(t, rec, err, want, "reset 2 commits; manual cleanup required")

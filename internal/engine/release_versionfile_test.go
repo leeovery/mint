@@ -61,7 +61,7 @@ func seedFile(t *testing.T, root, name, content string) {
 // invocations were recorded, so a test can prove EXACTLY one bookkeeping commit was
 // made.
 func countBookkeepingCommits(f *runner.FakeRunner, root, subject string) int {
-	want := commandLine(runner.Invocation{Name: "git", Args: []string{"-C", root, "commit", "-m", subject}})
+	want := commandLine(runner.Invocation{Name: "git", Args: pathsCommit(root, subject)})
 	n := 0
 	for _, inv := range f.Invocations() {
 		if commandLine(inv) == want {
@@ -197,7 +197,7 @@ func TestRelease_VersionFile_NothingNetChanged_NoCommit(t *testing.T) {
 	}
 
 	// NO bookkeeping commit and NO staging — the combined no-op makes no empty commit.
-	if invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+	if invokedWith(f, "git", pathsCommit(root, "🌿 Release v0.0.1")...) {
 		t.Errorf("a bookkeeping commit ran despite the combined no-op; no empty commit allowed")
 	}
 	for _, inv := range f.Invocations() {

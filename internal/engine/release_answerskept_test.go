@@ -133,7 +133,7 @@ func assertAnswersKept(t *testing.T, rec *presentertest.RecordingPresenter, a *a
 	after := a.f.Invocations()[reset+1:]
 	want := []string{
 		"git -C " + a.root + " add " + config.FileName,
-		"git -C " + a.root + " commit -m " + answersSubject(minorTagV130),
+		"git -C " + a.root + " commit -m " + answersSubject(minorTagV130) + " --pathspec-from-file=- --pathspec-file-nul",
 	}
 	if got := commandLines(after); !slices.Equal(got, want) {
 		t.Errorf("after the reset = %q, want the answers re-committed alone %q", got, want)
@@ -176,6 +176,8 @@ func TestRelease_DeclineAfterAnswering_KeepsTheAnswersCommitOnTheStartingCommit(
 	if got, want := commitSubjectsIn(a.f, a.root), []string{pretagArtifactSubject(minorTagV130), answersSubject(minorTagV130), answersSubject(minorTagV130)}; !slices.Equal(got, want) {
 		t.Errorf("commits = %q, want %q", got, want)
 	}
+	// The answers commit and its re-commit after the reset name .mint.toml alone.
+	assertPathsCommitted(t, a.f, a.root, answersSubject(minorTagV130), config.FileName)
 }
 
 func TestRelease_ReviewGateAbortsAfterAnswering_KeepTheAnswersCommit(t *testing.T) {

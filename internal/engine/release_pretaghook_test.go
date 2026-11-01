@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -120,11 +121,11 @@ func TestRelease_PreTagHook_DirtyTree_CommitsArtifactsSeparately(t *testing.T) {
 	// The artifact commit is DISTINCT from the bookkeeping commit: both appear, as
 	// two separate commits, and the artifact commit precedes the bookkeeping one.
 	bookkeepingSubject := "🌿 Release v0.0.1"
-	if !invokedWith(f, "git", "-C", root, "commit", "-m", bookkeepingSubject) {
+	if !invokedWith(f, "git", pathsCommit(root, bookkeepingSubject)...) {
 		t.Errorf("no bookkeeping commit %q; got %v", bookkeepingSubject, commandLines(f.Invocations()))
 	}
 	artifactAt := indexOfCmd(f, "git", "-C", root, "commit", "-m", artifactSubject)
-	bookkeepingAt := indexOfCmd(f, "git", "-C", root, "commit", "-m", bookkeepingSubject)
+	bookkeepingAt := indexOfCmd(f, "git", pathsCommit(root, bookkeepingSubject)...)
 	if artifactAt == -1 || bookkeepingAt == -1 {
 		t.Fatalf("expected both artifact and bookkeeping commits; got %v", commandLines(f.Invocations()))
 	}
@@ -172,7 +173,7 @@ func TestRelease_PreTagHook_RunsAfterStartingHEADBeforeNotes(t *testing.T) {
 		t.Errorf("pre_tag hook ran at %d, before the startingHEAD capture at %d", hookAt, startingHEADAt)
 	}
 	// BEFORE the bookkeeping commit and tag (which follow notes generation).
-	bookkeepingAt := indexOfCmd(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1")
+	bookkeepingAt := indexOfCmd(f, "git", pathsCommit(root, "🌿 Release v0.0.1")...)
 	if bookkeepingAt != -1 && hookAt > bookkeepingAt {
 		t.Errorf("pre_tag hook ran at %d, after the bookkeeping commit at %d", hookAt, bookkeepingAt)
 	}
@@ -247,7 +248,7 @@ func TestRelease_PreTagHook_CleanTree_NoArtifactCommit(t *testing.T) {
 	assertNoArtifactCommit(t, f, root)
 
 	// The run still proceeds to the bookkeeping commit and a successful finish.
-	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+	if !invokedWith(f, "git", pathsCommit(root, "🌿 Release v0.0.1")...) {
 		t.Errorf("clean-tree run did not make the bookkeeping commit; got %v", commandLines(f.Invocations()))
 	}
 	fin, _ := rec.At(len(rec.Events) - 1)
@@ -471,12 +472,13 @@ func assertNoArtifactCommit(t *testing.T, f *runner.FakeRunner, root string) {
 }
 
 // countCommitsWithSubject counts how many `git -C {root} commit -m {subject}`
-// invocations were recorded, so a test can prove EXACTLY one artifact commit was made.
+// invocations were recorded, whether they commit the index or the paths they name, so
+// a test can prove EXACTLY one such commit was made.
 func countCommitsWithSubject(f *runner.FakeRunner, root, subject string) int {
-	want := commandLine(runner.Invocation{Name: "git", Args: []string{"-C", root, "commit", "-m", subject}})
+	want := []string{"-C", root, "commit", "-m", subject}
 	n := 0
 	for _, inv := range f.Invocations() {
-		if commandLine(inv) == want {
+		if inv.Name == "git" && len(inv.Args) >= len(want) && slices.Equal(inv.Args[:len(want)], want) {
 			n++
 		}
 	}

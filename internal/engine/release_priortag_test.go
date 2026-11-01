@@ -392,7 +392,7 @@ func TestRelease_PriorTag_GateAccept_ProceedsToRecord(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release "+nextTag) {
+	if !invokedWith(f, "git", pathsCommit(root, "🌿 Release "+nextTag)...) {
 		t.Errorf("gate accept did not reach Record (no bookkeeping commit)")
 	}
 	if !invokedWith(f, "git", "tag", "-a", "--cleanup=verbatim", nextTag, "-F", "-") {

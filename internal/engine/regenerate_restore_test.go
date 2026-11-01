@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"mint/internal/engine"
-	"mint/internal/git"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 )
@@ -58,7 +57,7 @@ func (tc regenRestoreCase) failingTail() []runner.ScriptedCall {
 func (tc regenRestoreCase) wantTail(dir string) []string {
 	want := []string{"git -C " + dir + " add CHANGELOG.md"}
 	if tc.commitFails {
-		want = append(want, "git -C "+dir+" commit -m docs(changelog): regenerate notes for "+regenWriteTag)
+		want = append(want, "git -C "+dir+" commit -m docs(changelog): regenerate notes for "+regenWriteTag+" --pathspec-from-file=- --pathspec-file-nul")
 	}
 	if tc.restores {
 		want = append(want, putBack(dir))
@@ -108,39 +107,28 @@ func TestRegenerateWrite_AStageOrCommitThatFails_PutsBackExactlyTheRewrite(t *te
 	}
 }
 
-// A notes file kept out of the changelog commit is named by no step of the put-back:
-// its edits and staged state are the user's.
+// A notes file in the repo is named by no step of the commit or the put-back: its
+// edits and staged state are the user's.
 func TestRegenerateWrite_ACommitThatFails_PutsBackTheRewriteLeavingTheNotesFile(t *testing.T) {
 	t.Parallel()
 
-	for _, tt := range notesResetCases {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	dir := t.TempDir()
+	seedChangelog(t, dir, regenNotesStaleChangelog)
+	path := writeNotesFile(t, dir, "NEXT_RELEASE.md", suppliedBody)
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git", regenChangelogWrite()...)
+	f.SeedSequence("git", gitFailing(commitStderr), ScriptedOut("")) // the commit, the put-back
+	rec := &presentertest.RecordingPresenter{}
 
-			dir := t.TempDir()
-			seedChangelog(t, dir, regenNotesStaleChangelog)
-			path := writeNotesFile(t, dir, tt.file, suppliedBody)
-			f := runner.NewFakeRunner()
-			f.SeedSequence("git", regenChangelogWrite()...)
-			commit := keepOutCommit(tt.notesStaged, stagedChangelog)
-			commit[len(commit)-1] = gitFailing(commitStderr)
-			f.SeedSequence("git", commit...)
-			f.SeedSequence("git", ScriptedOut("")) // the put-back
-			rec := &presentertest.RecordingPresenter{}
+	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
 
-			req := freshWriteReq(engine.RegenerateTargetChangelog)
-			req.KeepOut = git.Exclusion(tt.file)
-			err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, req)
-
-			assertAbortNonZero(t, err)
-			if got := commandLines(f.Invocations()); got[len(got)-1] != putBack(dir) {
-				t.Errorf("git steps = %q, want them to end with the put-back %q", got, putBack(dir))
-			}
-			assertNoDiscard(t, f)
-			assertNotesFileOnlyExcluded(t, f, tt.file)
-			assertFileUnchanged(t, path, suppliedBody)
-		})
+	assertAbortNonZero(t, err)
+	if got := commandLines(f.Invocations()); got[len(got)-1] != putBack(dir) {
+		t.Errorf("git steps = %q, want them to end with the put-back %q", got, putBack(dir))
 	}
+	assertNoDiscard(t, f)
+	assertNotesFileOnlyExcluded(t, f, "NEXT_RELEASE.md")
+	assertFileUnchanged(t, path, suppliedBody)
 }
 
 func TestRegenerateWrite_APutBackThatFails_SaysSoWithTheManualStep(t *testing.T) {

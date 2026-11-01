@@ -204,7 +204,7 @@ func TestRelease_AnswersStagedButTheirCommitFailing_LeavesMintTomlAsBeforeTheRun
 	if got := readConfigBytes(t, run.root); got != answeredConfig {
 		t.Errorf(".mint.toml =\n%s\nwant it byte-identical to\n%s", got, answeredConfig)
 	}
-	commitAt := indexOfCmd(run.f, "git", "-C", run.root, "commit", "-m", answersSubject(nextTag))
+	commitAt := indexOfCmd(run.f, "git", pathsCommit(run.root, answersSubject(nextTag))...)
 	unstageAt := indexOfCmd(run.f, "git", unstageConfigArgs(run.root)...)
 	if unstageAt == -1 || unstageAt < commitAt {
 		t.Errorf("the staged .mint.toml was not unstaged after the failed commit; got %v", commandLines(run.f.Invocations()))

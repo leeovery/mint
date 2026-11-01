@@ -3,6 +3,7 @@ package engine_test
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -30,10 +31,16 @@ type stashingRunner struct {
 	answersCommits []string
 }
 
-func (r *stashingRunner) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
-	if name == "git" && slices.Equal(args, []string{"-C", r.root, "commit", "-m", answersSubject(nextTag)}) {
+// RunWith keeps the .mint.toml each answers commit takes; the commit names its path on
+// stdin.
+func (r *stashingRunner) RunWith(ctx context.Context, stdin io.Reader, name string, args ...string) (runner.Result, error) {
+	if name == "git" && slices.Equal(args, pathsCommit(r.root, answersSubject(nextTag))) {
 		r.answersCommits = append(r.answersCommits, r.read())
 	}
+	return r.FakeRunner.RunWith(ctx, stdin, name, args...)
+}
+
+func (r *stashingRunner) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
 	res, err := r.FakeRunner.Run(ctx, name, args...)
 	if name != "git" || err != nil {
 		return res, err
@@ -220,7 +227,7 @@ func TestRelease_Autostash_ACleanRestoreLeavesTheEditOverTheAnswersAndDropsTheSt
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	commitAt := indexOfCmd(a.f, "git", "-C", a.git.root, "commit", "-m", answersSubject(nextTag))
+	commitAt := indexOfCmd(a.f, "git", pathsCommit(a.git.root, answersSubject(nextTag))...)
 	popAt := indexOfCmd(a.f, "git", "stash", "pop")
 	if commitAt == -1 || popAt < commitAt {
 		t.Errorf("stash pop (at %d) does not follow the answers commit (at %d)", popAt, commitAt)
@@ -294,7 +301,7 @@ func TestRelease_Autostash_AbortAfterAnswering_RecommitsOnlyTheAnswersThenRestor
 			}
 			want := []string{
 				"git -C " + a.git.root + " add " + config.FileName,
-				"git -C " + a.git.root + " commit -m " + answersSubject(nextTag),
+				"git -C " + a.git.root + " commit -m " + answersSubject(nextTag) + " --pathspec-from-file=- --pathspec-file-nul",
 				"git stash pop",
 			}
 			if got := commandLines(a.f.Invocations()[reset+1:]); !slices.Equal(got, want) {

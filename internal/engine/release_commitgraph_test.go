@@ -238,7 +238,7 @@ func TestCommitGraph_OnlyHook_OneArtifactCommitThenTagAtHEAD(t *testing.T) {
 		t.Errorf("commit before the tag = %q, want the hook-artifact commit %q", got[0], commitGraphArtifactSubject)
 	}
 	// No bookkeeping commit and no bookkeeping staging when nothing net-changed.
-	if invokedWith(f, "git", "-C", root, "commit", "-m", commitGraphBookkeepingSubject) {
+	if invokedWith(f, "git", pathsCommit(root, commitGraphBookkeepingSubject)...) {
 		t.Errorf("a bookkeeping commit %q ran though nothing net-changed; no empty commit allowed", commitGraphBookkeepingSubject)
 	}
 	if invokedWith(f, "git", "-C", root, "add", "CHANGELOG.md") {
@@ -300,7 +300,7 @@ func TestCommitGraph_Neither_ZeroCommitsThenTagAtExistingHEAD(t *testing.T) {
 		t.Fatalf("commits before the tag = %v, want none (zero new commits)", got)
 	}
 	assertNoArtifactCommit(t, f, root)
-	if invokedWith(f, "git", "-C", root, "commit", "-m", commitGraphBookkeepingSubject) {
+	if invokedWith(f, "git", pathsCommit(root, commitGraphBookkeepingSubject)...) {
 		t.Errorf("a bookkeeping commit ran though nothing changed; no empty commit allowed")
 	}
 	// No hook ran at all (none configured), so no post-hook status probe either.

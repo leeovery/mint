@@ -14,8 +14,8 @@ import (
 	"mint/internal/runner"
 )
 
-// notesResetCase is one notes file a reset must leave as it was. notesStaged is the
-// staged-edit probe's output, as for keepOutCommit.
+// notesResetCase is one notes file a reset must leave as it was. notesStaged is what
+// a read of the staged paths answers where the file has edits staged.
 type notesResetCase struct {
 	name        string
 	file        string
@@ -101,11 +101,11 @@ func TestRelease_NotesFileInRepo_GateAbortAfterArtifactCommit_ResetLeavesTheNote
 
 // seedThroughBookkeepingCommit scripts a first release with an in-repo notes file up
 // to and including its bookkeeping commit, with stash as for firstReleaseGates.
-func seedThroughBookkeepingCommit(f *runner.FakeRunner, root, notesStaged string, stash ...runner.ScriptedCall) {
+func seedThroughBookkeepingCommit(f *runner.FakeRunner, root string, stash ...runner.ScriptedCall) {
 	seedProvider(f)
 	f.SeedSequence("git", firstReleaseGates(root, "", stash...)...)
 	f.SeedSequence("git", ScriptedOut("")) // -C root add CHANGELOG.md
-	f.SeedSequence("git", keepOutCommit(notesStaged, stagedChangelog)...)
+	f.SeedSequence("git", ScriptedOut("")) // -C root commit of CHANGELOG.md
 	f.Seed("gh", runner.Result{}, nil)
 }
 
@@ -119,7 +119,7 @@ func TestRelease_NotesFileInRepo_PushRejected_UnwindLeavesTheNotesFile(t *testin
 			root := t.TempDir()
 			path := writeNotesFile(t, root, tt.file, suppliedBody)
 			f := runner.NewFakeRunner()
-			seedThroughBookkeepingCommit(f, root, tt.notesStaged)
+			seedThroughBookkeepingCommit(f, root)
 			f.SeedSequence("git",
 				ScriptedOut(""), // tag -a v0.0.1 -F -
 				pushRejected(),  // push --atomic origin HEAD v0.0.1
@@ -151,7 +151,7 @@ func TestRelease_NotesFileInRepo_CancelledAfterACommit_UnwindLeavesTheNotesFile(
 			root := t.TempDir()
 			path := writeNotesFile(t, root, tt.file, suppliedBody)
 			f := runner.NewFakeRunner()
-			seedThroughBookkeepingCommit(f, root, tt.notesStaged)
+			seedThroughBookkeepingCommit(f, root)
 			f.SeedSequence("git", keepingReset(tt)...)
 			rec := &presentertest.RecordingPresenter{}
 
@@ -183,7 +183,7 @@ func TestRelease_NotesFileInRepo_Autostash_PushRejected_UnwindsKeepingTheNotesFi
 			root := t.TempDir()
 			path := writeNotesFile(t, root, tt.file, suppliedBody)
 			f := runner.NewFakeRunner()
-			seedThroughBookkeepingCommit(f, root, tt.notesStaged, stashSaved())
+			seedThroughBookkeepingCommit(f, root, stashSaved())
 			f.SeedSequence("git",
 				ScriptedOut(""), // tag -a v0.0.1 -F -
 				pushRejected(),  // push --atomic origin HEAD v0.0.1
@@ -224,7 +224,7 @@ func TestRegenerateRun_NotesFileInRepo_PushFails_ResetLeavesTheNotesFile(t *test
 			f.SeedSequence("git", ScriptedOut("")) // ls-files --ignored (not ignored)
 			f.SeedSequence("git", regenChangelogGates("")...)
 			f.SeedSequence("git", regenChangelogWrite()...)
-			f.SeedSequence("git", keepOutCommit(tt.notesStaged, stagedChangelog)...)
+			f.SeedSequence("git", ScriptedOut(""))                                                                             // -C root commit of CHANGELOG.md
 			f.SeedSequence("git", runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}) // push origin HEAD
 			f.SeedSequence("git", keepingReset(tt)...)
 			rec := &presentertest.RecordingPresenter{}

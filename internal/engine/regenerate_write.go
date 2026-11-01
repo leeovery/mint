@@ -138,9 +138,6 @@ type RegenerateWriteRequest struct {
 	// it nil. A wired deps.Regenerator OVERRIDES it (the test-injection seam), mirroring
 	// the forward path's precedence.
 	Regenerator Regenerator
-	// KeepOut is the path the changelog commit leaves out, any staged edits to it
-	// still staged afterwards.
-	KeepOut git.Exclusion
 	// LowerCap is the cap hinted after the notes, 0 for none.
 	LowerCap int
 	// regens narrates each `r` and hints after its notes; chunkNotes keeps the version's
@@ -339,7 +336,7 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 	// The write may leave CHANGELOG.md changed, so the close claims no more than the
 	// recovery below can name.
 	deps.run.Left(noClaim)
-	committed, err := RegenerateChangelog(ctx, deps.Mutator, root, req.VersionKey, req.Tag, date, body, req.KeepOut)
+	committed, err := RegenerateChangelog(ctx, deps.Mutator, root, req.VersionKey, req.Tag, date, body)
 	if err != nil {
 		// A failed write, stage or commit makes no commit (committed is false): a failed
 		// stage or commit leaves the rewrite, which resetAndAbort puts back.
@@ -370,26 +367,22 @@ func startChangelogNode(deps ReleaseDeps, text string) *blockingStage {
 
 // stageAndCommitChangelog is the SHARED regenerate stage+commit half both the
 // single-version (RegenerateChangelog) and batch (commitAndPushRebuild) paths invoke to
-// land a CHANGELOG commit: it runs `git -C {root} add CHANGELOG.md` then commits the
-// index under subject through the lock-resilient Mutator, parameterised by subject so
-// each path keeps its own commit subject. A keepOut path is left out of the commit, any
-// staged edits to it still staged afterwards (record.CommitStaged). A failed step
-// short-circuits (a failed stage never reaches the commit) and the returned
-// *uncommittedChangelog names which step failed (`staging …` / `committing …`) and
-// carries what resetAndAbort needs to put the rewrite back: created, whether the
-// rewrite created the file, and whether the stage went through. Each caller wraps it
-// with its own context. Keeping the stage/commit idiom here means the two regenerate
-// paths can no longer drift on the stage/commit half (the mirror of
+// land a CHANGELOG commit: it runs `git -C {root} add CHANGELOG.md` then commits that
+// path alone under subject through the lock-resilient Mutator, parameterised by subject
+// so each path keeps its own commit subject. Whatever else the index holds, a notes
+// file's edits or the user's own, stays staged and out of it (record.CommitPaths). A
+// failed step short-circuits (a failed stage never reaches the commit) and the
+// returned *uncommittedChangelog names which step failed (`staging …` / `committing
+// …`) and carries what resetAndAbort needs to put the rewrite back: created, whether
+// the rewrite created the file, and whether the stage went through. Each caller wraps
+// it with its own context. Keeping the stage/commit idiom here means the two
+// regenerate paths can no longer drift on the stage/commit half (the mirror of
 // pushChangelogCommit owning the push/recovery half).
-func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject string, keepOut git.Exclusion, created bool) error {
+func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject string, created bool) error {
 	if res, err := m.Mutate(ctx, nil, "git", "-C", root, "add", record.ChangelogFileName); err != nil {
 		return &uncommittedChangelog{err: fmt.Errorf("staging %s: %w", record.ChangelogFileName, record.NewGitError(res.Stderr, err)), created: created}
 	}
-	committed, err := record.CommitStaged(ctx, m, root, subject, keepOut)
-	if err == nil && !committed {
-		err = record.ErrNothingStaged
-	}
-	if err != nil {
+	if err := record.CommitPaths(ctx, m, root, subject, []string{record.ChangelogFileName}); err != nil {
 		return &uncommittedChangelog{err: fmt.Errorf("committing %q: %w", subject, err), created: created, staged: true}
 	}
 	return nil

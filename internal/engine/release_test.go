@@ -184,7 +184,7 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		"gh auth status",
 		"git rev-parse HEAD",
 		"git -C " + root + " add CHANGELOG.md",
-		"git -C " + root + " commit -m 🌿 Release v0.0.1",
+		"git -C " + root + " commit -m 🌿 Release v0.0.1 --pathspec-from-file=- --pathspec-file-nul",
 		"git tag -a --cleanup=verbatim v0.0.1 -F -",
 		"git push --atomic origin HEAD v0.0.1",
 		"gh release create v0.0.1 --title v0.0.1 --notes-file - --verify-tag",
@@ -683,7 +683,7 @@ func TestRelease_VersionGateNo_AbortsBeforePreflight(t *testing.T) {
 		t.Errorf("rev-parse HEAD count = %d, want 0 (the decline precedes the pre-gate capture)", got)
 	}
 	// Nothing mutated: no commit, tag, push, or publish.
-	if invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v1.2.4") {
+	if invokedWith(f, "git", pathsCommit(root, "🌿 Release v1.2.4")...) {
 		t.Errorf("a bookkeeping commit ran despite a version-gate decline")
 	}
 	assertNoMutation(t, f)
@@ -1061,7 +1061,7 @@ func TestRelease_GateBareEnterDefault(t *testing.T) {
 		t.Errorf("Prompt count = %d, want 2 (bare Enter accepts the version gate then the notes gate)", got)
 	}
 	// The run reached Record (the bookkeeping commit) and finished.
-	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+	if !invokedWith(f, "git", pathsCommit(root, "🌿 Release v0.0.1")...) {
 		t.Errorf("bare-Enter accept did not reach Record (no bookkeeping commit)")
 	}
 	fin, _ := rec.At(len(rec.Events) - 1)
@@ -1092,7 +1092,7 @@ func TestRelease_GateExplicitYes(t *testing.T) {
 	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
 		t.Errorf("Prompt count = %d, want 2 (explicit y accepts the version gate then the notes gate)", got)
 	}
-	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+	if !invokedWith(f, "git", pathsCommit(root, "🌿 Release v0.0.1")...) {
 		t.Errorf("explicit-y accept did not reach Record (no bookkeeping commit)")
 	}
 	fin, _ := rec.At(len(rec.Events) - 1)
@@ -1816,7 +1816,7 @@ func TestRelease_ChangelogDefaultTrue_WritesChangelog(t *testing.T) {
 		t.Errorf("CHANGELOG body = %q, want %q (changelog defaults true)", got, phase2Body)
 	}
 	// The bookkeeping commit must have run (the changelog changed).
-	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+	if !invokedWith(f, "git", pathsCommit(root, "🌿 Release v0.0.1")...) {
 		t.Errorf("default-true changelog did not record the bookkeeping commit")
 	}
 }

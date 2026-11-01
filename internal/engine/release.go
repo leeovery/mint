@@ -801,7 +801,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// HEAD just moved, so made.Commits is bumped exactly when a commit landed —
 	// tracked, not inferred by probing git.
 	bookkeepingCommitted := record.BookkeepingWillCommit(cfg.Release.VersionFile, writeResult.Changed, versionChanged)
-	if err := record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, cfg.Release.VersionFile, writeResult.Changed, versionChanged, keepOut); err != nil {
+	if err := record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, cfg.Release.VersionFile, writeResult.Changed, versionChanged); err != nil {
 		var uncommitted *record.UncommittedError
 		made.recordStaged = errors.As(err, &uncommitted)
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
@@ -1275,7 +1275,7 @@ func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator, restore []
 			does: "commit the exclusion answers mint wrote to " + config.FileName,
 			commands: []string{
 				"git -C " + root + " add " + config.FileName,
-				"git -C " + root + " commit -m " + cmdline.Quote(record.AnswersSubject(a.tag)),
+				"git -C " + root + " commit -m " + cmdline.Quote(record.AnswersSubject(a.tag)) + " -- " + config.FileName,
 			},
 		}}, gitOutput(err), err
 	}

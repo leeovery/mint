@@ -332,7 +332,7 @@ func TestRelease_NotesFile_RelativePathResolvesAgainstTheRunDirectory(t *testing
 	writeNotesFile(t, root, filepath.Join("sub", "notes.md"), subBody)
 	t.Chdir(filepath.Join(root, "sub"))
 	f := runner.NewFakeRunner()
-	seedInRepoNotesFileGit(f, root, "")
+	seedInRepoNotesFileGit(f, root)
 	rec := &presentertest.RecordingPresenter{}
 
 	if err := engine.Release(t.Context(), newDeps(rec, f), notesFileOptions("notes.md")); err != nil {
@@ -341,7 +341,7 @@ func TestRelease_NotesFile_RelativePathResolvesAgainstTheRunDirectory(t *testing
 
 	assertSuppliedBodyShipped(t, f, root, nextTag, "1.2.4", subBody)
 	assertGitArgs(t, f, 2, []string{"status", "--porcelain", "--", excludePathspec("sub/notes.md")})
-	assertCommitAsBuilt(t, f, root, "sub/notes.md", "🌿 Release "+nextTag)
+	assertPathsCommitted(t, f, root, "🌿 Release "+nextTag, "CHANGELOG.md")
 }
 
 // Not parallel: t.Chdir sets the process working directory, and os.Stdin is swapped.

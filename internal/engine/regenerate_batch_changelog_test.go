@@ -263,6 +263,8 @@ func TestRegenerateAllValidated_Changelog_OneCommitAtEnd(t *testing.T) {
 	if got := committedSubject(f); got != batchRebuildSubject {
 		t.Errorf("commit subject = %q, want the --all form %q", got, batchRebuildSubject)
 	}
+	// The rebuild commit names CHANGELOG.md alone, so nothing else staged rides in it.
+	assertPathsCommitted(t, f, dir, batchRebuildSubject, "CHANGELOG.md")
 	if !invokedWith(f, "git", "push", "origin", "HEAD") {
 		t.Errorf("no plain `git push origin HEAD` at the end of the batch; got %v", commandLines(f.Invocations()))
 	}
