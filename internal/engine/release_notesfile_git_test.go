@@ -111,6 +111,7 @@ func keepOutCommit(notesStaged, staged string) []runner.ScriptedCall {
 		ScriptedOut(notesStaged), // -C root diff --cached -- <notes> (staged edits)
 		ScriptedOut(staged),      // -C root diff --cached --name-only -- :(exclude)<notes>
 		ScriptedOut(""),          // commit --pathspec-from-file
+		committedPaths,           // the paths the commit changed
 	}
 }
 
@@ -160,6 +161,7 @@ func seedInRepoNotesFileGit(f *runner.FakeRunner, root string) {
 		ScriptedOut(startingSHA),   // rev-parse HEAD
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit of CHANGELOG.md
+		committedPaths,             // the paths the commit changed
 	)
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -a v1.2.4 -F -
@@ -197,6 +199,7 @@ func firstReleaseTail() []runner.ScriptedCall {
 	return []runner.ScriptedCall{
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit of CHANGELOG.md
+		committedPaths,  // the paths the commit changed
 		ScriptedOut(""), // tag -a v0.0.1 -F -
 		ScriptedOut(""), // push --atomic origin HEAD v0.0.1
 	}

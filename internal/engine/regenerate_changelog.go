@@ -28,6 +28,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -55,7 +56,8 @@ import (
 //
 // A failed write is surfaced; a failed `git add` or commit is surfaced as an
 // *uncommittedChangelog, which resetAndAbort puts back; a failed stage short-circuits
-// before the commit so it can never produce a commit.
+// before the commit so it can never produce a commit. A commit that landed with the
+// index left behind it is a *record.IndexBehindError, committed true.
 func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, tag string, date time.Time, body string) (committed bool, err error) {
 	writeResult, err := record.WriteChangelog(root, versionKey, date, body, true)
 	if err != nil {
@@ -68,7 +70,8 @@ func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, 
 	}
 
 	if err := stageAndCommitChangelog(ctx, m, root, regenerateChangelogSubject(tag), writeResult.Created); err != nil {
-		return false, fmt.Errorf("regenerating changelog for %s: %w", tag, err)
+		var behind *record.IndexBehindError
+		return errors.As(err, &behind), fmt.Errorf("regenerating changelog for %s: %w", tag, err)
 	}
 	return true, nil
 }

@@ -104,8 +104,8 @@ func TestRelease_NotesFileInRepo_GateAbortAfterArtifactCommit_ResetLeavesTheNote
 func seedThroughBookkeepingCommit(f *runner.FakeRunner, root string, stash ...runner.ScriptedCall) {
 	seedProvider(f)
 	f.SeedSequence("git", firstReleaseGates(root, "", stash...)...)
-	f.SeedSequence("git", ScriptedOut("")) // -C root add CHANGELOG.md
-	f.SeedSequence("git", ScriptedOut("")) // -C root commit of CHANGELOG.md
+	f.SeedSequence("git", ScriptedOut(""))                 // -C root add CHANGELOG.md
+	f.SeedSequence("git", ScriptedOut(""), committedPaths) // -C root commit of CHANGELOG.md, the read of the paths it changed
 	f.Seed("gh", runner.Result{}, nil)
 }
 
@@ -224,7 +224,7 @@ func TestRegenerateRun_NotesFileInRepo_PushFails_ResetLeavesTheNotesFile(t *test
 			f.SeedSequence("git", ScriptedOut("")) // ls-files --ignored (not ignored)
 			f.SeedSequence("git", regenChangelogGates("")...)
 			f.SeedSequence("git", regenChangelogWrite()...)
-			f.SeedSequence("git", ScriptedOut(""))                                                                             // -C root commit of CHANGELOG.md
+			f.SeedSequence("git", ScriptedOut(""), committedPaths)                                                             // -C root commit of CHANGELOG.md, the read of the paths it changed
 			f.SeedSequence("git", runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}) // push origin HEAD
 			f.SeedSequence("git", keepingReset(tt)...)
 			rec := &presentertest.RecordingPresenter{}

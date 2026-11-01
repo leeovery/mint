@@ -95,7 +95,8 @@ func (r restoreRepo) commitPaths(subject string, outcome runner.ScriptedCall, pa
 
 // commit is the artifact commit of what is staged under subject, as CommitStaged makes it,
 // git answering it with outcome; staged is the staged-path list it reads where the
-// notes file has staged edits.
+// notes file has staged edits, the commit then naming those paths alone and, once it
+// lands, reading the paths it changed.
 func (r restoreRepo) commit(subject, staged string, outcome runner.ScriptedCall) []gitStep {
 	if r.notes == "" {
 		return []gitStep{{r.git("commit -m " + subject), outcome}}
@@ -104,11 +105,15 @@ func (r restoreRepo) commit(subject, staged string, outcome runner.ScriptedCall)
 	if !r.notesStaged {
 		return []gitStep{{probe, ScriptedOut("")}, {r.git("commit -m " + subject), outcome}}
 	}
-	return []gitStep{
+	steps := []gitStep{
 		{probe, ScriptedOut(r.notes + "\x00")},
 		{r.git("diff --cached --name-only -z --no-renames" + r.keepingOut()), ScriptedOut(staged)},
 		{r.git("commit -m "+subject+" --pathspec-from-file=- --pathspec-file-nul") + piped(strings.FieldsFunc(staged, func(r rune) bool { return r == 0 })...), outcome},
 	}
+	if outcome.Err != nil {
+		return steps
+	}
+	return append(steps, gitStep{committedPathsRead(r.root), committedPaths})
 }
 
 // artifacts is the pre_tag hook leaving bundle.js changed and mint committing it,

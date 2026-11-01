@@ -49,6 +49,7 @@ func TestRegenerateAllValidated_InteractiveChangelog_RunsCommitPushGatesBeforeRe
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
 		ScriptedOut(""),          // add CHANGELOG.md
 		ScriptedOut(""),          // commit
+		committedPaths,           // the paths the commit changed
 		ScriptedOut(""),          // push origin HEAD
 	)
 	pub := newFakePublisher()
@@ -210,6 +211,7 @@ func TestRegenerateAllValidated_ChangelogOnly_GateSelectionUnaffectedByPublisher
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
 		ScriptedOut(""),          // add CHANGELOG.md
 		ScriptedOut(""),          // commit
+		committedPaths,           // the paths the commit changed
 		ScriptedOut(""),          // push origin HEAD
 	)
 	// A genuinely-nil publish.Publisher interface: a changelog-only run writes no

@@ -37,8 +37,8 @@ var (
 )
 
 // answersCommitCalls is git's answers to whether it ignores .mint.toml, then to
-// staging and committing it.
-var answersCommitCalls = []runner.ScriptedCall{configNotIgnored, ScriptedOut(""), ScriptedOut("")}
+// staging and committing it, and to the read of the paths the commit changed.
+var answersCommitCalls = []runner.ScriptedCall{configNotIgnored, ScriptedOut(""), ScriptedOut(""), committedPaths}
 
 // withAnswersCommit is git's answers to a release whose pauses follow the first of
 // calls: the notes diff they ask about, the answers commit, then the rest of calls.

@@ -2,6 +2,7 @@ package record
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -24,7 +25,8 @@ import (
 // A non-zero `git status` or `git add` exit short-circuits before the next step (so
 // a failed probe or stage can never produce a commit) and the error is surfaced for
 // the orchestrator to abort/unwind on. A failure once the stage ran is an
-// *UncommittedError: what it staged stays staged.
+// *UncommittedError: what it staged stays staged. A commit that landed with the index
+// left behind it is an *IndexBehindError, committed true.
 //
 // A keepOut path is left out of the probe, the stage and the commit: its changes
 // neither trigger the commit nor ride in it, and any of them already staged stay
@@ -46,7 +48,9 @@ func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string, k
 	}
 	committed, err := CommitStaged(ctx, m, dir, subject, keepOut)
 	if err != nil {
-		return false, &UncommittedError{err: fmt.Errorf("committing dirty tree %q: %w", subject, err)}
+		return committed, committedAnyway(err, func(err error) error {
+			return &UncommittedError{err: fmt.Errorf("committing dirty tree %q: %w", subject, err)}
+		})
 	}
 	return committed, nil
 }
@@ -71,7 +75,8 @@ func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string, k
 // never makes an empty commit. A non-zero `git add` exit short-circuits before the
 // commit so a failed stage can never produce a commit; the error is surfaced for
 // the orchestrator to unwind. A failure once the stage ran is an *UncommittedError:
-// what it staged stays staged.
+// what it staged stays staged. A commit that landed with the index left behind it is
+// an *IndexBehindError.
 //
 // This bookkeeping commit is kept DISTINCT from the pre_tag hook-artifact commit
 // (CommitDirtyTree), which precedes it with its own chore subject.
@@ -94,7 +99,9 @@ func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, t
 
 	subject := BookkeepingSubject(commitPrefix, tag)
 	if err := CommitPaths(ctx, m, dir, subject, paths); err != nil {
-		return &UncommittedError{err: fmt.Errorf("committing release bookkeeping %q: %w", subject, err)}
+		return committedAnyway(err, func(err error) error {
+			return &UncommittedError{err: fmt.Errorf("committing release bookkeeping %q: %w", subject, err)}
+		})
 	}
 	return nil
 }
@@ -109,13 +116,14 @@ func (e *UncommittedError) Error() string { return e.err.Error() }
 func (e *UncommittedError) Unwrap() error { return e.err }
 
 // CommitFile stages path in dir by name and commits it alone with subject
-// (CommitPaths). A failed step's error carries git's stderr as a *GitError.
+// (CommitPaths). A failed step's error carries git's stderr as a *GitError, and a
+// commit that landed with the index left behind it is an *IndexBehindError.
 func CommitFile(ctx context.Context, m *git.Mutator, dir, path, subject string) error {
 	if res, err := m.Mutate(ctx, nil, "git", "-C", dir, "add", path); err != nil {
 		return fmt.Errorf("staging %s: %w", path, &GitError{Stderr: res.Stderr, err: err})
 	}
 	if err := CommitPaths(ctx, m, dir, subject, []string{path}); err != nil {
-		return fmt.Errorf("committing %q: %w", subject, err)
+		return committedAnyway(err, func(err error) error { return fmt.Errorf("committing %q: %w", subject, err) })
 	}
 	return nil
 }
@@ -126,13 +134,65 @@ func CommitFile(ctx context.Context, m *git.Mutator, dir, path, subject string) 
 // never rides in mint's commit. The paths reach git on stdin (PathspecInput), so no
 // count of them meets the argument limit. Each must be known to git already: a new
 // file is staged first. On this pathspec route git runs the commit hooks against a
-// temporary index, so a hook that re-stages its rewrite leaves the real index behind.
-// A failed commit's error carries git's stderr as a *GitError.
+// temporary index, so what a hook re-stages, its rewrite of a path or a file of its
+// own, rides in the commit while the real index keeps what it held before; the index
+// is matched to the commit after it (matchIndexToCommit). A failed commit's error
+// carries git's stderr as a *GitError; once the commit landed, a failure to match the
+// index is an *IndexBehindError.
 func CommitPaths(ctx context.Context, m *git.Mutator, dir, subject string, paths []string) error {
 	if res, err := m.Mutate(ctx, PathspecInput(paths), "git", "-C", dir, "commit", "-m", subject, "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
 		return NewGitError(res.Stderr, err)
 	}
+	return matchIndexToCommit(ctx, m, dir)
+}
+
+// matchIndexToCommit returns the index entry of every path HEAD's commit changed, the
+// files its hooks added among them, to HEAD, touching no work tree, so the index holds
+// what the commit holds and nothing the commit made reads as a change, then refreshes
+// the index's stat data. Every other entry, a change the user staged, stays as it is.
+func matchIndexToCommit(ctx context.Context, m *git.Mutator, dir string) error {
+	res, err := m.Run(ctx, "git", "-C", dir, "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", "HEAD")
+	if err != nil {
+		return &IndexBehindError{Stderr: res.Stderr, err: err}
+	}
+	paths := strings.FieldsFunc(res.Stdout, func(r rune) bool { return r == 0 })
+	if len(paths) == 0 {
+		return nil
+	}
+	if res, err := m.Mutate(ctx, PathspecInput(paths), "git", "-C", dir, "restore", "--source=HEAD", "--staged", "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
+		return &IndexBehindError{Stderr: res.Stderr, err: err}
+	}
+	// The restored entries carry no stat data, which `reset --keep` reads as a change
+	// and refuses over, so an unwind after the commit could not take it back.
+	if res, err := m.Mutate(ctx, nil, "git", "-C", dir, "update-index", "-q", "--refresh"); err != nil {
+		return &IndexBehindError{Stderr: res.Stderr, err: err}
+	}
 	return nil
+}
+
+// IndexBehindError is a commit that landed with the index left behind it: what the
+// commit hooks staged rides in the commit, and the index still holds those paths as
+// they were. The commit stands. Stderr is what git wrote.
+type IndexBehindError struct {
+	Stderr string
+	err    error
+}
+
+func (e *IndexBehindError) Error() string {
+	return "matching the index to the commit: " + e.err.Error()
+}
+
+// Unwrap exposes the runner error so errors.Is matches it.
+func (e *IndexBehindError) Unwrap() error { return e.err }
+
+// committedAnyway is err as a commit's caller reports it: an *IndexBehindError as it
+// is, the commit having landed, and any other failure through uncommitted.
+func committedAnyway(err error, uncommitted func(error) error) error {
+	var behind *IndexBehindError
+	if errors.As(err, &behind) {
+		return behind
+	}
+	return uncommitted(err)
 }
 
 // PathspecInput is paths as git reads them under `--pathspec-from-file=-
@@ -186,9 +246,9 @@ func (e *GitError) Unwrap() error { return e.err }
 // edits. The named paths are still committed from the work tree, which matches the
 // index only for paths staged just before the call. The list is never empty when the
 // commit runs, since an empty pathspec file commits the whole index, keepOut's staged
-// edits included. On this pathspec route git runs the commit hooks against a
-// temporary index, so a hook that re-stages its rewrite leaves the real index behind.
-// A failed commit's error carries git's stderr as a *GitError.
+// edits included. That route is CommitPaths', the index matched to the commit after
+// it. A failed commit's error carries git's stderr as a *GitError; committed is true
+// alongside an *IndexBehindError, the commit having landed.
 func CommitStaged(ctx context.Context, m *git.Mutator, dir, subject string, keepOut git.Exclusion) (bool, error) {
 	keepOutStaged, err := hasStagedEdits(ctx, m, dir, keepOut)
 	if err != nil {
@@ -209,8 +269,9 @@ func CommitStaged(ctx context.Context, m *git.Mutator, dir, subject string, keep
 		return false, nil
 	}
 	paths := strings.Split(strings.TrimSuffix(staged.Stdout, "\x00"), "\x00")
-	if res, err := m.Mutate(ctx, PathspecInput(paths), "git", "-C", dir, "commit", "-m", subject, "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
-		return false, NewGitError(res.Stderr, err)
+	if err := CommitPaths(ctx, m, dir, subject, paths); err != nil {
+		var behind *IndexBehindError
+		return errors.As(err, &behind), err
 	}
 	return true, nil
 }

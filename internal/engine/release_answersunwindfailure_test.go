@@ -56,6 +56,7 @@ func pushRejectedAfterTheTag() []runner.ScriptedCall {
 	return []runner.ScriptedCall{
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit -m
+		committedPaths,  // the paths the commit changed
 		ScriptedOut(""), // tag -a v1.3.0 -F -
 		pushRejected(),  // push --atomic origin HEAD v1.3.0
 	}

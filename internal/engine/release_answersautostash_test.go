@@ -130,10 +130,10 @@ func (a *autostashedRelease) released(pop runner.ScriptedCall) *autostashedRelea
 }
 
 // unwound scripts the unwind's read of the answers commit's sha, its reset (a read of
-// what is staged, then the reset) and its re-commit of the answers, then pop as the
-// restore.
+// what is staged, then the reset) and its re-commit of the answers with the read of
+// the paths it changed, then pop as the restore.
 func (a *autostashedRelease) unwound(pop runner.ScriptedCall) *autostashedRelease {
-	a.f.SeedSequence("git", ScriptedOut(answersSHA+"\n"), nothingStaged, ScriptedOut(""), ScriptedOut(""), ScriptedOut(""), pop)
+	a.f.SeedSequence("git", ScriptedOut(answersSHA+"\n"), nothingStaged, ScriptedOut(""), ScriptedOut(""), ScriptedOut(""), committedPaths, pop)
 	return a
 }
 
@@ -302,6 +302,7 @@ func TestRelease_Autostash_AbortAfterAnswering_RecommitsOnlyTheAnswersThenRestor
 			want := []string{
 				"git -C " + a.git.root + " add " + config.FileName,
 				"git -C " + a.git.root + " commit -m " + answersSubject(nextTag) + " --pathspec-from-file=- --pathspec-file-nul",
+				committedPathsRead(a.git.root),
 				"git stash pop",
 			}
 			if got := commandLines(a.f.Invocations()[reset+1:]); !slices.Equal(got, want) {

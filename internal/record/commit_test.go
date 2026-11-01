@@ -33,8 +33,8 @@ func TestCommitBookkeeping_ChangelogOnly_StagesChangelogAndCommitsWithSubject(t 
 	}
 
 	invs := r.Invocations()
-	if len(invs) != 2 {
-		t.Fatalf("invocations = %d, want 2 (git add then git commit)", len(invs))
+	if len(invs) != 3 {
+		t.Fatalf("invocations = %d, want 3 (git add, git commit, then the read of what it changed)", len(invs))
 	}
 
 	add := invs[0]
@@ -62,8 +62,8 @@ func TestCommitBookkeeping_BothChanged_FoldsIntoOneCommit(t *testing.T) {
 	}
 
 	invs := r.Invocations()
-	if len(invs) != 2 {
-		t.Fatalf("invocations = %d, want 2 (one folded add then one commit)\n got: %v", len(invs), invs)
+	if len(invs) != 3 {
+		t.Fatalf("invocations = %d, want 3 (one folded add, one commit, then the read of what it changed)\n got: %v", len(invs), invs)
 	}
 
 	add := invs[0]
@@ -91,8 +91,8 @@ func TestCommitBookkeeping_VersionOnly_StagesVersionFileAndCommits(t *testing.T)
 	}
 
 	invs := r.Invocations()
-	if len(invs) != 2 {
-		t.Fatalf("invocations = %d, want 2 (version-file add then commit)\n got: %v", len(invs), invs)
+	if len(invs) != 3 {
+		t.Fatalf("invocations = %d, want 3 (version-file add, commit, then the read of what it changed)\n got: %v", len(invs), invs)
 	}
 
 	add := invs[0]
@@ -401,6 +401,7 @@ func TestCommitDirtyTree_Exclusion_CommitsOnlyTheOtherStagedPaths(t *testing.T) 
 		notesStaged,           // diff --cached -- NEXT_RELEASE.md (staged edits)
 		runner.ScriptedCall{Result: runner.Result{Stdout: staged}}, // diff --cached --name-only
 		runner.ScriptedCall{}, // commit --pathspec-from-file
+		runner.ScriptedCall{}, // diff-tree (the commit changed nothing)
 	)
 
 	const dir = "/repo/root"
@@ -418,6 +419,7 @@ func TestCommitDirtyTree_Exclusion_CommitsOnlyTheOtherStagedPaths(t *testing.T) 
 		{args: notesStagedArgs(dir)},
 		{args: stagedPathsArgs(dir)},
 		{args: pathspecCommitArgs(dir, "subject"), stdin: ":(top,literal)bundle.js\x00:(top,literal)odd [x]*.txt\x00"},
+		{args: committedPathsArgs(dir)},
 	})
 }
 

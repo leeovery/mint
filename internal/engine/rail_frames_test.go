@@ -176,6 +176,7 @@ func (w *railWorld) recorded() {
 	w.f.SeedSequence("git",
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit -m
+		committedPaths,  // the paths the commit changed
 		ScriptedOut(""), // tag -a v1.3.0 -F -
 	)
 }
@@ -655,6 +656,7 @@ var railRuns = map[string]railRun{
 			ScriptedOut(""),              // unwind: reset --keep startsha
 			ScriptedOut(""),              // unwind: -C root add .mint.toml
 			ScriptedOut(""),              // unwind: -C root commit -m
+			committedPaths,               // the paths the commit changed
 		)
 		return w.release(t, nil)
 	}},

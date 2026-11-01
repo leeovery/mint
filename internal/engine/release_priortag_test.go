@@ -80,6 +80,7 @@ func seedRecordTagPush(f *runner.FakeRunner, root string) {
 	f.SeedSequence("git",
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit -m
+		committedPaths,  // the paths the commit changed
 		ScriptedOut(""), // tag -a v1.2.4 -F -
 		ScriptedOut(""), // push --atomic origin HEAD v1.2.4
 	)

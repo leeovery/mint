@@ -337,7 +337,7 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 	// recovery below can name.
 	deps.run.Left(noClaim)
 	committed, err := RegenerateChangelog(ctx, deps.Mutator, root, req.VersionKey, req.Tag, date, body)
-	if err != nil {
+	if err = warnIndexBehind(p, root, stageRecord, err); err != nil {
 		// A failed write, stage or commit makes no commit (committed is false): a failed
 		// stage or commit leaves the rewrite, which resetAndAbort puts back.
 		return false, resetAndAbort(ctx, deps, start, committed, stageFailure(stageRecord, err), err)
@@ -374,7 +374,8 @@ func startChangelogNode(deps ReleaseDeps, text string) *blockingStage {
 // failed step short-circuits (a failed stage never reaches the commit) and the
 // returned *uncommittedChangelog names which step failed (`staging …` / `committing
 // …`) and carries what resetAndAbort needs to put the rewrite back: created, whether
-// the rewrite created the file, and whether the stage went through. Each caller wraps
+// the rewrite created the file, and whether the stage went through. A commit that
+// landed with the index left behind it is a *record.IndexBehindError. Each caller wraps
 // it with its own context. Keeping the stage/commit idiom here means the two
 // regenerate paths can no longer drift on the stage/commit half (the mirror of
 // pushChangelogCommit owning the push/recovery half).
@@ -383,6 +384,10 @@ func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject 
 		return &uncommittedChangelog{err: fmt.Errorf("staging %s: %w", record.ChangelogFileName, record.NewGitError(res.Stderr, err)), created: created}
 	}
 	if err := record.CommitPaths(ctx, m, root, subject, []string{record.ChangelogFileName}); err != nil {
+		var behind *record.IndexBehindError
+		if errors.As(err, &behind) {
+			return behind
+		}
 		return &uncommittedChangelog{err: fmt.Errorf("committing %q: %w", subject, err), created: created, staged: true}
 	}
 	return nil

@@ -453,6 +453,7 @@ func TestRegenerateRun_InteractiveChangelog_RunsCommitPushGates(t *testing.T) {
 		ScriptedOut("2024-02-15"), // for-each-ref creatordate:short (historical date)
 		ScriptedOut(""),           // add CHANGELOG.md
 		ScriptedOut(""),           // commit
+		committedPaths,            // the paths the commit changed
 		ScriptedOut(""),           // push origin HEAD
 	)
 	pub := newFakePublisher()

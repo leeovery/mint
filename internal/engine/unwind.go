@@ -365,7 +365,7 @@ func recommitAnswersIfKept(ctx context.Context, deps ReleaseDeps, answers *answe
 	if answers == nil || !resetOK {
 		return false, true
 	}
-	if manual, output, err := answers.recommit(ctx, deps.Mutator, restore); err != nil {
+	if manual, output, err := answers.recommit(ctx, deps.Mutator, deps.Presenter, restore); err != nil {
 		warnUnwindIncomplete(deps.Presenter, output, manual...)
 		return false, false
 	}

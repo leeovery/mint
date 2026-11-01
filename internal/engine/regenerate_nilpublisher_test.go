@@ -61,6 +61,7 @@ func TestRegenerateWrite_NilPublisher_Both_StillWritesChangelogSkipsProvider(t *
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit
+		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}

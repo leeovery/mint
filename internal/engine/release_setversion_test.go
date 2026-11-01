@@ -164,6 +164,7 @@ func TestRelease_SetVersion_GreaterThanLatest_BecomesNext(t *testing.T) {
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
+		committedPaths,             // the paths the commit changed
 		ScriptedOut(""),            // tag -a v2.0.0 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v2.0.0
 	)
@@ -213,6 +214,7 @@ func TestRelease_SetVersion_FirstRelease_Accepted(t *testing.T) {
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
+		committedPaths,             // the paths the commit changed
 		ScriptedOut(""),            // tag -a v1.0.0 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v1.0.0
 	)
@@ -258,6 +260,7 @@ func TestRelease_SetVersion_InjectsMintBumpExplicit(t *testing.T) {
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
+		committedPaths,             // the paths the commit changed
 		ScriptedOut(""),            // tag -a v2.0.0 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v2.0.0
 	)

@@ -117,6 +117,7 @@ func TestRegenerateWrite_EmitsBlockingPushStage(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short (historical date)
 		ScriptedOut(""),                   // -C dir add CHANGELOG.md
 		ScriptedOut(""),                   // -C dir commit -m docs(changelog): ...
+		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}

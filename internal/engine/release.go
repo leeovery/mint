@@ -804,7 +804,8 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// HEAD just moved, so made.Commits is bumped exactly when a commit landed —
 	// tracked, not inferred by probing git.
 	bookkeepingCommitted := record.BookkeepingWillCommit(versionFile, writeResult.Changed, versionChanged)
-	if err := record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, versionFile, writeResult.Changed, versionChanged); err != nil {
+	err = record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, versionFile, writeResult.Changed, versionChanged)
+	if err = warnIndexBehind(p, root, stageRecord, err); err != nil {
 		var uncommitted *record.UncommittedError
 		made.recordStaged = errors.As(err, &uncommitted)
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
@@ -1233,7 +1234,7 @@ func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Ans
 		// An ignored file is the operator's local config: staging it would take
 		// `add -f`, and the unwind keeps the write as it keeps an answers commit.
 		if !ignored {
-			if err := a.commit(ctx, deps.Mutator); err != nil {
+			if err := a.committed(deps.Presenter, a.commit(ctx, deps.Mutator)); err != nil {
 				return &answersRecordingError{step: committing, err: err, output: gitOutput(err)}
 			}
 			a.landed = true
@@ -1265,14 +1266,23 @@ func (a *answersCommit) commit(ctx context.Context, m *git.Mutator) error {
 	return record.CommitFile(ctx, m, a.root, config.FileName, record.AnswersSubject(a.tag))
 }
 
-// recommit records the answers again on whatever HEAD is now. On failure it returns
-// the manual steps that finish the re-commit, given restore as the steps that bring
-// back the answers commit itself, and the failing tool's own message.
-func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator, restore []manualStep) (manual []manualStep, output string, err error) {
+// committed is the answers commit's err as the run takes it: nil where the commit
+// landed with the index left behind it, which it warns of (warnIndexBehind).
+func (a *answersCommit) committed(p presenter.Presenter, err error) error {
+	p.SuspendSpinner()
+	defer p.ResumeSpinner()
+	return warnIndexBehind(p, a.root, "notes", err)
+}
+
+// recommit records the answers again on whatever HEAD is now, warning through p where
+// the commit landed with the index left behind it (warnIndexBehind). On failure it
+// returns the manual steps that finish the re-commit, given restore as the steps that
+// bring back the answers commit itself, and the failing tool's own message.
+func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator, p presenter.Presenter, restore []manualStep) (manual []manualStep, output string, err error) {
 	if err := a.write(); err != nil {
 		return restore, err.Error(), err
 	}
-	if err := a.commit(ctx, m); err != nil {
+	if err := warnIndexBehind(p, a.root, stageUnwind, a.commit(ctx, m)); err != nil {
 		root := cmdline.Quote(a.root)
 		return []manualStep{{
 			does: "commit the exclusion answers mint wrote to " + config.FileName,
@@ -1756,7 +1766,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	}
 	subject := pretagArtifactSubject(tag)
 	committed, err := record.CommitDirtyTree(ctx, deps.Mutator, root, subject, keepOut)
-	if err != nil {
+	if err = warnIndexBehind(deps.Presenter, root, stagePreTag, err); err != nil {
 		return committed, &stageError{stage: stage, err: err}
 	}
 	success := hookCompletion(cfg.Release.Hooks.PreTag)

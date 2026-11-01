@@ -23,8 +23,8 @@ func TestCommitFile_StagesThePathByNameThenCommitsItAloneWithSubject(t *testing.
 	}
 
 	invs := r.Invocations()
-	if len(invs) != 2 || !slices.Equal(invs[0].Args, []string{"-C", dir, "add", ".mint.toml"}) || invs[0].Stdin != "" {
-		t.Fatalf("git calls = %v, want the stage of .mint.toml then its commit", invs)
+	if len(invs) != 3 || !slices.Equal(invs[0].Args, []string{"-C", dir, "add", ".mint.toml"}) || invs[0].Stdin != "" {
+		t.Fatalf("git calls = %v, want the stage of .mint.toml, its commit, then the read of what it changed", invs)
 	}
 	assertPathsCommit(t, invs[1], dir, "chore(release): release-notes path answers for v1.3.0", ".mint.toml")
 }

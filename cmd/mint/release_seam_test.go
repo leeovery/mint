@@ -86,6 +86,7 @@ func (run *releaseSeamRun) seedRecordTagPush() {
 	run.f.SeedSequence("git",
 		gitOut(""), // -C root add CHANGELOG.md
 		gitOut(""), // -C root commit -m
+		gitOut(""), // the read of the paths the commit changed: none
 		gitOut(""), // tag -a v1.2.4 -F -
 		gitOut(""), // push --atomic origin HEAD v1.2.4
 	)

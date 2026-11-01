@@ -44,6 +44,7 @@ func seedPreTagDirty(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(""),                      // -C root commit -m chore(release): pre-tag artifacts
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m {commit_prefix} Release {tag}
+		committedPaths,                       // the paths the commit changed
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)
@@ -70,6 +71,7 @@ func seedPreTagClean(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(""),                      // -C root status --porcelain (post-hook: CLEAN)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m {commit_prefix} Release {tag}
+		committedPaths,                       // the paths the commit changed
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)

@@ -163,7 +163,7 @@ func regeneratedByTag(collected []RegeneratedVersion) map[string]string {
 // (created). The push is the point of no return.
 func commitAndPushRebuild(ctx context.Context, deps ReleaseDeps, root, startingHEAD string, created bool, node *blockingStage) error {
 	start := resetTarget{HEAD: startingHEAD, Root: root}
-	if err := stageAndCommitChangelog(ctx, deps.Mutator, root, batchRebuildSubject, created); err != nil {
+	if err := warnIndexBehind(deps.Presenter, root, stageRecord, stageAndCommitChangelog(ctx, deps.Mutator, root, batchRebuildSubject, created)); err != nil {
 		cause := fmt.Errorf("batch rebuild: %w", err)
 		return resetAndAbort(ctx, deps, start, false, stageFailure(stageRecord, cause), cause)
 	}

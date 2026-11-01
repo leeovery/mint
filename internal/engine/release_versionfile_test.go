@@ -33,6 +33,7 @@ func seedVersionFileFold(f *runner.FakeRunner, root, releaseBranch, tag, version
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md {versionFile} (folded)
 		ScriptedOut(""),                      // -C root commit -m {commit_prefix} Release {tag}
+		committedPaths,                       // the paths the commit changed
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)

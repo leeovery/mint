@@ -115,6 +115,7 @@ func TestRegenerateWrite_AHealWritesTheReleaseFromTheNotesJustPushed(t *testing.
 				runner.ScriptedCall{Result: runner.Result{Stdout: "2024-02-15"}}, // the tag's date
 				runner.ScriptedCall{}, // add
 				runner.ScriptedCall{}, // commit
+				runner.ScriptedCall{}, // the read of the paths the commit changed: none
 				runner.ScriptedCall{}, // push: the changelog is public
 			)
 			rec := &presentertest.RecordingPresenter{NextChoices: tc.choices, NextLines: []string{""}}

@@ -106,6 +106,7 @@ func (a *answeredAbort) unwound(beforeReset ...runner.ScriptedCall) *answeredAbo
 		ScriptedOut(""), // reset --keep startsha
 		ScriptedOut(""), // -C root add .mint.toml
 		ScriptedOut(""), // -C root commit -m answers
+		committedPaths,  // the paths the commit changed
 	)
 	return a
 }
@@ -134,6 +135,7 @@ func assertAnswersKept(t *testing.T, rec *presentertest.RecordingPresenter, a *a
 	want := []string{
 		"git -C " + a.root + " add " + config.FileName,
 		"git -C " + a.root + " commit -m " + answersSubject(minorTagV130) + " --pathspec-from-file=- --pathspec-file-nul",
+		committedPathsRead(a.root),
 	}
 	if got := commandLines(after); !slices.Equal(got, want) {
 		t.Errorf("after the reset = %q, want the answers re-committed alone %q", got, want)
@@ -303,6 +305,7 @@ func TestRelease_FailuresBeforeThePushAfterAnswering_KeepTheAnswersCommit(t *tes
 			tail: []runner.ScriptedCall{
 				ScriptedOut(""), // -C root add CHANGELOG.md
 				ScriptedOut(""), // -C root commit -m
+				committedPaths,  // the paths the commit changed
 				ScriptedOut(""), // tag -a v1.3.0 -F -
 				pushRejected(),  // push --atomic origin HEAD v1.3.0
 			},

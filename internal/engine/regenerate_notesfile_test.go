@@ -70,6 +70,7 @@ func seedRegenNotesFileGit(f *runner.FakeRunner) {
 	f.SeedSequence("git", regenChangelogWrite()...)
 	f.SeedSequence("git",
 		ScriptedOut(""), // -C root commit -m
+		committedPaths,  // the paths the commit changed
 		ScriptedOut(""), // push origin HEAD
 	)
 	f.Seed("gh", runner.Result{}, nil)
@@ -380,8 +381,8 @@ func TestRegenerateRun_NotesFile_InRepoFileIsKeptOutOfTheChangelogGitSteps(t *te
 			f.SeedSequence("git", ScriptedOut("")) // ls-files --ignored (not ignored)
 			f.SeedSequence("git", regenChangelogGates("")...)
 			f.SeedSequence("git", regenChangelogWrite()...)
-			f.SeedSequence("git", ScriptedOut("")) // -C root commit of CHANGELOG.md
-			f.SeedSequence("git", ScriptedOut("")) // push origin HEAD
+			f.SeedSequence("git", ScriptedOut(""), committedPaths) // -C root commit of CHANGELOG.md, the read of the paths it changed
+			f.SeedSequence("git", ScriptedOut(""))                 // push origin HEAD
 			f.Seed("gh", runner.Result{}, nil)
 			pub := newFakePublisher()
 			pub.seedExists(regenRunTag, true, nil)

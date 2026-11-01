@@ -96,6 +96,7 @@ func TestRegenerateWrite_Changelog_PushIsPlainNoTag(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short (historical date)
 		ScriptedOut(""),                   // -C dir add CHANGELOG.md
 		ScriptedOut(""),                   // -C dir commit -m docs(changelog): ...
+		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
@@ -135,6 +136,7 @@ func TestRegenerateWrite_Changelog_UsesHistoricalDateNotToday(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit
+		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
@@ -202,6 +204,7 @@ func TestRegenerateWrite_PrePushFailure_ResetsCommit(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit (the changelog commit lands)
+		committedPaths,                    // the paths the commit changed
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
 		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // reset --keep startHEAD (recovery)
@@ -240,6 +243,7 @@ func TestRegenerateWrite_RecoveryResetFails_WarnsManualCleanup(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit (the changelog commit lands)
+		committedPaths,                    // the paths the commit changed
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
 		nothingStaged, // the reset's read of what the index holds
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("reset --keep exploded")}, // reset recovery FAILS
@@ -274,6 +278,7 @@ func TestRegenerateWrite_ProviderFailureAfterPush_WarnOnly(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit
+		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD (PONR crossed)
 	)
 	pub := newFakePublisher()
@@ -310,6 +315,7 @@ func TestRegenerateWrite_Both_ChangelogPushBeforeProvider(t *testing.T) {
 		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit
+		committedPaths,                    // the paths the commit changed
 		ScriptedOut(""),                   // push origin HEAD
 	)
 	pub := newFakePublisher()

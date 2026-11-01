@@ -93,6 +93,7 @@ func TestRelease_Autostash_StashesBeforeGate_DirtyTreePasses(t *testing.T) {
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
+		committedPaths,             // the paths the commit changed
 		ScriptedOut(""),            // tag -a v0.0.1 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
 		stashPopped(),              // stash pop (restore WIP after success)
@@ -245,6 +246,7 @@ func TestRelease_Autostash_NoWIP_IsNoOp(t *testing.T) {
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture clean start)
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
+		committedPaths,             // the paths the commit changed
 		ScriptedOut(""),            // tag -a v0.0.1 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
 	)
@@ -474,6 +476,7 @@ func seedAutostashHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture clean start)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
+		committedPaths,                       // the paths the commit changed
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)
@@ -499,6 +502,7 @@ func seedAutostashThroughTag(f *runner.FakeRunner, root, releaseBranch, tag stri
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture clean start)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
+		committedPaths,                       // the paths the commit changed
 		ScriptedOut(""),                      // tag -a {tag} -F -
 	)
 }

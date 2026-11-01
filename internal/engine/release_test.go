@@ -57,6 +57,17 @@ func ScriptedNonZero() runner.ScriptedCall {
 //	root          — `git rev-parse --show-toplevel`
 //	releaseBranch — `git symbolic-ref --short refs/remotes/origin/HEAD`
 //	tag           — the computed tag (e.g. "v0.0.1")
+//
+// committedPaths is git's answer to the read of the paths a commit of mint's changed,
+// made to match the index to the commit: none, as the fake commit changes nothing, so
+// no restore follows.
+var committedPaths = ScriptedOut("")
+
+// committedPathsRead is the read committedPaths answers, in the repo at root.
+func committedPathsRead(root string) string {
+	return "git -C " + root + " diff-tree --no-commit-id --name-only -r -z HEAD"
+}
+
 func seedHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 	seedProvider(f)
 	f.SeedSequence("git",
@@ -73,6 +84,7 @@ func seedHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
+		committedPaths,                       // the paths the commit changed
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)
@@ -185,6 +197,7 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		"git rev-parse HEAD",
 		"git -C " + root + " add CHANGELOG.md",
 		"git -C " + root + " commit -m 🌿 Release v0.0.1 --pathspec-from-file=- --pathspec-file-nul",
+		committedPathsRead(root),
 		"git tag -a --cleanup=verbatim v0.0.1 -F -",
 		"git push --atomic origin HEAD v0.0.1",
 		"gh release create v0.0.1 --title v0.0.1 --notes-file - --verify-tag",
@@ -337,6 +350,7 @@ func TestRelease_ContendedLockOnBookkeepingCommit_RecoversAndCompletes(t *testin
 		runner.ScriptedCall{Result: runner.Result{Stderr: lockStderr, ExitCode: 128}, Err: errors.New("exit status 128")}, // -C root add CHANGELOG.md — CONTENDED
 		ScriptedOut(""), // -C root add CHANGELOG.md — retry succeeds
 		ScriptedOut(""), // -C root commit -m
+		committedPaths,  // the paths the commit changed
 		ScriptedOut(""), // tag -a v0.0.1 -F -
 		ScriptedOut(""), // push --atomic origin HEAD v0.0.1
 	)
@@ -882,6 +896,7 @@ func seedHappyGitThroughCommit(f *runner.FakeRunner, root, releaseBranch, tag st
 	f.SeedSequence("git",
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit -m
+		committedPaths,  // the paths the commit changed
 	)
 }
 
@@ -1521,6 +1536,7 @@ func TestRelease_PublishDisabled_NoGhNoPublish(t *testing.T) {
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
+		committedPaths,             // the paths the commit changed
 		ScriptedOut(""),            // tag -a v0.0.1 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
 	)
@@ -1847,6 +1863,7 @@ func TestRelease_PublishDisabled_TagStillCarriesBody(t *testing.T) {
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
+		committedPaths,             // the paths the commit changed
 		ScriptedOut(""),            // tag -a v0.0.1 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
 	)

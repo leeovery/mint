@@ -843,6 +843,7 @@ func TestRegenerateRun_Rail_ARegenerateStartsAtItsTagAndLandsRegenerated(t *test
 		ScriptedOut("2024-02-15"),          // for-each-ref creatordate:short (historical date)
 		ScriptedOut(""),                    // add CHANGELOG.md
 		ScriptedOut(""),                    // commit
+		committedPaths,                     // the paths the commit changed
 		ScriptedOut(""),                    // push origin HEAD
 	)
 	f.Seed("gh", runner.Result{}, nil)
@@ -989,13 +990,13 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 		},
 		{
 			name:    "a rejected push resets the commit",
-			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, nothingStaged, ScriptedOut("")}, // add, commit, push, the staged read, reset --keep
+			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), committedPaths, rejected, nothingStaged, ScriptedOut("")}, // add, commit, the read of what it changed, push, the staged read, reset --keep
 			end:     "back where it started · nothing pushed",
 			unwound: true,
 		},
 		{
 			name:    "a rejected push whose reset fails needs cleaning up, on the commit HEAD never left",
-			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, nothingStaged, scriptedMutateFailure(), ScriptedOut("9f3e2a1c4b\nmain")},
+			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), committedPaths, rejected, nothingStaged, scriptedMutateFailure(), ScriptedOut("9f3e2a1c4b\nmain")},
 			at:      "main",
 			end:     "9f3e2a1 · the changelog commit not reset · manual cleanup required · nothing pushed",
 			unwound: true,

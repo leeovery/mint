@@ -248,7 +248,7 @@ func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t
 			seedChangelog(t, dir, regenNotesStaleChangelog)
 			f := runner.NewFakeRunner()
 			f.SeedSequence("git", regenChangelogWrite()...)
-			f.SeedSequence("git", ScriptedOut("")) // -C root commit of CHANGELOG.md
+			f.SeedSequence("git", ScriptedOut(""), committedPaths) // -C root commit of CHANGELOG.md, the read of the paths it changed
 			f.SeedSequence("git", append([]runner.ScriptedCall{pushRejected}, tt.recovery...)...)
 			rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 

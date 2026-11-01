@@ -110,8 +110,8 @@ func TestRegenerateChangelog_CommitSubjectIsRegenerateNotForward(t *testing.T) {
 	}
 
 	invs := r.Invocations()
-	if len(invs) != 2 {
-		t.Fatalf("invocations = %d, want 2 (git add then git commit)\n got: %v", len(invs), invs)
+	if len(invs) != 3 {
+		t.Fatalf("invocations = %d, want 3 (git add, git commit, then the read of what it changed)\n got: %v", len(invs), invs)
 	}
 
 	wantAdd := []string{"-C", dir, "add", "CHANGELOG.md"}
@@ -122,6 +122,9 @@ func TestRegenerateChangelog_CommitSubjectIsRegenerateNotForward(t *testing.T) {
 	wantCommit := pathsCommit(dir, "docs(changelog): regenerate notes for v1.4.0")
 	if commit := invs[1]; commit.Name != "git" || !slices.Equal(commit.Args, wantCommit) || commit.Stdin != ":(top,literal)CHANGELOG.md\x00" {
 		t.Errorf("commit invocation = %s %v stdin %q, want git %v naming CHANGELOG.md alone", commit.Name, commit.Args, commit.Stdin, wantCommit)
+	}
+	if got := commandLine(invs[2]); got != committedPathsRead(dir) {
+		t.Errorf("after the commit = %q, want the read of the paths it changed %q", got, committedPathsRead(dir))
 	}
 
 	subject := invs[1].Args[4]
