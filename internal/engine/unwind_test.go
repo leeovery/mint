@@ -41,18 +41,21 @@ func indexHolds(entries ...string) runner.ScriptedCall {
 	return ScriptedOut(out.String())
 }
 
-// keepStepTo is the manual step a failed reset of mint's commits back to sha leaves, as
-// plain's warning says it; keepStep and keepMove are it for the starting commit, the
-// second as a next move.
-func keepStepTo(sha string) string {
-	return "stash your changes to any file git names, then reset HEAD back to " + sha + " (`git reset --keep " + sha + "`)"
+// keepStepsTo are the manual steps a failed reset of mint's commits back to sha leaves,
+// as plain's warning says them, why saying what the reset is for ("" for nothing): stash
+// the changes git names, reset, then pop the stash, the pop only for a stash the user
+// made. keepSteps and keepMoves are them for the starting commit, the second as next
+// moves.
+func keepStepsTo(sha, why string) string {
+	return "stash your changes to any file git names, then reset HEAD back to " + sha + " (`git reset --keep " + sha + "`)" + why +
+		", then pop that stash, if you made one, to bring your changes back (`git stash pop`)"
 }
 
 var (
-	keepStep = keepStepTo(startingSHA)
-	keepMove = presenter.NextMove{
-		Lead:    "Stash your changes to any file git names, then reset HEAD back to " + startingSHA + ":",
-		Command: "git reset --keep " + startingSHA,
+	keepSteps = keepStepsTo(startingSHA, "")
+	keepMoves = []presenter.NextMove{
+		{Lead: "Stash your changes to any file git names, then reset HEAD back to " + startingSHA + ":", Command: "git reset --keep " + startingSHA},
+		{Lead: "Pop that stash, if you made one, to bring your changes back:", Command: "git stash pop"},
 	}
 )
 

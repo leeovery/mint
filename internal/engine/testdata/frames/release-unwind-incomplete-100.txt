@@ -23,3 +23,5 @@
  next
    Stash your changes to any file git names, then reset HEAD back to startsha:
      git reset --keep startsha
+   Pop that stash, if you made one, to bring your changes back:
+     git stash pop

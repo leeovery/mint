@@ -257,7 +257,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheResetFails_DoesNotReCommitAndNamesT
 				Key:     "unwind",
 				Row:     "automatic recovery failed",
 				Failed:  true,
-				Message: "automatic recovery failed; manually " + keepStep + ", then put your exclusion answers back on top (`git cherry-pick " + answersSHA + "`)",
+				Message: "automatic recovery failed; manually " + keepSteps + ", then put your exclusion answers back on top (`git cherry-pick " + answersSHA + "`)",
 				Output:  resetStderr,
 			}
 			assertUnwoundWithOneWarning(t, rec, err, want, tc.summary)
@@ -292,13 +292,12 @@ func TestRelease_UnwindAfterAnswering_WhenTheShaCannotBeRead_StillResetsAndNames
 		Key:     "unwind",
 		Row:     "automatic recovery failed",
 		Failed:  true,
-		Message: "automatic recovery failed; manually " + keepStep + ", then put your exclusion answers back on top (`git cherry-pick ORIG_HEAD~1`)",
+		Message: "automatic recovery failed; manually " + keepSteps + ", then put your exclusion answers back on top (`git cherry-pick ORIG_HEAD~1`)",
 		Output:  resetStderr,
 	}
 	assertUnwoundWithOneWarning(t, rec, err, want, "deleted tag "+minorTagV130+"; manual cleanup required")
-	assertManualSteps(t, rec,
-		keepMove,
-		presenter.NextMove{Lead: "Put your exclusion answers back on top:", Command: "git cherry-pick ORIG_HEAD~1"},
-	)
+	assertManualSteps(t, rec, slices.Concat(keepMoves, []presenter.NextMove{
+		{Lead: "Put your exclusion answers back on top:", Command: "git cherry-pick ORIG_HEAD~1"},
+	})...)
 	assertAnswersCommitReadFirst(t, a.f, "HEAD~1")
 }

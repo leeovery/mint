@@ -395,8 +395,8 @@ func TestUnwind_ResetRefusedOverAChangeOfTheUsers_SaysSoWithTheManualStep(t *tes
 	err := engine.Unwind(t.Context(), newDeps(rec, f), startState(startingSHA, "v0.0.1"), engine.MadeState{Commits: 1}, errUnwindReason)
 
 	assertAbortNonZero(t, err)
-	onlyWarning(t, rec, unwindIncomplete(keepStep, keepRefusalStderr))
-	assertManualSteps(t, rec, keepMove)
+	onlyWarning(t, rec, unwindIncomplete(keepSteps, keepRefusalStderr))
+	assertManualSteps(t, rec, keepMoves...)
 	if got, want := unwoundText(t, rec), "manual cleanup required"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}

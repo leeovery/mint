@@ -475,8 +475,8 @@ func resetChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarg
 	ctx = context.WithoutCancel(ctx)
 	staged, manual, output, err := resetTo(ctx, deps.Mutator, start)
 	if err != nil {
-		manual.why = "to drop the leftover changelog commit"
-		warnUnwindIncomplete(deps.Presenter, output, manual)
+		manual[0].why = "to drop the leftover changelog commit"
+		warnUnwindIncomplete(deps.Presenter, output, manual...)
 		deps.Presenter.Unwound(presenter.Unwind{Key: stageUnwind, Quiet: true})
 		strandedAt(ctx, deps, "the changelog commit not reset", manualCleanup+" · "+nothingPushed)
 		return

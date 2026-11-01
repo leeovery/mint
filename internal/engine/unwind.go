@@ -424,7 +424,7 @@ func resetIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made M
 	staged, manual, output, err := resetTo(ctx, deps.Mutator, resetTarget{HEAD: start.HEAD, Root: start.Root})
 	if err != nil {
 		// The manual reset drops the answers commit along with mint's other commits.
-		warnUnwindIncomplete(deps.Presenter, output, append([]manualStep{manual}, restore...)...)
+		warnUnwindIncomplete(deps.Presenter, output, append(manual, restore...)...)
 		return true, false, stagedIndex{}
 	}
 	return true, true, staged
@@ -710,14 +710,11 @@ func readIndex(ctx context.Context, m *git.Mutator, root string) (index stagedIn
 // changed. As --keep also returns every other index entry to target.HEAD, and drops
 // intent-to-add marks, what the index holds is read first (readIndex), the index
 // written as a tree where it stages content, and the returned stagedIndex restages it
-// all. On failure HEAD has not moved, and it returns the manual step that finishes the
-// reset and the failing git step's own output.
-func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (index stagedIndex, manual manualStep, output string, err error) {
+// all. On failure HEAD has not moved, and it returns the manual steps that finish the
+// reset (keepSteps) and the failing git step's own output.
+func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (index stagedIndex, manual []manualStep, output string, err error) {
 	sha := target.HEAD
-	keep := manualStep{
-		does:     "stash your changes to any file git names, then reset HEAD back to " + sha,
-		commands: []string{"git reset --keep " + sha},
-	}
+	keep := keepSteps(sha)
 	index, output, err = readIndex(ctx, m, target.Root)
 	if err != nil {
 		return stagedIndex{}, keep, output, err
@@ -732,7 +729,20 @@ func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (index sta
 	if res, err := m.Mutate(ctx, nil, "git", "reset", "--keep", sha); err != nil {
 		return stagedIndex{}, keep, failedGitOutput(res.Stderr, err), err
 	}
-	return index, manualStep{}, "", nil
+	return index, nil, "", nil
+}
+
+// keepSteps are the manual steps that reset HEAD back to sha keeping the user's
+// changes: stash those to the files git names, as a refused reset --keep names them,
+// reset, and pop the stash. The pop is offered only for a stash the user made, as a
+// reset that failed for another reason names no file, and a pop then would apply some
+// older stash. The files are left to git's own message, which plain prints after the
+// step and the rail before it.
+func keepSteps(sha string) []manualStep {
+	return []manualStep{
+		{does: "stash your changes to any file git names, then reset HEAD back to " + sha, commands: []string{"git reset --keep " + sha}},
+		{does: "pop that stash, if you made one, to bring your changes back", commands: []string{"git stash pop"}},
+	}
 }
 
 // restageStep is one git step of a restage: the paths it names on stdin, its args, and
