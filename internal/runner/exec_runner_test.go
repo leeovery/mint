@@ -201,6 +201,27 @@ func TestExecRunner_RunInteractive_NonZeroExitIsNotCommandNotFound(t *testing.T)
 	if errors.Is(err, runner.ErrCommandNotFound) {
 		t.Errorf("error = %v, a launched-but-failed editor must NOT match ErrCommandNotFound", err)
 	}
+	// A quit is an exit, so it must not read as an editor that never started.
+	if errors.Is(err, runner.ErrNotStarted) {
+		t.Errorf("error = %v, a launched-but-failed editor must NOT match ErrNotStarted", err)
+	}
+}
+
+func TestExecRunner_RunInteractive_ChildThatNeverStartedIsNotStarted(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewExecRunner()
+
+	// A path is not looked up on PATH, so one naming nothing fails to start rather than
+	// to be found.
+	err := r.RunInteractive(t.Context(), filepath.Join(t.TempDir(), "no-such-editor"))
+
+	if !errors.Is(err, runner.ErrNotStarted) {
+		t.Errorf("error = %v, want it to match ErrNotStarted", err)
+	}
+	if errors.Is(err, runner.ErrCommandNotFound) {
+		t.Errorf("error = %v, a child that never started must NOT match ErrCommandNotFound", err)
+	}
 }
 
 func TestExecRunner_RunInDir_RunsInWorkingDirectory(t *testing.T) {

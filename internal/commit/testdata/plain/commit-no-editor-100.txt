@@ -1,0 +1,12 @@
+mint: committing pigeon
+commit message: running...
+ai: WARN - could not generate a message, opening editor
+--- output ---
+Claude AI usage limit reached|1761742800
+--- end output ---
+editor: FAILED - the AI could not write the message (its call failed), and the editor "nvim" could not be opened (not found)
+editor: NEXT - Set an editor git can open, in GIT_EDITOR, core.editor, VISUAL or EDITOR (git falls back to vi), then run it again: mint commit -a
+editor: NEXT - Or commit with a message of your own: git commit -a -m "<message>"
+--- stderr ---
+ai: WARN - could not generate a message, opening editor
+editor: FAILED - the AI could not write the message (its call failed), and the editor "nvim" could not be opened (not found)

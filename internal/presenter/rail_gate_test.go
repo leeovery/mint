@@ -971,7 +971,7 @@ func TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow(t *tes
 				t.Fatalf("Prompt = %q, %v, want r", c, err)
 			}
 			r.WithEcho(true)
-			if _, err := r.AskLine("Add one-time context for regeneration (optional):"); err != nil {
+			if _, err := r.AskLine("Add one-time context for regeneration (optional)"); err != nil {
 				t.Fatal(err)
 			}
 			r.WithEcho(false)
@@ -983,7 +983,7 @@ func TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow(t *tes
 			order := []string{
 				tt.asked,
 				firstDraft,
-				" ?  Add one-time context for regeneration (optional): › " + context,
+				" ?  Add one-time context for regeneration (optional) › " + context,
 				tt.again,
 				" │    second draft",
 				" ●  review        accepted",
@@ -1057,7 +1057,7 @@ func TestRailGate_ACommitRegenerateThatFallsToTheEditorDrawsEveryStageAfterIt(t 
 	if c, err := r.Prompt(commitGate()); err != nil || c != presenter.ChoiceRegen {
 		t.Fatalf("Prompt = %q, %v, want r", c, err)
 	}
-	if _, err := r.AskLine("Add one-time context for regeneration (optional):"); err != nil {
+	if _, err := r.AskLine("Add one-time context for regeneration (optional)"); err != nil {
 		t.Fatal(err)
 	}
 	r.StageStarted(presenter.StageStart{Name: "commit message", Key: "message", Blocking: true, Text: "regenerating commit message…"})

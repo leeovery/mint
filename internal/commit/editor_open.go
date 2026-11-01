@@ -38,9 +38,10 @@ import (
 //   - Aborted/quit editor (a launched-but-failed run, e.g. `:cq`) → ("", false, nil):
 //     a NO-OP signal, NOT an error, so the caller treats it as a true no-op rather
 //     than routing it to fail-loud.
-//   - Missing/unlaunchable editor (ErrNoEditor from resolution, or
-//     runner.ErrCommandNotFound from the launch) → ("", false, err): SURFACED to the
-//     caller (matched via errors.Is). Routing that to fail-loud is task 3-5, NOT here.
+//   - Missing/unlaunchable editor (ErrNoEditor from resolution, or an
+//     *editorOpenError carrying runner.ErrCommandNotFound or runner.ErrNotStarted
+//     from the launch) → ("", false, err): SURFACED to the caller (see
+//     editorUnopenable). Routing that to fail-loud is task 3-5, NOT here.
 //   - A genuine IO failure (temp-file write/read) → ("", false, err).
 //
 // The terminal hand-off is bracketed by the presenter's SuspendSpinner before the
@@ -76,10 +77,11 @@ func OpenEditor(ctx context.Context, r runner.CommandRunner, p presenter.Present
 	defer p.ResumeSpinner()
 
 	if launchErr := r.RunInteractive(ctx, name, args...); launchErr != nil {
-		// A missing binary is surfaced to the caller (3-5 routes it); it is NOT the same
-		// as a quit/abort and must not be swallowed as a no-op.
-		if errors.Is(launchErr, runner.ErrCommandNotFound) {
-			return "", false, fmt.Errorf("launching editor %q: %w", name, launchErr)
+		// An editor that is missing or never started is surfaced to the caller (3-5
+		// routes it); it is NOT the same as a quit/abort and must not be swallowed as a
+		// no-op.
+		if errors.Is(launchErr, runner.ErrCommandNotFound) || errors.Is(launchErr, runner.ErrNotStarted) {
+			return "", false, &editorOpenError{editor: name, err: launchErr}
 		}
 		// Any other launch failure is a quit/abort (the editor ran and exited non-zero):
 		// report a non-normal exit as a NO-OP signal, not an error.
@@ -91,6 +93,25 @@ func OpenEditor(ctx context.Context, r runner.CommandRunner, p presenter.Present
 		return "", false, fmt.Errorf("reading edited message: %w", err)
 	}
 	return string(saved), true, nil
+}
+
+// editorOpenError is the editor git named that could not be opened, err saying why:
+// it is missing, or it never started.
+type editorOpenError struct {
+	editor string
+	err    error
+}
+
+func (e *editorOpenError) Error() string {
+	return fmt.Sprintf("launching editor %q: %v", e.editor, e.err)
+}
+
+func (e *editorOpenError) Unwrap() error { return e.err }
+
+// editorUnopenable reports whether err is OpenEditor saying no editor could be
+// opened: git names none, or the one it names is missing or never started.
+func editorUnopenable(err error) bool {
+	return errors.Is(err, ErrNoEditor) || errors.Is(err, runner.ErrCommandNotFound) || errors.Is(err, runner.ErrNotStarted)
 }
 
 // writeEditorTempFile writes body to a fresh "mint-commit-*.txt" temp file and

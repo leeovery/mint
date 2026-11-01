@@ -1,0 +1,9 @@
+mint: committing pigeon
+commit message: the first commit's default
+--- commit message ---
+Initial commit
+
+--- end commit message ---
+Commit this message? [Y/n/e/r]
+done: pigeon committed
+--- stderr ---

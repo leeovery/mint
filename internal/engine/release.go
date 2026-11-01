@@ -152,8 +152,9 @@ func (r reviewRegen) keepFailed(cause error) error {
 
 // regenContextPrompt is the AskLine label shown when the user chooses `r`: it asks
 // for the one-time context nudge appended to the regeneration prompt. An empty
-// answer is legal (regenerate with no extra context).
-const regenContextPrompt = "Add one-time context for regeneration (optional):"
+// answer is legal (regenerate with no extra context). Like every AskLine label it
+// ends in no colon: each presenter frames it with its own.
+const regenContextPrompt = "Add one-time context for regeneration (optional)"
 
 // ReleaseDeps bundles the orchestrator's injected seams so production wires the
 // real implementations once (at the cmd entry point) and tests drive the whole

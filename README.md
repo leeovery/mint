@@ -216,7 +216,9 @@ Short flags bundle: `-Ap`, `-Apy` and `-ay` all work. `-a` and `-A` can't be com
 
 At the gate: **`y`** accept (Enter also accepts), **`n`** abort, **`e`** edit in your editor (back to the gate after), **`r`** regenerate, with an optional line of extra context. At a terminal each is a single keypress; with `--plain` or piped output, type the key and press Enter. Ctrl-C aborts.
 
-When there's no AI message to show (`--no-ai`, a failed or timed-out AI call, a prompt over `max_prompt_bytes`, a diff that `diff_exclude` empties, or a failed `r`), mint opens your editor on an empty message, and saving it is the accept. An empty save aborts. The editor is git's: `GIT_EDITOR`, `core.editor`, `$VISUAL`, `$EDITOR`, then `vi`. An unattended run with no message to commit fails instead.
+A repo's first commit asks no AI: its diff is the whole repo, so mint proposes `Initial commit` at the same gate, and `r` asks the AI for a message instead.
+
+When there's no AI message to show (`--no-ai`, a failed or timed-out AI call, a prompt over `max_prompt_bytes`, a diff that `diff_exclude` empties, or a failed `r`), mint opens your editor on an empty message, and saving it is the accept. An empty save aborts. The editor is git's: `GIT_EDITOR`, `core.editor`, `$VISUAL`, `$EDITOR`, then `vi`. An unattended run with no message to commit fails instead, and so does a run whose editor can't be opened, saying why and how to go on.
 
 `-p` runs a plain `git push` after the commit. If the push fails, mint keeps the commit, shows git's own error, and exits `1`.
 

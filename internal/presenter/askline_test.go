@@ -11,9 +11,10 @@ import (
 )
 
 // TestPlainAskLineReturnsTypedLineVerbatim proves the plain free-text ask renders
-// the terse "{prompt}: " framing (no trailing newline — the cursor sits after the
-// colon), returns the typed line with only its terminator stripped, and writes
-// nothing to err.
+// the terse "{prompt}: " framing, returns the typed line with only its terminator
+// stripped, and writes nothing to err. Read from a non-terminal, which echoes
+// nothing, the prompt's row is ended after the read, so what plain writes next
+// starts a row of its own.
 func TestPlainAskLineReturnsTypedLineVerbatim(t *testing.T) {
 	p, out, errBuf := plainGate(strings.NewReader("fix the flaky retry loop\n"), gateOpts{})
 
@@ -24,8 +25,8 @@ func TestPlainAskLineReturnsTypedLineVerbatim(t *testing.T) {
 	if got != "fix the flaky retry loop" {
 		t.Errorf("plain AskLine = %q, want %q", got, "fix the flaky retry loop")
 	}
-	if out.String() != "context: " {
-		t.Errorf("plain AskLine prompt = %q, want %q", out.String(), "context: ")
+	if out.String() != "context: \n" {
+		t.Errorf("plain AskLine prompt = %q, want %q", out.String(), "context: \n")
 	}
 	if errBuf.Len() != 0 {
 		t.Errorf("plain AskLine wrote to err: %q; the prompt is narration -> out only", errBuf.String())
@@ -103,8 +104,8 @@ func TestPlainAskLineEOFWithNoLineFailsWithErrInputClosed(t *testing.T) {
 	if !errors.Is(err, presenter.ErrInputClosed) {
 		t.Fatalf("plain AskLine on EOF = %v, want ErrInputClosed", err)
 	}
-	if out.String() != "context: " {
-		t.Errorf("plain AskLine out = %q, want just the prompt %q (EOF renders no failure)", out.String(), "context: ")
+	if out.String() != "context: \n" {
+		t.Errorf("plain AskLine out = %q, want just the prompt's row %q (EOF renders no failure)", out.String(), "context: \n")
 	}
 	if errBuf.Len() != 0 {
 		t.Errorf("plain AskLine on EOF wrote to err: %q; ErrInputClosed is unrendered", errBuf.String())
