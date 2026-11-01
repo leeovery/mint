@@ -185,8 +185,8 @@ func (m MadeState) putBackOf(left MadeState) MadeState {
 //     every other change in the tree, a notes file's included, or, where the user
 //     changed a path those commits changed, refusing and changing nothing;
 //   - re-commits the exclusion answers on the starting commit when made.keptAnswers
-//     holds their commit and the reset succeeded, then stages again what the index
-//     held staged before the reset;
+//     holds their commit and the reset succeeded, then puts the index back as it
+//     held the user's changes before the reset (stagedIndex);
 //   - reports each undone item, the kept answers commit and where the repo ended up
 //     via the Presenter's Unwound, the engine authoring every part, and tells the
 //     run's close what mint did and where HEAD stands (unwoundTo), so the run closes
@@ -223,8 +223,6 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 	restoreOK := !left.restores()
 	reset, resetOK, staged := resetIfMade(ctx, deps, start, made, restore)
 	kept, keptOK := recommitAnswersIfKept(ctx, deps, made.keptAnswers, resetOK, restore)
-	// Staged again only once the answers are re-committed, as that commit takes the
-	// whole index.
 	restagedOK := restageIfReset(ctx, deps, staged)
 
 	if tagDeleted || restored || reset {
@@ -414,11 +412,11 @@ func deleteTagIfMade(ctx context.Context, deps ReleaseDeps, start StartState, ma
 
 // resetIfMade resets HEAD to the captured starting commit when mint made any commits
 // this run (see resetTo), returning whether a reset was issued, whether it moved HEAD
-// back, and what the index held staged, for restageIfReset to put back. It uses the
-// captured sha (not HEAD~N), so exactly mint's commits are taken back, and every other
-// change in the tree is kept. A failure is surfaced as a manual-cleanup Warn naming the
-// steps left so the user is not told the repo is clean when mint's commit(s) still
-// live — the recovery DID NOT complete.
+// back, and what the index held of the user's, for restageIfReset to put back. It
+// uses the captured sha (not HEAD~N), so exactly mint's commits are taken back, and
+// every other change in the tree is kept. A failure is surfaced as a manual-cleanup
+// Warn naming the steps left so the user is not told the repo is clean when mint's
+// commit(s) still live — the recovery DID NOT complete.
 func resetIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState, restore []manualStep) (issued, ok bool, staged stagedIndex) {
 	if made.Commits <= 0 {
 		return false, true, stagedIndex{}
@@ -432,14 +430,18 @@ func resetIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made M
 	return true, true, staged
 }
 
-// restageIfReset stages again what the index held staged before the reset, reporting
-// whether it succeeded; a failure warns with the manual step that does it.
-func restageIfReset(ctx context.Context, deps ReleaseDeps, staged stagedIndex) bool {
-	if manual, output, err := staged.restage(ctx, deps.Mutator); err != nil {
-		warnUnwindIncomplete(deps.Presenter, output, manual)
-		return false
+// restageIfReset puts the index back as it held the user's changes before the reset
+// (stagedIndex.steps), each step attempted whatever another's outcome, reporting
+// whether all succeeded; each that fails warns with the manual step that does it.
+func restageIfReset(ctx context.Context, deps ReleaseDeps, index stagedIndex) bool {
+	ok := true
+	for _, step := range index.steps() {
+		if res, err := deps.Mutator.Mutate(ctx, record.PathspecInput(step.paths), "git", append(step.args, pathspecsOnStdin...)...); err != nil {
+			warnUnwindIncomplete(deps.Presenter, failedGitOutput(res.Stderr, err), step.manual)
+			ok = false
+		}
 	}
-	return true
+	return ok
 }
 
 // restoreWritesIfMade puts back what mint wrote or staged that no commit holds, and
@@ -549,16 +551,21 @@ func removeCreated(deps ReleaseDeps, root string, paths []string) (left []string
 // repo at root, or the one the working directory is in where root is empty, returning
 // git's output where the read fails.
 func stagedPaths(ctx context.Context, m *git.Mutator, root string, keepOut git.Exclusion) (paths []string, output string, err error) {
-	var args []string
-	if root != "" {
-		args = []string{"-C", root}
-	}
-	args = append(append(args, "diff", "--cached", "--name-only", "-z", "--no-renames"), keepOut.Pathspec()...)
+	args := append(atRoot(root, "diff", "--cached", "--name-only", "-z", "--no-renames"), keepOut.Pathspec()...)
 	res, err := m.Run(ctx, "git", args...)
 	if err != nil {
 		return nil, failedGitOutput(res.Stderr, err), err
 	}
 	return strings.FieldsFunc(res.Stdout, func(r rune) bool { return r == 0 }), "", nil
+}
+
+// atRoot is a git step's args run in the repo at root, or in the one the working
+// directory is in where root is empty.
+func atRoot(root string, args ...string) []string {
+	if root == "" {
+		return args
+	}
+	return append([]string{"-C", root}, args...)
 }
 
 // pathspecsOnStdin has git read a step's pathspecs from stdin (record.PathspecInput),
@@ -658,59 +665,122 @@ type resetTarget struct {
 	Root string
 }
 
-// stagedIndex is what the index held staged ahead of a reset, for restage to put back
-// after it: the tree the index was written as, and the paths it held changes to.
+// stagedIndex is what the index held of the user's ahead of a reset, for restage to
+// put back after it: the tree the index was written as and the paths whose content it
+// staged, the paths whose deletion it staged, and the paths marked intent-to-add,
+// which the tree doesn't hold.
 type stagedIndex struct {
-	tree  string
-	paths []string
+	tree    string
+	staged  []string
+	deleted []string
+	intents []string
+}
+
+// readIndex reads what the index holds that HEAD doesn't, in the repo at root, from
+// one porcelain status, which never takes the index lock: content staged, a deletion
+// staged, and intent-to-add marks. Edits only in the work tree are left out, as the
+// reset keeps them.
+func readIndex(ctx context.Context, m *git.Mutator, root string) (index stagedIndex, output string, err error) {
+	res, err := m.Run(ctx, "git", atRoot(root, "--no-optional-locks", "status", "--porcelain=v2", "-z", "--untracked-files=no", "--no-renames")...)
+	if err != nil {
+		return stagedIndex{}, failedGitOutput(res.Stderr, err), err
+	}
+	for _, entry := range strings.FieldsFunc(res.Stdout, func(r rune) bool { return r == 0 }) {
+		// An ordinary entry: "1 XY sub mH mI mW hH hI path", X the index's status.
+		fields := strings.SplitN(entry, " ", 9)
+		if len(fields) < 9 || fields[0] != "1" {
+			continue
+		}
+		switch xy, path := fields[1], fields[8]; {
+		case xy[0] == 'D':
+			index.deleted = append(index.deleted, path)
+		case xy[0] != '.':
+			index.staged = append(index.staged, path)
+		case xy[1] == 'A':
+			index.intents = append(index.intents, path)
+		}
+	}
+	return index, "", nil
 }
 
 // resetTo moves HEAD back to target.HEAD as `git reset --keep` does: it takes back in
 // the index and the work tree exactly what the commits since target.HEAD changed, and
 // keeps every other change in the work tree, a notes file's included, refusing and
 // changing nothing where the work tree or the index changes a path those commits
-// changed. As --keep also returns every other index entry to target.HEAD, the paths
-// the index holds changes to are read and the index written as a tree first, which
-// the returned stagedIndex restages. On failure HEAD has not moved, and it returns the
-// manual step that finishes the reset and the failing git step's own output.
-func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (staged stagedIndex, manual manualStep, output string, err error) {
+// changed. As --keep also returns every other index entry to target.HEAD, and drops
+// intent-to-add marks, what the index holds is read first (readIndex), the index
+// written as a tree where it stages content, and the returned stagedIndex restages it
+// all. On failure HEAD has not moved, and it returns the manual step that finishes the
+// reset and the failing git step's own output.
+func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (index stagedIndex, manual manualStep, output string, err error) {
 	sha := target.HEAD
 	keep := manualStep{
 		does:     "stash your changes to any file git names, then reset HEAD back to " + sha,
 		commands: []string{"git reset --keep " + sha},
 	}
-	paths, output, err := stagedPaths(ctx, m, target.Root, "")
+	index, output, err = readIndex(ctx, m, target.Root)
 	if err != nil {
 		return stagedIndex{}, keep, output, err
 	}
-	if len(paths) > 0 {
+	if len(index.staged) > 0 {
 		res, err := m.Mutate(ctx, nil, "git", "write-tree")
 		if err != nil {
 			return stagedIndex{}, keep, failedGitOutput(res.Stderr, err), err
 		}
-		staged = stagedIndex{tree: strings.TrimSpace(res.Stdout), paths: paths}
+		index.tree = strings.TrimSpace(res.Stdout)
 	}
 	if res, err := m.Mutate(ctx, nil, "git", "reset", "--keep", sha); err != nil {
 		return stagedIndex{}, keep, failedGitOutput(res.Stderr, err), err
 	}
-	return staged, manualStep{}, "", nil
+	return index, manualStep{}, "", nil
 }
 
-// restage puts back the index entries s holds for its paths, as they were staged
-// before the reset, and touches no work tree. On failure it returns the manual step
-// that puts them back and the failing git step's own output.
-func (s stagedIndex) restage(ctx context.Context, m *git.Mutator) (manual manualStep, output string, err error) {
-	if len(s.paths) == 0 {
-		return manualStep{}, "", nil
+// restageStep is one git step of a restage: the paths it names on stdin, its args, and
+// the manual step that does it by hand.
+type restageStep struct {
+	paths  []string
+	args   []string
+	manual manualStep
+}
+
+// steps are the git steps that put the index back as s holds it, touching no work
+// tree: the content staged, from the tree it was written as, which holds each of
+// those paths; the deletions staged, by a removal that passes over a path the reset
+// already took out of the index, one mint's commits created; and the intent-to-add
+// marks. Each kind is a step of its own, so one failing never stops the rest.
+func (s stagedIndex) steps() []restageStep {
+	var steps []restageStep
+	if len(s.staged) > 0 {
+		steps = append(steps, restageStep{
+			paths: s.staged,
+			args:  []string{"restore", "--source=" + s.tree, "--staged"},
+			manual: manualStep{
+				does:     "stage your changes to " + strings.Join(s.staged, " + ") + " again",
+				commands: []string{"git restore --source=" + s.tree + " --staged -- " + quoteAll(literalPathspecs(s.staged))},
+			},
+		})
 	}
-	args := append([]string{"restore", "--source=" + s.tree, "--staged"}, pathspecsOnStdin...)
-	if res, err := m.Mutate(ctx, record.PathspecInput(s.paths), "git", args...); err != nil {
-		return manualStep{
-			does:     "stage your changes to " + strings.Join(s.paths, " + ") + " again",
-			commands: []string{"git restore --source=" + s.tree + " --staged -- " + quoteAll(literalPathspecs(s.paths))},
-		}, failedGitOutput(res.Stderr, err), err
+	if len(s.deleted) > 0 {
+		steps = append(steps, restageStep{
+			paths: s.deleted,
+			args:  []string{"rm", "--cached", "-q", "--ignore-unmatch"},
+			manual: manualStep{
+				does:     "stage your deletion of " + strings.Join(s.deleted, " + ") + " again",
+				commands: []string{"git rm --cached -q --ignore-unmatch -- " + quoteAll(literalPathspecs(s.deleted))},
+			},
+		})
 	}
-	return manualStep{}, "", nil
+	if len(s.intents) > 0 {
+		steps = append(steps, restageStep{
+			paths: s.intents,
+			args:  []string{"add", "--intent-to-add"},
+			manual: manualStep{
+				does:     "mark " + strings.Join(s.intents, " + ") + " as intended to add again",
+				commands: []string{"git add --intent-to-add -- " + quoteAll(literalPathspecs(s.intents))},
+			},
+		})
+	}
+	return steps
 }
 
 // unwindOutcome is how an unwind ended: whether its reset dropped mint's commits, what

@@ -469,8 +469,8 @@ func putBackChangelog(ctx context.Context, deps ReleaseDeps, root string, left *
 // The reset takes back exactly what the changelog commit changed and keeps every other
 // change in the tree, staged or not (see resetTo). A failed reset is not swallowed: it
 // surfaces a manual-cleanup Warn naming the step the user must run, and the close
-// names where HEAD stands, never having left the commit; a failure to stage again what
-// was staged warns the same way, HEAD back at the start.
+// names where HEAD stands, never having left the commit; a failure to put the index
+// back as it held the user's changes warns the same way, HEAD back at the start.
 func resetChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarget) {
 	ctx = context.WithoutCancel(ctx)
 	staged, manual, output, err := resetTo(ctx, deps.Mutator, start)

@@ -34,7 +34,7 @@ func TestRelease_CancelledBeforePush_Surgical_Resets(t *testing.T) {
 	// leaving it positioned at the conditional gh-auth gate / tag / push. The unwind
 	// then resets the one tracked commit.
 	seedHappyGitThroughCommit(f, root, "main", "v0.0.1")
-	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: diff --cached (nothing staged), reset --keep startingSHA
+	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: status (nothing staged), reset --keep startingSHA
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -78,7 +78,7 @@ func TestRelease_CancelledBeforePush_Autostash_UnwindsThenPops(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedAutostashThroughTag(f, root, "main", "v0.0.1")
 	f.SeedSequence("git",
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // unwind: reset --keep startingSHA
 		stashPopped(),   // stash pop on TOP of the clean state
 	)

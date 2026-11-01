@@ -79,7 +79,7 @@ func assertAnswersCommitReadFirst(t *testing.T, f *runner.FakeRunner, rev string
 	if read == -1 {
 		t.Fatalf("no read of %s; got %v", rev, commandLines(f.Invocations()))
 	}
-	// Nothing is staged, so the reset's read of what is staged is the step before it.
+	// Nothing is staged, so the reset's read of what the index holds is the step before it.
 	first := indexOfCmd(f, "git", "reset", "--keep", startingSHA) - 1
 	if del := indexOfCmd(f, "git", "tag", "-d", minorTagV130); del != -1 && del < first {
 		first = del

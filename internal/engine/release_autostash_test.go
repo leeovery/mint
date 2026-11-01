@@ -162,7 +162,7 @@ func TestRelease_Autostash_AbortUnwindsBeforePop(t *testing.T) {
 	f.SeedSequence("git",
 		pushRejected(),  // push --atomic origin HEAD v0.0.1 (rejected → pre-PONR abort)
 		ScriptedOut(""), // unwind: tag -d v0.0.1
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // unwind: reset --keep startingSHA
 		stashPopped(),   // stash pop on TOP of the clean state
 	)
@@ -360,7 +360,7 @@ func TestRelease_Autostash_PopConflictAfterAbort_KeepsStashAndWarns(t *testing.T
 	f.SeedSequence("git",
 		pushRejected(),     // push rejected → pre-PONR abort
 		ScriptedOut(""),    // unwind: tag -d v0.0.1
-		ScriptedOut(""),    // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),    // unwind: status (nothing staged)
 		ScriptedOut(""),    // unwind: reset --keep startingSHA
 		stashPopConflict(), // restoring pop conflicts on top of the clean state
 	)

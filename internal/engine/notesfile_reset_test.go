@@ -29,18 +29,18 @@ var notesResetCases = []notesResetCase{
 }
 
 // keepingReset scripts a successful reset that leaves the notes file as it was: the read
-// of what is staged, answered with the notes file where it has edits staged, then the
-// index written as a tree, the reset, and the file staged again.
+// of what the index holds, answered with the notes file where it has edits staged,
+// then the index written as a tree, the reset, and the file staged again.
 func keepingReset(tt notesResetCase) []runner.ScriptedCall {
 	if tt.notesStaged == "" {
 		return []runner.ScriptedCall{nothingStaged, ScriptedOut("")}
 	}
-	return []runner.ScriptedCall{ScriptedOut(tt.notesStaged), ScriptedOut(stagedTree + "\n"), ScriptedOut(""), ScriptedOut("")}
+	return []runner.ScriptedCall{indexHolds("M.", tt.file), ScriptedOut(stagedTree + "\n"), ScriptedOut(""), ScriptedOut("")}
 }
 
 // keepingResetLines are the git steps keepingReset answers, in the repo at root.
 func keepingResetLines(tt notesResetCase, root, start string) []string {
-	read := "git -C " + root + " diff --cached --name-only -z --no-renames"
+	read := indexRead(root)
 	reset := "git reset --keep " + start
 	if tt.notesStaged == "" {
 		return []string{read, reset}
@@ -250,10 +250,10 @@ func TestUnwind_Reset_KeepsEveryOtherChangeAndStagesAgainWhatWasStaged(t *testin
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -d v0.0.1
-		ScriptedOut("NEXT_RELEASE.md\x00src/app.go\x00"), // diff --cached --name-only
-		ScriptedOut(stagedTree+"\n"),                     // write-tree
-		ScriptedOut(""),                                  // reset --keep
-		ScriptedOut(""),                                  // restore --staged
+		indexHolds("M.", "NEXT_RELEASE.md", "M.", "src/app.go"), // what the index holds
+		ScriptedOut(stagedTree+"\n"),                            // write-tree
+		ScriptedOut(""),                                         // reset --keep
+		ScriptedOut(""),                                         // restore --staged
 	)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -264,7 +264,7 @@ func TestUnwind_Reset_KeepsEveryOtherChangeAndStagesAgainWhatWasStaged(t *testin
 	assertAbortNonZero(t, err)
 	want := []string{
 		"git tag -d v0.0.1",
-		"git diff --cached --name-only -z --no-renames",
+		indexRead(""),
 		"git write-tree",
 		"git reset --keep " + startingSHA,
 		"git restore --source=" + stagedTree + " --staged --pathspec-from-file=- --pathspec-file-nul" + piped("NEXT_RELEASE.md", "src/app.go"),
@@ -273,6 +273,95 @@ func TestUnwind_Reset_KeepsEveryOtherChangeAndStagesAgainWhatWasStaged(t *testin
 		t.Errorf("git steps = %q, want %q", got, want)
 	}
 	if got, want := unwoundText(t, rec), "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
+	}
+}
+
+// What the index held beyond content is put back too, each kind by a step of its own:
+// a staged deletion, here of bundle.js, a file mint's commit created and the reset
+// took away, so git holds it in neither the tree nor the index, never goes to the
+// restore that would refuse it but to a removal that lets an unmatched path pass, and
+// a path marked intent-to-add, which the reset leaves untracked, is marked again. An
+// edit only in the work tree, which the reset keeps, is named by no step.
+func TestUnwind_Reset_StagesAgainDeletionsAndIntentToAddMarks(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		indexHolds("M.", "src/app.go", ".M", "src/wip.go", "MM", "lib.go", "D.", "bundle.js", "D.", "old.go", ".A", "NEXT.md"),
+		ScriptedOut(stagedTree+"\n"), // write-tree
+		ScriptedOut(""),              // reset --keep
+		ScriptedOut(""),              // restore --staged
+		ScriptedOut(""),              // rm --cached
+		ScriptedOut(""),              // add --intent-to-add
+	)
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Unwind(t.Context(), newDeps(rec, f), startState(startingSHA, "v0.0.1"), engine.MadeState{Commits: 1}, errUnwindReason)
+
+	assertAbortNonZero(t, err)
+	want := []string{
+		indexRead(""),
+		"git write-tree",
+		"git reset --keep " + startingSHA,
+		"git restore --source=" + stagedTree + " --staged --pathspec-from-file=- --pathspec-file-nul" + piped("src/app.go", "lib.go"),
+		"git rm --cached -q --ignore-unmatch --pathspec-from-file=- --pathspec-file-nul" + piped("bundle.js", "old.go"),
+		"git add --intent-to-add --pathspec-from-file=- --pathspec-file-nul" + piped("NEXT.md"),
+	}
+	if got := stepLines(f); !slices.Equal(got, want) {
+		t.Errorf("git steps = %q, want %q", got, want)
+	}
+	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
+	}
+}
+
+// With nothing staged but an intent-to-add mark, no tree is written, as the tree would
+// hold nothing the reset doesn't keep, and the mark alone is put back.
+func TestUnwind_Reset_AnIntentToAddMarkAlone_WritesNoTree(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git", indexHolds(".A", "NEXT_RELEASE.md"), ScriptedOut(""), ScriptedOut(""))
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Unwind(t.Context(), newDeps(rec, f), startState(startingSHA, "v0.0.1"), engine.MadeState{Commits: 1}, errUnwindReason)
+
+	assertAbortNonZero(t, err)
+	want := []string{
+		indexRead(""),
+		"git reset --keep " + startingSHA,
+		"git add --intent-to-add --pathspec-from-file=- --pathspec-file-nul" + piped("NEXT_RELEASE.md"),
+	}
+	if got := stepLines(f); !slices.Equal(got, want) {
+		t.Errorf("git steps = %q, want %q", got, want)
+	}
+}
+
+// One restage step failing never stops the next: each kind is put back on its own,
+// and only the failed one is named.
+func TestUnwind_Reset_ARestageStepThatFails_NeverStopsTheNext(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		indexHolds("M.", "src/app.go", ".A", "NEXT.md"),
+		ScriptedOut(stagedTree+"\n"), // write-tree
+		ScriptedOut(""),              // reset --keep
+		gitFailing(stageStderr),      // restore --staged
+		ScriptedOut(""),              // add --intent-to-add
+	)
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Unwind(t.Context(), newDeps(rec, f), startState(startingSHA, "v0.0.1"), engine.MadeState{Commits: 1}, errUnwindReason)
+
+	assertAbortNonZero(t, err)
+	if !slices.Contains(stepLines(f), "git add --intent-to-add --pathspec-from-file=- --pathspec-file-nul"+piped("NEXT.md")) {
+		t.Errorf("git steps = %q, want the intent-to-add mark put back after the failed restore", stepLines(f))
+	}
+	restage := "git restore --source=" + stagedTree + " --staged -- ':(top,literal)src/app.go'"
+	onlyWarning(t, rec, unwindIncomplete("stage your changes to src/app.go again (`"+restage+"`)", stageStderr))
+	if got, want := unwoundText(t, rec), "reset 1 commit; manual cleanup required"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
@@ -313,7 +402,7 @@ func TestUnwind_ResetRefusedOverAChangeOfTheUsers_SaysSoWithTheManualStep(t *tes
 	}
 	// After the refused reset, only the reads of where HEAD stands, for the close.
 	want := []string{
-		"git diff --cached --name-only -z --no-renames",
+		indexRead(""),
 		"git reset --keep " + startingSHA,
 		"git rev-parse HEAD --abbrev-ref HEAD",
 		"git symbolic-ref --short -q HEAD",
@@ -345,7 +434,7 @@ func TestUnwind_RestageFails_SaysSoWithAStepThatSplitsBackToThePathspec(t *testi
 			t.Parallel()
 
 			f := runner.NewFakeRunner()
-			f.SeedSequence("git", ScriptedOut(tt.file+"\x00"), ScriptedOut(stagedTree+"\n"), ScriptedOut(""), gitFailing(stageStderr))
+			f.SeedSequence("git", indexHolds("M.", tt.file), ScriptedOut(stagedTree+"\n"), ScriptedOut(""), gitFailing(stageStderr))
 			rec := &presentertest.RecordingPresenter{}
 
 			err := engine.Unwind(t.Context(), newDeps(rec, f), startState(startingSHA, "v0.0.1"), engine.MadeState{Commits: 1}, errUnwindReason)

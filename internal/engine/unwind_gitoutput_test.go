@@ -73,11 +73,18 @@ func TestUnwind_ResetLockedPastTheRetries_ShowsGitsLockStderrBeneathTheWarning(t
 // restageStep is the manual step a failed restage of NEXT_RELEASE.md leaves.
 const restageStep = "git restore --source=" + stagedTree + " --staged -- ':(top,literal)NEXT_RELEASE.md'"
 
+// restageDeletion and remarkIntent are the manual steps a failed restage of a staged
+// deletion of old.go, and of next.go's intent-to-add mark, leave.
+const (
+	restageDeletion = "git rm --cached -q --ignore-unmatch -- ':(top,literal)old.go'"
+	remarkIntent    = "git add --intent-to-add -- ':(top,literal)next.go'"
+)
+
 func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 	t.Parallel()
 
 	const tag = "delete the leftover tag v0.0.1 (`git tag -d v0.0.1`)"
-	stagedNotes := ScriptedOut("NEXT_RELEASE.md\x00")
+	stagedNotes := indexHolds("M.", "NEXT_RELEASE.md")
 	snapshot := ScriptedOut(stagedTree + "\n")
 	steps := []struct {
 		name   string
@@ -108,7 +115,7 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 			summary: "reset 2 commits; manual cleanup required",
 		},
 		{
-			name: "the read of what is staged",
+			name: "the read of what the index holds",
 			calls: func(failed runner.ScriptedCall) []runner.ScriptedCall {
 				return []runner.ScriptedCall{ScriptedOut(""), failed}
 			},
@@ -132,6 +139,24 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 			},
 			action:  "stage your changes to NEXT_RELEASE.md again (`" + restageStep + "`)",
 			move:    presenter.NextMove{Lead: "Stage your changes to NEXT_RELEASE.md again:", Command: restageStep},
+			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
+		},
+		{
+			name: "the staged deletion",
+			calls: func(failed runner.ScriptedCall) []runner.ScriptedCall {
+				return []runner.ScriptedCall{ScriptedOut(""), indexHolds("D.", "old.go"), ScriptedOut(""), failed}
+			},
+			action:  "stage your deletion of old.go again (`" + restageDeletion + "`)",
+			move:    presenter.NextMove{Lead: "Stage your deletion of old.go again:", Command: restageDeletion},
+			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
+		},
+		{
+			name: "the intent-to-add mark",
+			calls: func(failed runner.ScriptedCall) []runner.ScriptedCall {
+				return []runner.ScriptedCall{ScriptedOut(""), indexHolds(".A", "next.go"), ScriptedOut(""), failed}
+			},
+			action:  "mark next.go as intended to add again (`" + remarkIntent + "`)",
+			move:    presenter.NextMove{Lead: "Mark next.go as intended to add again:", Command: remarkIntent},
 			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
 		},
 	}
@@ -199,7 +224,7 @@ func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t
 			output:   keepRefusalStderr,
 		},
 		{
-			name:     "the read of what is staged",
+			name:     "the read of what the index holds",
 			recovery: []runner.ScriptedCall{gitFailing(recoveryStderr)},
 			action:   reset,
 			output:   recoveryStderr,
@@ -208,7 +233,7 @@ func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t
 			// HEAD has left the commit, so only the notes file's staged state is left to
 			// put back.
 			name:     "the restage after the reset went through",
-			recovery: []runner.ScriptedCall{ScriptedOut("notes.md\x00"), ScriptedOut(stagedTree + "\n"), ScriptedOut(""), gitFailing(recoveryStderr)},
+			recovery: []runner.ScriptedCall{indexHolds("M.", "notes.md"), ScriptedOut(stagedTree + "\n"), ScriptedOut(""), gitFailing(recoveryStderr)},
 			action:   "stage your changes to notes.md again (`git restore --source=" + stagedTree + " --staged -- ':(top,literal)notes.md'`)",
 			output:   recoveryStderr,
 			undone:   "reset the changelog commit",

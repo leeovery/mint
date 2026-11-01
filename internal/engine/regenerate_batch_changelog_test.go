@@ -289,7 +289,7 @@ func TestRegenerateAllValidated_Changelog_PrePushFailure_ResetsCommit(t *testing
 		ScriptedOut(""),          // add CHANGELOG.md
 		ScriptedOut(""),          // commit (the rebuild commit lands)
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // reset --keep startHEAD (recovery)
 	)...)
 	pub := newFakePublisher()

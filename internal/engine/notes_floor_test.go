@@ -251,7 +251,7 @@ func seedPreTagArtifactThenNotes(f *runner.FakeRunner, root string) {
 		ScriptedOut(""),               // -C root commit -m chore(release): pre-tag artifacts
 	)
 	seedNormalAINotes(f)
-	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: diff --cached (nothing staged), reset --keep startingSHA
+	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: status (nothing staged), reset --keep startingSHA
 }
 
 func TestRelease_NotesFloor_AbortEndsBeforeAnyTagAndUnwindsThePreTagCommit(t *testing.T) {

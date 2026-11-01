@@ -303,7 +303,7 @@ func TestRelease_Fallback_AttendedAbortAtTheReviewGate_UnwindsAndKeepsTheSavedPa
 	t.Parallel()
 
 	run, kept := newSixPartFallbackRun(t)
-	run.f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: diff --cached (nothing staged), reset --keep startingSHA
+	run.f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: status (nothing staged), reset --keep startingSHA
 	run.deps.StdinInteractive = true
 	run.rec.PromptResult = func(g presenter.Gate) (presenter.Choice, error) {
 		if g.Subject == "notes" && g.Has(presenter.ChoiceYes) {

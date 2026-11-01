@@ -102,7 +102,7 @@ func (a *answeredAbort) unwound(beforeReset ...runner.ScriptedCall) *answeredAbo
 	a.f.SeedSequence("git", ScriptedOut(answersSHA+"\n"))
 	a.f.SeedSequence("git", beforeReset...)
 	a.f.SeedSequence("git",
-		ScriptedOut(""), // diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // status (nothing staged)
 		ScriptedOut(""), // reset --keep startsha
 		ScriptedOut(""), // -C root add .mint.toml
 		ScriptedOut(""), // -C root commit -m answers

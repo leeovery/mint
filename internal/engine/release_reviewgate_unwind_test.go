@@ -79,7 +79,7 @@ func gateAbortRelease(t *testing.T, config string, seedNotes func(*runner.FakeRu
 	seedPriorTagReadGates(f, root, "main")
 	seedPreTagArtifactCommit(f)
 	seedNotes(f)
-	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: diff --cached (nothing staged), reset --keep startingSHA
+	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: status (nothing staged), reset --keep startingSHA
 	return root, f
 }
 

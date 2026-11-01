@@ -149,17 +149,17 @@ func literalPathspecsOf(paths []string) string {
 const stagedTree = "5e1f0a7b"
 
 // resetCommits is the unwind's reset of the commits mint made, a reset that keeps every
-// change of the user's: a read of what is staged, then the reset, and where the notes
-// file has edits staged, the index written as a tree first and the file staged again
-// from it after.
+// change of the user's: a read of what the index holds, then the reset, and where the
+// notes file has edits staged, the index written as a tree first and the file staged
+// again from it after.
 func (r restoreRepo) resetCommits() []gitStep {
-	read := r.git("diff --cached --name-only -z --no-renames")
+	read := indexRead(r.root)
 	reset := gitStep{"git reset --keep " + startingSHA, ScriptedOut("")}
 	if !r.notesStaged {
 		return []gitStep{{read, nothingStaged}, reset}
 	}
 	return []gitStep{
-		{read, ScriptedOut(r.notes + "\x00")},
+		{read, indexHolds("M.", r.notes)},
 		{"git write-tree", ScriptedOut(stagedTree + "\n")},
 		reset,
 		{"git restore --source=" + stagedTree + " --staged --pathspec-from-file=- --pathspec-file-nul" + piped(r.notes), ScriptedOut("")},

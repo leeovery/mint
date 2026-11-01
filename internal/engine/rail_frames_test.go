@@ -363,7 +363,7 @@ var railRuns = map[string]railRun{
 		w.readGates(false)
 		seedPreTagArtifactCommit(w.f)
 		singlePassNotesAndRegen(w.f)
-		w.f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: diff --cached (nothing staged), reset --keep startsha
+		w.f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: status (nothing staged), reset --keep startsha
 		return w.release(t, nil)
 	}},
 	// A release whose pre_tag hook committed artifacts, its AI notes failing at a
@@ -451,7 +451,7 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("git",
 			gitRejected(pushRejectedStderr), // push --atomic origin HEAD v1.3.0
 			ScriptedOut(""),                 // unwind: tag -d v1.3.0
-			ScriptedOut(""),                 // unwind: diff --cached --name-only (nothing staged)
+			ScriptedOut(""),                 // unwind: status (nothing staged)
 			ScriptedOut(""),                 // unwind: reset --keep startsha
 		)
 		return w.release(t, nil)
@@ -467,7 +467,7 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("git",
 			gitRejected(pushRejectedStderr),    // push --atomic origin HEAD v1.3.0
 			ScriptedOut(""),                    // unwind: tag -d v1.3.0
-			ScriptedOut(""),                    // unwind: diff --cached --name-only (nothing staged)
+			ScriptedOut(""),                    // unwind: status (nothing staged)
 			gitFailing(changelogRefusalStderr), // unwind: reset --keep startsha, refused
 			ScriptedOut("9f3e2a1c4b\nmain"),    // where HEAD stands, never reset
 		)
@@ -651,7 +651,7 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("claude", ScriptedOut(designDocAnswer), ScriptedOut(railNotes))
 		w.f.SeedSequence("git",
 			ScriptedOut(answersSHA+"\n"), // rev-parse HEAD, the answers commit
-			ScriptedOut(""),              // unwind: diff --cached --name-only (nothing staged)
+			ScriptedOut(""),              // unwind: status (nothing staged)
 			ScriptedOut(""),              // unwind: reset --keep startsha
 			ScriptedOut(""),              // unwind: -C root add .mint.toml
 			ScriptedOut(""),              // unwind: -C root commit -m
@@ -712,7 +712,7 @@ var railRuns = map[string]railRun{
 		w.f.SeedSequence("git",
 			gitRejected(pushRejectedStderr), // push --atomic origin HEAD v1.3.0
 			ScriptedOut(""),                 // unwind: tag -d v1.3.0
-			ScriptedOut(""),                 // unwind: diff --cached --name-only (nothing staged)
+			ScriptedOut(""),                 // unwind: status (nothing staged)
 			ScriptedOut(""),                 // unwind: reset --keep startsha
 		)
 		return w.release(t, nil)

@@ -21,7 +21,7 @@ func TestRelease_ARejectedPushShowsGitsStderrVerbatimBeneathItsFailure(t *testin
 	f.SeedSequence("git",
 		gitFailing(rejected), // push --atomic origin HEAD v0.0.1
 		ScriptedOut(""),      // unwind: tag -d v0.0.1
-		ScriptedOut(""),      // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),      // unwind: status (nothing staged)
 		ScriptedOut(""),      // unwind: reset --keep startingSHA
 	)
 	f.Seed("gh", runner.Result{}, nil)
@@ -49,7 +49,7 @@ func TestRelease_AFailedBookkeepingCommitShowsGitsStderrVerbatimBeneathItsFailur
 	f.SeedSequence("git",
 		ScriptedOut(""),      // -C root add CHANGELOG.md
 		gitFailing(unsigned), // -C root commit -m
-		ScriptedOut(""),      // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),      // unwind: status (nothing staged)
 		ScriptedOut(""),      // unwind: reset --keep startingSHA
 	)
 	rec := &presentertest.RecordingPresenter{}

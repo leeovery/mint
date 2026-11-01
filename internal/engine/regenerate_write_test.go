@@ -203,7 +203,7 @@ func TestRegenerateWrite_PrePushFailure_ResetsCommit(t *testing.T) {
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit (the changelog commit lands)
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // reset --keep startHEAD (recovery)
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
@@ -241,7 +241,7 @@ func TestRegenerateWrite_RecoveryResetFails_WarnsManualCleanup(t *testing.T) {
 		ScriptedOut(""),                   // add
 		ScriptedOut(""),                   // commit (the changelog commit lands)
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
-		nothingStaged, // the reset's read of what is staged
+		nothingStaged, // the reset's read of what the index holds
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("reset --keep exploded")}, // reset recovery FAILS
 	)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}

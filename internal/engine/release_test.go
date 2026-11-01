@@ -709,7 +709,7 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 	f.SeedSequence("git",
 		pushRejected(),  // push --atomic origin HEAD v0.0.1 (rejected)
 		ScriptedOut(""), // unwind: tag -d v0.0.1
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // unwind: reset --keep startingSHA
 	)
 	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
@@ -810,7 +810,7 @@ func TestRelease_AbortPathMatchesPrePushFailurePath(t *testing.T) {
 	pushRunner.SeedSequence("git",
 		pushRejected(),  // push rejected
 		ScriptedOut(""), // unwind: tag -d
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // unwind: reset --keep
 	)
 	pushRunner.Seed("gh", runner.Result{}, nil)

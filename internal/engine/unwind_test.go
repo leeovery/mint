@@ -20,6 +20,27 @@ var errUnwindReason = errors.New("pre-PONR failure")
 // nothing, so no snapshot of it is taken and nothing is staged again.
 var nothingStaged = ScriptedOut("")
 
+// indexRead is the reset's read of what the index holds that HEAD doesn't, in the repo
+// at root ("" for the working directory's).
+func indexRead(root string) string {
+	args := "--no-optional-locks status --porcelain=v2 -z --untracked-files=no --no-renames"
+	if root == "" {
+		return "git " + args
+	}
+	return "git -C " + root + " " + args
+}
+
+// indexHolds is git's answer to indexRead for entries, each an XY status then its
+// path: "M." content staged, "D." a deletion staged, ".A" a path marked intent-to-add.
+func indexHolds(entries ...string) runner.ScriptedCall {
+	const blob = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+	var out strings.Builder
+	for i := 0; i+1 < len(entries); i += 2 {
+		out.WriteString("1 " + entries[i] + " N... 100644 100644 100644 " + blob + " " + blob + " " + entries[i+1] + "\x00")
+	}
+	return ScriptedOut(out.String())
+}
+
 // keepStepTo is the manual step a failed reset of mint's commits back to sha leaves, as
 // plain's warning says it; keepStep and keepMove are it for the starting commit, the
 // second as a next move.
@@ -57,7 +78,7 @@ func TestUnwind_TwoCommitsAndTag_ResetsBothAndDeletesTag(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -d v0.0.1
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
@@ -89,7 +110,7 @@ func TestUnwind_OneBookkeepingCommitAndTag_ResetsToStart(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -d v0.0.1
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
@@ -120,7 +141,7 @@ func TestUnwind_CommitsButTagNotCreated_DeletesNoTag(t *testing.T) {
 
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
@@ -204,7 +225,7 @@ func TestUnwind_ResetsToExactCapturedSha(t *testing.T) {
 
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
@@ -239,7 +260,7 @@ func TestUnwind_ReportsEachUndoneItem(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -d v0.0.1
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
@@ -294,7 +315,7 @@ func TestUnwind_ResetFails_WarnsManualCleanupAndSummaryNotClean(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""),         // tag -d v0.0.1 (succeeds)
-		ScriptedOut(""),         // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),         // unwind: status (nothing staged)
 		scriptedMutateFailure(), // reset --keep startsha (FAILS)
 	)
 	rec := &presentertest.RecordingPresenter{}
@@ -326,7 +347,7 @@ func TestUnwind_TagDeleteFails_WarnsManualCleanupAndSummaryNotClean(t *testing.T
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedMutateFailure(), // tag -d v0.0.1 (FAILS)
-		ScriptedOut(""),         // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),         // unwind: status (nothing staged)
 		ScriptedOut(""),         // reset --keep startsha (succeeds)
 	)
 	rec := &presentertest.RecordingPresenter{}
@@ -357,7 +378,7 @@ func TestUnwind_AllRecoverySucceeds_NoWarnAndReportsClean(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -d v0.0.1
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}
@@ -386,7 +407,7 @@ func TestUnwind_NeverPushesOrPublishes(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""), // tag -d v0.0.1
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // reset --keep startsha
 	)
 	rec := &presentertest.RecordingPresenter{}

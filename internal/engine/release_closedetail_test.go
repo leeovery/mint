@@ -143,7 +143,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			git: [][]runner.ScriptedCall{recorded, tagged, {
 				pushRejected(),  // push --atomic origin HEAD v0.0.1
 				ScriptedOut(""), // unwind: tag -d v0.0.1
-				ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+				ScriptedOut(""), // unwind: status (nothing staged)
 				ScriptedOut(""), // unwind: reset --keep
 			}},
 			outcome: presenter.OutcomeUnwound,
@@ -210,7 +210,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			git: [][]runner.ScriptedCall{{
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
 				gitFailing(stageStderr), // add VERSION CHANGELOG.md
-				ScriptedOut(""),         // unwind: diff --cached --name-only (nothing staged)
+				ScriptedOut(""),         // unwind: status (nothing staged)
 				ScriptedOut(""),         // unwind: reset --keep
 			}},
 			outcome: presenter.OutcomeUnwound,
@@ -223,7 +223,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
 				ScriptedOut(""), gitFailing(commitStderr), // add VERSION CHANGELOG.md, commit
 				ScriptedOut(""), // unwind: restore VERSION CHANGELOG.md
-				ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+				ScriptedOut(""), // unwind: status (nothing staged)
 				ScriptedOut(""), // unwind: reset --keep
 			}},
 			outcome: presenter.OutcomeUnwound,
@@ -235,7 +235,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			git: [][]runner.ScriptedCall{{
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
 				gitFailing(stageStderr),         // add VERSION CHANGELOG.md
-				ScriptedOut(""),                 // unwind: diff --cached --name-only (nothing staged)
+				ScriptedOut(""),                 // unwind: status (nothing staged)
 				scriptedMutateFailure(),         // unwind: reset --keep
 				ScriptedOut("9f3e2a1c4b\nmain"), // where HEAD stands
 			}},
@@ -249,7 +249,7 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
 				ScriptedOut(""), gitFailing(commitStderr), // add CHANGELOG.md, commit
 				ScriptedOut(""),                 // unwind: restore CHANGELOG.md
-				ScriptedOut(""),                 // unwind: diff --cached --name-only (nothing staged)
+				ScriptedOut(""),                 // unwind: status (nothing staged)
 				scriptedMutateFailure(),         // unwind: reset --keep
 				ScriptedOut("9f3e2a1c4b\nmain"), // where HEAD stands
 			}},

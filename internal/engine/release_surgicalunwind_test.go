@@ -59,7 +59,7 @@ func TestRelease_GateNo_Surgical_ResetsTrackedCommit(t *testing.T) {
 		ScriptedOut(" M bundle.js\n"), // -C root status --porcelain (post-hook: DIRTY)
 		ScriptedOut(""),               // -C root add -A
 		ScriptedOut(""),               // -C root commit -m chore(release): pre-tag artifacts
-		ScriptedOut(""),               // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),               // unwind: status (nothing staged)
 		ScriptedOut(""),               // unwind: reset --keep startingSHA
 	)
 	f.Seed("sh", runner.Result{}, nil)
@@ -104,7 +104,7 @@ func TestRelease_TagCreationFailure_Surgical_ResetsCommitNoTagDelete(t *testing.
 	// gh auth passes; the annotated tag CREATION fails (not a push rejection).
 	f.SeedSequence("git",
 		tagCreationFailed(), // tag -a v0.0.1 -F - (creation fails)
-		ScriptedOut(""),     // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),     // unwind: status (nothing staged)
 		ScriptedOut(""),     // unwind: reset --keep startingSHA
 	)
 	f.Seed("gh", runner.Result{}, nil)
@@ -143,7 +143,7 @@ func TestRelease_PushRejected_Surgical_ResetsCommitAndDeletesTag(t *testing.T) {
 	f.SeedSequence("git",
 		pushRejected(),  // push --atomic origin HEAD v0.0.1 (rejected)
 		ScriptedOut(""), // unwind: tag -d v0.0.1
-		ScriptedOut(""), // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // unwind: reset --keep startingSHA
 	)
 	f.Seed("gh", runner.Result{}, nil)
@@ -197,7 +197,7 @@ func TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary(t *testin
 		ScriptedOut(" M bundle.js\n"), // -C root status --porcelain (post-hook: DIRTY)
 		ScriptedOut(""),               // -C root add -A
 		ScriptedOut(""),               // -C root commit -m chore(release): pre-tag artifacts
-		ScriptedOut(""),               // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),               // unwind: status (nothing staged)
 		ScriptedOut(""),               // unwind: reset --keep startingSHA
 	)
 	gateRunner.Seed("sh", runner.Result{}, nil)
@@ -215,7 +215,7 @@ func TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary(t *testin
 	seedHappyGitThroughCommit(pushRunner, pushRoot, "main", "v0.0.1")
 	pushRunner.SeedSequence("git",
 		tagCreationFailed(), // tag -a v0.0.1 -F - (creation fails → no tag)
-		ScriptedOut(""),     // unwind: diff --cached --name-only (nothing staged)
+		ScriptedOut(""),     // unwind: status (nothing staged)
 		ScriptedOut(""),     // unwind: reset --keep startingSHA
 	)
 	pushRunner.Seed("gh", runner.Result{}, nil)
@@ -279,7 +279,7 @@ func TestRelease_NotesFailure_AfterArtifactCommit_SurgicalResets(t *testing.T) {
 	seedNormalAINotes(f)
 	f.Seed("claude", runner.Result{Stdout: ""}, nil)
 	// The surgical unwind then resets the one tracked artifact commit.
-	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: diff --cached (nothing staged), reset --keep startingSHA
+	f.SeedSequence("git", ScriptedOut(""), ScriptedOut("")) // unwind: status (nothing staged), reset --keep startingSHA
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions())
