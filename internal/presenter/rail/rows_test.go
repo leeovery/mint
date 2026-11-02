@@ -276,7 +276,6 @@ func TestADryRunsRailIntoItsEndIsDimAfterTheStagesItSkipped(t *testing.T) {
 		got := rail.NewLayout(100, level).Draw(run)
 		want := []string{
 			" " + acc(a, "●") + "  " + bld("notes") + pad(9) + "written",
-			" " + dm("┆"),
 			" " + dm("○") + "  " + dm("record"),
 			" " + dm("┆"),
 			" " + dm("┿━━ point of no return "+rule(76)),

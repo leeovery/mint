@@ -36,21 +36,22 @@ func prepared() []rail.Item {
 		rail.Node{Name: "pre_tag", Detail: "npm ci && npm run build", Time: "4.1s", Lines: []rail.Hang{
 			{Kind: rail.Did, Text: "committed dist/ (3 files) as chore(release): pre-tag artifacts"},
 		}},
-		rail.Node{Name: "check", Detail: "files that don't belong in the notes", Time: "6.2s", Lines: []rail.Hang{
+		rail.Node{Name: "check", Detail: "1 flagged", Time: "6.2s", Lines: []rail.Hang{
 			{Kind: rail.Acted, Text: "docs/specs/** excluded", About: "design documents"},
 			{Kind: rail.Did, Text: "written to .mint.toml's [release] table and committed"},
 		}},
 	}
 }
 
-// ahead is the release's plan from the record on, the end station waiting.
+// ahead is the release's plan from the record on, each stage waiting saying nothing,
+// the end station waiting.
 func ahead() []rail.Live {
 	return []rail.Live{
-		rail.Node{State: rail.ToCome, Name: "record", Detail: "CHANGELOG.md · package.json"},
+		rail.Node{State: rail.ToCome, Name: "record"},
 		rail.Rule{},
-		rail.Node{State: rail.ToCome, Name: "push", Detail: "main + v1.4.0 → origin, atomic"},
-		rail.Node{State: rail.ToCome, Name: "publish", Detail: "GitHub release"},
-		rail.Node{State: rail.ToCome, Name: "post_release", Detail: "./scripts/notify.sh"},
+		rail.Node{State: rail.ToCome, Name: "push"},
+		rail.Node{State: rail.ToCome, Name: "publish"},
+		rail.Node{State: rail.ToCome, Name: "post_release"},
 		rail.Station{Kind: rail.Pending, Name: "v1.4.0"},
 	}
 }
@@ -66,7 +67,7 @@ func paused() rail.Run {
 		Under: true, Text: "Exclude fixtures/ from the notes?", About: "test fixtures · 14 files, 212 kB",
 		Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep", Default: true}},
 	}
-	notes := rail.Node{State: rail.ToCome, Name: "notes", Detail: "written by the AI"}
+	notes := rail.Node{State: rail.ToCome, Name: "notes"}
 	return rail.Run{Settled: items[:len(items)-1], Region: append([]rail.Live{check, question, notes}, ahead()...)}
 }
 
@@ -123,7 +124,7 @@ func failed() rail.Run {
 		rail.Node{Name: "pre_tag", Detail: "npm ci && npm run build", Time: "4.1s", Lines: []rail.Hang{
 			{Kind: rail.Did, Text: "committed dist/ (3 files) as chore(release): pre-tag artifacts"},
 		}},
-		rail.Node{Name: "check", Detail: "files that don't belong in the notes", Time: "6.2s"},
+		rail.Node{Name: "check", Detail: "1 flagged, not asked", Time: "6.2s"},
 		rail.Node{State: rail.Warning, Name: "docs/specs/**", Detail: "flagged, not asked: design documents · 6 files, 48 kB"},
 		rail.Node{State: rail.Failed, Name: "notes", Detail: "the AI call for part 3 of 4 failed", Time: "41.0s", Lines: []rail.Hang{
 			{Kind: rail.Output, Text: "Claude usage limit reached. Your limit will reset at 4pm (Europe/London).\n"},
@@ -176,7 +177,8 @@ func regenerated() rail.Run {
 }
 
 // dryRun is a release's dry run: the review it would stop at, previewed with no
-// keys, and the stages it skipped left hollow above its end.
+// keys, and the stages it skipped left hollow above its end, each saying what a real
+// run would have done there.
 func dryRun() rail.Run {
 	return rail.Run{Settled: append(prepared(),
 		rail.Node{Name: "notes", Detail: "written in 4 parts and merged", Time: "52.3s"},

@@ -11,13 +11,12 @@
  ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ? Exclude fixtures/ from the notes?
  │                  test fixtures · 14 files, 212 kB
  │                  e exclude   K keep
- ┆
- ○  notes         written by the AI
- ○  record        CHANGELOG.md · package.json
+ ○  notes
+ ○  record
  ┆
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- ○  push          main + v1.4.0 → origin, atomic
- ○  publish       GitHub release
- ○  post_release  ./scripts/notify.sh
+ ○  push
+ ○  publish
+ ○  post_release
  ┆
  ◇  v1.4.0

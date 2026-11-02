@@ -215,6 +215,7 @@ func (p *RailPresenter) StageStarted(s StageStart) {
 	}
 	pt := p.run.stage(s.Key, s.Name)
 	p.run.reach(pt)
+	p.run.launched(s.Key)
 	switch {
 	case pt.ongoing:
 		pt.started = p.now().Add(-pt.worked)
@@ -243,7 +244,7 @@ func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 	}
 	pt.ongoing = s.Ongoing
 	if !s.Ongoing {
-		p.run.ended(s.Key, true)
+		p.run.ended(s.Key, false)
 	}
 	n := pt.node
 	n.State, n.Detail, n.Time, n.Progress = rail.Done, firstOf(s.Row, s.Detail, pt.plan), "", nil
@@ -269,7 +270,7 @@ func (p *RailPresenter) StageFailed(s StageFailure) {
 	pt := p.run.stage(s.Key, s.Name)
 	n := pt.node
 	pt.ongoing = false
-	p.run.ended(s.Key, false)
+	p.run.ended(s.Key, true)
 	n.State, n.Detail, n.Time, n.Progress = rail.Failed, s.Message, "", nil
 	if s.Interrupted {
 		n.Detail = interrupted
@@ -290,16 +291,17 @@ func (p *RailPresenter) StageFailed(s StageFailure) {
 // interrupted is a failed stage's detail where the run was interrupted as it ran.
 const interrupted = "interrupted"
 
-// NotesChecking runs the exclusion check as its own node, holding back the notes
-// stage, which started first, to come until it starts again, the check done.
+// NotesChecking runs the exclusion check as its own node, saying what it is doing,
+// holding back the notes stage, which started first, to come, saying nothing, until
+// it starts again, the check done.
 func (p *RailPresenter) NotesChecking(c NotesCheck) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if r := p.run.running(); r != nil && r.key != c.Key {
-		r.node.State, r.node.Detail = rail.ToCome, firstOf(r.plan, r.node.Detail)
+		r.node.State, r.node.Detail, r.node.Progress = rail.ToCome, "", nil
 	}
 	pt := p.run.stage(c.Key, c.Key)
-	pt.node.State, pt.node.Detail, pt.node.Time = rail.Running, pt.plan, ""
+	pt.node.State, pt.node.Detail, pt.node.Time = rail.Running, checkingText+"…", ""
 	pt.started, pt.timed = p.now(), true
 	p.redraw()
 }
@@ -420,7 +422,7 @@ func (p *RailPresenter) Warn(w Warning) {
 		pt.ahead = pt.toCome()
 		pt.node.State = rail.Warning
 	}
-	p.run.ended(w.Key, false)
+	p.run.ended(w.Key, w.Failed)
 	p.run.loopWarned = p.run.loopWarned || p.run.looping
 	n := pt.node
 	pt.ongoing, n.Detail, n.Progress = false, firstOf(w.Row, w.Message), nil

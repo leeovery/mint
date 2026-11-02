@@ -363,7 +363,8 @@ type Plan struct {
 
 // PlanStage is one stage of the rail's plan: the Key stage events carry, the Name
 // shown in its node and the Detail of what it will do ("main + v1.4.0 → origin,
-// atomic").
+// atomic"). The node says nothing while it waits; Detail stands in where the stage's
+// own events give it no words, and is a dry run's report of a stage it never ran.
 type PlanStage struct {
 	Key    string
 	Name   string
@@ -628,6 +629,10 @@ type NotesCheck struct {
 	Failed  bool
 }
 
+// checkingText is what the exclusion check is doing while its call runs, in both
+// modes.
+const checkingText = "checking for files that don't belong in the notes"
+
 // StageFailure carries the StageFailed payload. Output is the underlying
 // command output the engine captured (git/claude/gh chatter) rather than
 // streamed; the presenter renders it. SavedNotes is the path of the file a failed
@@ -772,8 +777,8 @@ type Warning struct {
 	// is, or the run's close. Plain ignores it.
 	Failed bool
 	// Skipped marks a warning that a stage of the plan did not run, a dry run's hook:
-	// the rail draws nothing for it and leaves Key's node to come, its plan detail.
-	// Plain ignores it.
+	// the rail draws nothing for it and leaves Key's node hollow, which says what a
+	// real run would have done there once the dry run is past it. Plain ignores it.
 	Skipped bool
 	// Elapsed is the engine-measured time Key's stage ran before the warning ended it
 	// (a regenerate --all version skipped), zero for none. Plain ignores it.

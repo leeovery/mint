@@ -38,16 +38,16 @@ func messageWritten(p presenter.Presenter, body string) {
 	p.ShowMessage(presenter.Message{Title: "commit message", Body: body})
 }
 
-// commitAhead is the commit's plan past its message, waiting.
 // commitKeys is the commit review's keys, read as a typed line.
 const commitKeys = " ┆  Y accept   n abort   e edit   r regenerate ›"
 
+// commitAhead is the commit's plan past its message, waiting, each stage saying
+// nothing.
 var commitAhead = []string{
-	" ┆",
-	" ○  commit        on main",
+	" ○  commit",
 	" ┆",
 	" ┿━━ point of no return " + strings.Repeat("━", 56),
-	" ○  push          to its upstream",
+	" ○  push",
 	" ┆",
 	" ◇  main",
 }
@@ -148,7 +148,7 @@ func TestRailGate_AnEditRedrawsTheBodyInPlaceBeforeTheQuestionComesBack(t *testi
 	r := newRailTerm(t, 80, 24, in)
 	messageWritten(r, "feat: retry deliveries")
 	body := func(text string) []string {
-		return append(append(commitHead[:4:4], " ●  message       written", " │", " │    "+text), commitAhead...)
+		return append(append(commitHead[:4:4], " ●  message       written", " │", " │    "+text, " ┆"), commitAhead...)
 	}
 	asked := func(text string) []string {
 		return append(append(commitHead[:4:4], " ●  message       written", " │", " │    "+text, " │",
@@ -283,14 +283,13 @@ func TestRailGate_TheExclusionPauseAsksInsideTheCheckAndItsAnswerTakesTheQuestio
 		if n == 1 {
 			return
 		}
-		got := r.screen(t)[8:14]
+		got := r.screen(t)[8:13]
 		want := []string{
 			pane(" ●  check         1 flagged                                                                     6.2s"),
 			" ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ? Exclude docs/specs/** from the notes?",
 			" │                  design documents · 6 files, 48 kB",
 			" │                  e exclude   K keep ›",
-			" ┆",
-			" ○  notes         written by the AI",
+			" ○  notes",
 		}
 		if strings.Join(got, "\n") != strings.Join(want, "\n") {
 			t.Errorf("while asked the rail reads\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -744,11 +743,11 @@ func TestRailGate_ATypedLineIsReadAtTheQuestionPrintedLast(t *testing.T) {
 		// region's first row.
 		rows []string
 	}{
-		{name: "a line and its Enter", before: reviewed, typed: "the export", rows: []string{question + "the export", " ┆"}},
-		{name: "a line the input closed on", before: reviewed, typed: "abc", closed: true, rows: []string{question + "abc", " ┆"}},
-		{name: "a wrap that leaves one character", before: reviewed, typed: x(53), rows: []string{question + x(52), "x", " ┆"}},
-		{name: "a wrap at exactly the width", before: reviewed, typed: x(52), rows: []string{question + x(52), " ┆"}},
-		{name: "two rows filled exactly", before: reviewed, typed: x(132), rows: []string{question + x(52), x(80), " ┆"}},
+		{name: "a line and its Enter", before: reviewed, typed: "the export", rows: []string{question + "the export", " ○  commit"}},
+		{name: "a line the input closed on", before: reviewed, typed: "abc", closed: true, rows: []string{question + "abc", " ○  commit"}},
+		{name: "a wrap that leaves one character", before: reviewed, typed: x(53), rows: []string{question + x(52), "x", " ○  commit"}},
+		{name: "a wrap at exactly the width", before: reviewed, typed: x(52), rows: []string{question + x(52), " ○  commit"}},
+		{name: "two rows filled exactly", before: reviewed, typed: x(132), rows: []string{question + x(52), x(80), " ○  commit"}},
 		{name: "under a stage still running", before: running, typed: x(53), rows: []string{question + x(52), "x", row(" ⠋  message       writing…", "0s")}},
 	}
 	for _, tt := range tests {

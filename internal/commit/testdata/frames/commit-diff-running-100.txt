@@ -3,10 +3,9 @@
  ◇  main          7c1e0b4
  │
  ⠋  diff          reading the changes…
- ┆
- ○  message       written by the AI
- ○  stage         git add -A
- ○  commit        on main
- ○  push          to its upstream
+ ○  message
+ ○  stage
+ ○  commit
+ ○  push
  ┆
  ◇  main

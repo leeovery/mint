@@ -5,7 +5,6 @@
  ●  version       v1.4.0 (minor bump)
  ●  preflight     tree clean · on main · v1.4.0 free · in sync with origin
  !  dry-run       skipping pre_tag hook
- ┆
  ○  pre_tag       npm ci && npm run build
  ●  check         1 flagged                                                                     6.2s
  │                ? Exclude docs/specs/** from the notes?
@@ -23,7 +22,6 @@
  │    • Signing secrets with a trailing newline are accepted again.
  │
  ?  Release with these notes? · skipped (dry run)
- ┆
  ○  record        CHANGELOG.md · package.json
  ┆
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -253,7 +253,7 @@ func (p *PlainPresenter) PreviewGate(gate Gate) {
 
 // NotesChecking prints the exclusion check's call as its own line.
 func (p *PlainPresenter) NotesChecking(NotesCheck) {
-	p.writef("notes: checking for files that don't belong in the notes\n")
+	p.writef("notes: %s\n", checkingText)
 }
 
 // NotesChecked prints nothing: the notes' own lines follow.

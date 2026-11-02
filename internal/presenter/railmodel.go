@@ -35,7 +35,8 @@ type part struct {
 	// key is the plan stage a node fills, "" for none.
 	key  string
 	node *rail.Node
-	// plan is what a planned node will do, its detail while it is to come.
+	// plan is what a planned node will do: its detail where its stage's events give
+	// none, and, a dry run past it, its report of what a real run would have done.
 	plan string
 	// started is when the node began running: its spinner's frame counts from it,
 	// and, where timed, its time. worked is how long an ongoing node ran before it
@@ -81,7 +82,7 @@ type part struct {
 	// own.
 	ongoing bool
 	// reached, crossed and ended are the point of no return's: its stage under way,
-	// done, and over, done or not.
+	// launched and not failed, and over, done or not.
 	reached, crossed, ended bool
 	station                 rail.Station
 	// text is a body's, drawn as its Markdown reads where markdown is set.
@@ -313,7 +314,9 @@ func (m *runModel) start(info RunInfo) {
 
 // plan lays the plan's stages out as nodes to come, below the stages already drawn,
 // with the point of no return across the rail above its stage and the end station
-// waiting at the foot.
+// waiting at the foot. A stage waiting says nothing: its plan detail is kept for
+// what it settles to, and for a dry run's report of the stages it never ran (see
+// passBy).
 func (m *runModel) plan(p Plan) {
 	m.pointOfNoReturn = p.PointOfNoReturn
 	at := m.insertionPoint()
@@ -331,7 +334,7 @@ func (m *runModel) plan(p Plan) {
 			m.insert(&part{kind: rulePart}, at)
 			at++
 		}
-		m.insert(&part{key: s.Key, plan: s.Detail, inside: s.Inside, node: &rail.Node{State: rail.ToCome, Name: s.Name, Detail: s.Detail}}, at)
+		m.insert(&part{key: s.Key, plan: s.Detail, inside: s.Inside, node: &rail.Node{State: rail.ToCome, Name: s.Name}}, at)
 		at++
 	}
 	if m.endName != "" && m.partOf(endPart) == nil {
@@ -361,12 +364,21 @@ func (m *runModel) stage(key, name string) *part {
 	return pt
 }
 
-// ended marks the stage keyed key over, done where crossed says so: where it is the
-// point of no return's stage, the run has crossed that point once the stage is done,
-// not as it starts, nor should it fail.
-func (m *runModel) ended(key string, crossed bool) {
+// launched marks the stage keyed key started: where it is the point of no return's
+// stage, the run has crossed that point as the stage starts, as a rocket has once it
+// leaves the ground, though a Ctrl-C landed before anything left could still stop it.
+func (m *runModel) launched(key string) {
 	if r := m.rule(key); r != nil {
-		r.reached, r.ended, r.crossed = true, true, r.crossed || crossed
+		r.crossed = true
+	}
+}
+
+// ended marks the stage keyed key over, failed or not: where it is the point of no
+// return's stage, a failure takes the crossing back, as the push that failed sent
+// nothing and the run unwinds, and anything else leaves it crossed.
+func (m *runModel) ended(key string, failed bool) {
+	if r := m.rule(key); r != nil {
+		r.reached, r.ended, r.crossed = true, true, !failed
 	}
 }
 
@@ -406,9 +418,17 @@ func (m *runModel) reach(pt *part) {
 			continue
 		}
 		if !q.inside || m.nextPlanned(i) != pt {
-			q.passed = true
+			q.passBy()
 		}
 	}
+}
+
+// passBy marks the part a stage a dry run went past without running it, hollow for
+// good, and says what a real run would have done there, its plan detail: once the
+// run is past it, the row is the dry run's report, no longer a stage waiting.
+func (pt *part) passBy() {
+	pt.passed = true
+	pt.node.Detail = pt.plan
 }
 
 // nextPlanned is the first planned stage's node below index i, nil for none.
@@ -611,7 +631,7 @@ func (m *runModel) pass() {
 		case pt.finished():
 			past = true
 		case past && pt.kind == nodePart && !pt.hidden && pt.node.State == rail.ToCome:
-			pt.passed = true
+			pt.passBy()
 		}
 	}
 }
@@ -722,9 +742,14 @@ func (m *runModel) settleItem(it rail.Item) {
 // finish closes the run at end, an End with no name drawing none, keeping any moves
 // the run left for next, which settleNext puts under it. What the run never reached
 // leaves the drawing, but for a dry run's stages to come, which stay hollow above
-// its end.
+// its end, each saying what a real run would have done there.
 func (m *runModel) finish(end rail.End, dryRun bool) {
 	m.drop(dryRun)
+	for _, pt := range m.parts {
+		if pt.kind == nodePart && pt.toCome() {
+			pt.passBy()
+		}
+	}
 	m.settle(len(m.parts))
 	if end.Name != "" {
 		m.settleItem(end)

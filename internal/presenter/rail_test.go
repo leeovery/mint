@@ -48,11 +48,11 @@ func TestRail_ThePlanWaitsBelowTheRunHollowWithThePointOfNoReturnAndTheEndStatio
 	r := newRailTerm(t, 80, 24, answers())
 	commitRun(r)
 	wantScreen(t, r, append(commitWaiting,
-		" ○  message       written by the AI",
-		" ○  commit        on main",
+		" ○  message",
+		" ○  commit",
 		" ┆",
 		" ┿━━ point of no return "+strings.Repeat("━", 56),
-		" ○  push          to its upstream",
+		" ○  push",
 		" ┆",
 		" ◇  main",
 	)...)
@@ -79,11 +79,10 @@ func TestRail_StagesFillTheirNodesByKey(t *testing.T) {
 	r.ticks.tick(t)
 	wantScreen(t, r, append(commitHead,
 		row(" ⠙  message       writing the commit message…", "2s"),
-		" ┆",
-		" ○  commit        on main",
+		" ○  commit",
 		" ┆",
 		" ┿━━ point of no return "+strings.Repeat("━", 56),
-		" ○  push          to its upstream",
+		" ○  push",
 		" ┆",
 		" ◇  main",
 	)...)
@@ -127,11 +126,10 @@ func TestRail_AFailedStageShowsItsOutputBehindAGutterOfItsOwnAndTheSavedNotes(t 
 		" │                │         Please run /login",
 		" │                part notes saved to",
 		" │                /tmp/v1.4.0.md",
-		" ┆",
-		" ○  commit        on main",
+		" ○  commit",
 		" ┆",
 		" ┿━━ point of no return "+strings.Repeat("━", 56),
-		" ○  push          to its upstream",
+		" ○  push",
 		" ┆",
 		" ◇  main",
 	)...)
@@ -191,7 +189,7 @@ func TestRail_TheUnwindNamesWhatItUndidThenWhatItKept(t *testing.T) {
 	got := r.screen(t)[4:6]
 	want := []string{
 		" ↩  unwind        reset 2 commits · kept your exclusion answers in .mint.toml",
-		" ┆",
+		" ○  message",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("the unwind reads\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -208,13 +206,13 @@ func TestRail_TheExclusionCheckRunsAsANodeOfItsOwnAheadOfTheNotes(t *testing.T) 
 	}})
 	r.StageStarted(notesStarted())
 	r.NotesChecking(presenter.NotesCheck{Key: "check"})
-	if got := r.screen(t)[4:7]; !strings.HasPrefix(got[0], " ⠋  check         files that don't belong in the notes") || got[2] != " ○  notes         written by the AI" {
-		t.Errorf("while the check runs the rail reads\n%s\nwant the check running and the notes to come", strings.Join(got, "\n"))
+	if got := r.screen(t)[4:6]; !strings.HasPrefix(got[0], " ⠋  check         checking for files that don't belong in the notes…") || got[1] != " ○  notes" {
+		t.Errorf("while the check runs the rail reads\n%s\nwant the check running, saying what it does, and the notes to come, saying nothing", strings.Join(got, "\n"))
 	}
 	r.clock.Advance(secs(6.2))
 	r.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2)})
-	got := r.screen(t)[4:7]
-	want := []string{row(" ●  check         files that don't belong in the notes", "6.2s"), " ┆", " ○  notes         written by the AI"}
+	got := r.screen(t)[4:6]
+	want := []string{row(" ●  check         files that don't belong in the notes", "6.2s"), " ○  notes"}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("once the check's call is done the rail reads\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
@@ -423,7 +421,7 @@ func TestRail_TheWidthIsReadAgainAtEachRedraw(t *testing.T) {
 	}
 	r.size.set(80, 24)
 	r.StageStarted(presenter.StageStart{Name: "message", Key: "message"})
-	if rule := r.screen(t)[8]; uniseg.StringWidth(rule) != 80 {
+	if rule := r.screen(t)[7]; uniseg.StringWidth(rule) != 80 {
 		t.Errorf("the rule is %d wide once the terminal is 80 columns, want 80: %q", uniseg.StringWidth(rule), rule)
 	}
 }

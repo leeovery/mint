@@ -125,9 +125,9 @@ func TestTheRailBetweenItemsSaysHowFarTheRunHasCome(t *testing.T) {
 			want:  []string{" mint ─ commit", "", " ◇  main", " │", " ●  record        CHANGELOG.md"},
 		},
 		{
-			name:  "dotted below the live node, the plan hollow",
+			name:  "no line where the run's reach ends, the plan hollow under the live node",
 			items: []rail.Item{rail.Node{State: rail.Running, Name: "notes"}, toCome, toCome},
-			want:  []string{" ⠋  notes", " ┆", " ○  push", " ○  push"},
+			want:  []string{" ⠋  notes", " ○  push", " ○  push"},
 		},
 		{
 			name:  "the point of no return ahead, dotted",
@@ -142,10 +142,10 @@ func TestTheRailBetweenItemsSaysHowFarTheRunHasCome(t *testing.T) {
 		{
 			name:  "the rail around a body, and the question under it",
 			items: []rail.Item{done, rail.Body{Text: "notes"}, rail.Question{Text: "Use these notes?"}, toCome},
-			want:  []string{" ●  record        CHANGELOG.md", " │", " │    notes", " │", " ?  Use these notes?", " ┆", " ○  push"},
+			want:  []string{" ●  record        CHANGELOG.md", " │", " │    notes", " │", " ?  Use these notes?", " ○  push"},
 		},
 		{
-			name: "solid down a question under a node, dotted below it",
+			name: "solid down a question under a node, the plan hollow under it",
 			items: []rail.Item{
 				rail.Node{Name: "check", Detail: "2 flagged", Lines: []rail.Hang{{Kind: rail.Acted, Text: "demo/ excluded", About: "demo tapes"}}},
 				rail.Question{Under: true, Text: "Exclude design/ from the notes?", About: "design documents · 1 file, 26 kB", Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}}},
@@ -157,7 +157,6 @@ func TestTheRailBetweenItemsSaysHowFarTheRunHasCome(t *testing.T) {
 				" ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ? Exclude design/ from the notes?",
 				" │                  design documents · 1 file, 26 kB",
 				" │                  e exclude   k keep",
-				" ┆",
 				" ○  push",
 			},
 		},

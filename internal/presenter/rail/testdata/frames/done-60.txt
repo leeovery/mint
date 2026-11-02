@@ -12,7 +12,7 @@
  │  committed dist/ (3 files) as chore(release): pre-tag
  │  artifacts
  ●  check
- │  files that don't belong in the notes
+ │  1 flagged
  │  ✓ docs/specs/** excluded · design documents
  │  written to .mint.toml's [release] table and committed
  ●  notes

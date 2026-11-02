@@ -19,7 +19,8 @@ ith origin
  ⠋  notes
  ┆  writing the notes…
  ⠋  check
- ┆  files that don't belong in the notes
+ ┆  checking for files that don't belong in the no
+tes…
  ●  check
  │  1 flagged
  ├┄ ? Exclude docs/specs/** from the notes?

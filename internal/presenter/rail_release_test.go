@@ -32,14 +32,17 @@ func ruleMark(t *testing.T, r *railTerm) frametest.Cell {
 	return frametest.Cell{}
 }
 
-func TestRail_ThePointOfNoReturnIsCrossedOnceItsStageIsDoneNotAsItStarts(t *testing.T) {
+func TestRail_ThePointOfNoReturnIsCrossedAsItsStageStarts(t *testing.T) {
 	t.Parallel()
 	r := newRailTermIn(t, termenv.TrueColor, 80, 24, answers())
 	commitRun(r)
+	if mark := ruleMark(t, r); mark.FG == accent {
+		t.Errorf("┿ = %v with the push still to come, want it short of the accent", mark)
+	}
 
 	r.StageStarted(presenter.StageStart{Name: "push", Key: "push", Blocking: true, Text: "pushing…"})
-	if mark := ruleMark(t, r); mark.FG == accent {
-		t.Errorf("┿ = %v with the push running, want it short of the accent: the run hasn't crossed", mark)
+	if mark := ruleMark(t, r); mark.FG != accent {
+		t.Errorf("┿ = %v with the push running, want the accent: the run has launched", mark)
 	}
 
 	r.StageSucceeded(presenter.StageSuccess{Name: "push", Key: "push", Blocking: true, Detail: "main → origin"})
@@ -48,7 +51,7 @@ func TestRail_ThePointOfNoReturnIsCrossedOnceItsStageIsDoneNotAsItStarts(t *test
 	}
 }
 
-func TestRail_APushThatFailsLeavesThePointOfNoReturnReachedNotCrossed(t *testing.T) {
+func TestRail_APushThatFailsTakesThePointOfNoReturnBackToReachedNotCrossed(t *testing.T) {
 	t.Parallel()
 	r := newRailTermIn(t, termenv.TrueColor, 80, 24, answers())
 	commitRun(r)
@@ -87,7 +90,7 @@ func TestRail_AWarningAheadOfTheRunLeavesItsEdgeAboveThePlanStillToCome(t *testi
 		" !  commit        nothing staged",
 		" ┆",
 		" ┿━━ point of no return "+strings.Repeat("━", 56),
-		" ○  push          to its upstream",
+		" ○  push",
 		" ┆",
 		" ◇  main",
 	)...)
@@ -107,7 +110,7 @@ func TestRail_AWarningAheadOfAFailedStageStaysUnreachedWithTheUnwindAboveIt(t *t
 		" !  commit        nothing staged",
 		" ┆",
 		" ┿━━ point of no return "+strings.Repeat("━", 56),
-		" ○  push          to its upstream",
+		" ○  push",
 		" ┆",
 		" ◇  main",
 	)...)

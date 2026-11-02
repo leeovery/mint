@@ -23,12 +23,11 @@
  │
  ?  Release with these notes?
  ┆  Y release   n abort   e edit   r regenerate ›
- ┆
- ○  record        CHANGELOG.md · package.json
+ ○  record
  ┆
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- ○  push          main + v1.4.0 → origin, atomic
- ○  publish       GitHub release
- ○  post_release  ./scripts/notify.sh
+ ○  push
+ ○  publish
+ ○  post_release
  ┆
  ◇  v1.4.0

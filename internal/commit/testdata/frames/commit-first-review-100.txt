@@ -9,8 +9,7 @@
  │
  ?  Commit this message?
  ┆  Y accept   n abort   e edit   r regenerate ›
- ┆
- ○  stage         git add -A
- ○  commit        on main
+ ○  stage
+ ○  commit
  ┆
  ◇  main

@@ -17,11 +17,10 @@
  │
  ?  Release with these notes?
  ┆  Y release   n abort   e edit   r regenerate ›
- ┆
- ○  record        CHANGELOG.md
+ ○  record
  ┆
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- ○  push          main + v1.3.0 → origin, atomic
+ ○  push
  !  publish       provider could not be resolved (unrecognised host "gitlab.com"); downgrading to
  │                tag + push only
  ┆

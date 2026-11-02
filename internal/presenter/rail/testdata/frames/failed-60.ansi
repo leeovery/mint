@@ -12,7 +12,7 @@
  [38;2;95;215;175m│[39m  committed dist/ (3 files) as chore(release): pre-tag 
  [38;2;95;215;175m│[39m  artifacts
  [38;2;95;215;175m●[39m  [1mcheck[22m
- [38;2;95;215;175m│[39m  files that don't belong in the notes
+ [38;2;95;215;175m│[39m  1 flagged, not asked
  [33m![39m  [1mdocs/specs/**[22m
  [38;2;95;215;175m│[39m  flagged, not asked: design documents · 6 files, 48 kB
  [31m✗[39m  [1;31mnotes[22;39m

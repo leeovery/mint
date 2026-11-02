@@ -9,7 +9,7 @@
  ⠋  record        recording the release…                                                          0s
  ┆
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- ○  push          main + v1.3.0 → origin, atomic
- ○  publish       provider release
+ ○  push
+ ○  publish
  ┆
  ◇  v1.3.0
