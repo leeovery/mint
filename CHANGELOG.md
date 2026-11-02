@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-11-02
+
+🔧 Changed
+- Release progress display no longer shows a waiting stage's plan text — waiting stages stay blank, and a dry run reports what a real run would have done at each stage it skipped.
+- The "checking for files that don't belong in the notes" step now shows its own progress line while it runs, in both the rail and plain output.
+
+🐛 Fixed
+- The point of no return is now marked as crossed when the push starts and taken back if it fails — the progress display no longer shows it crossed after a failed push.
+- The progress rail no longer shifts rows up and down as the run advances past the reach of the run.
+
 ## [0.2.4] - 2026-11-02
 
 🔧 Changed
