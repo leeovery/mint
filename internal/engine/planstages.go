@@ -27,6 +27,14 @@ const (
 	stageUnwind = "unwind"
 )
 
+// The hook stages' names on the rail: a stage's name is its key everywhere else, but
+// a hook's key is its config key, which reads as a key, not a word, in the rail's
+// column of stage names. Plain's lines and the prose that names a hook keep the key.
+const (
+	namePreTag      = "pre-tag"
+	namePostRelease = "post-release"
+)
+
 // releasePlan is what a release's stages are laid out from, all known once preflight
 // has passed.
 type releasePlan struct {
@@ -56,7 +64,7 @@ func (r releasePlan) stages() presenter.Plan {
 		{Key: stagePreflight, Name: stagePreflight, Detail: r.preflight},
 	}
 	if hooks.HasEntries(rel.Hooks.PreTag) {
-		stages = append(stages, presenter.PlanStage{Key: stagePreTag, Name: stagePreTag, Detail: hookDetail(rel.Hooks.PreTag)})
+		stages = append(stages, presenter.PlanStage{Key: stagePreTag, Name: namePreTag, Detail: hookDetail(rel.Hooks.PreTag)})
 	}
 	if r.notes.checks {
 		stages = append(stages, presenter.PlanStage{Key: stageCheck, Name: stageCheck, Detail: "files that don't belong in the notes", Inside: true})
@@ -70,7 +78,7 @@ func (r releasePlan) stages() presenter.Plan {
 		stages = append(stages, presenter.PlanStage{Key: stagePublish, Name: stagePublish, Detail: providerRelease(r.cfg)})
 	}
 	if hooks.HasEntries(rel.Hooks.PostRelease) {
-		stages = append(stages, presenter.PlanStage{Key: stagePostRelease, Name: stagePostRelease, Detail: hookDetail(rel.Hooks.PostRelease)})
+		stages = append(stages, presenter.PlanStage{Key: stagePostRelease, Name: namePostRelease, Detail: hookDetail(rel.Hooks.PostRelease)})
 	}
 	return presenter.Plan{Stages: stages, PointOfNoReturn: stagePush, Quiet: true}
 }

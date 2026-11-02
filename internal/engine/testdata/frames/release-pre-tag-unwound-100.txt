@@ -4,7 +4,7 @@
  │
  ●  version       v1.3.0 (minor bump) · accepted (-y)
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync, gh signed in
- ✗  pre_tag       committing dirty tree "chore(release): pre-tag artifacts for v1.3.0": exit    0.7s
+ ✗  pre-tag       committing dirty tree "chore(release): pre-tag artifacts for v1.3.0": exit    0.7s
  │                status 1
  │                │ error: gpg failed to sign the data
  │                │ fatal: failed to write commit object

@@ -328,12 +328,12 @@ func TestRelease_Rail_ThePlanLeavesOutWhatTheRunWillNotDo(t *testing.T) {
 			want: []presenter.PlanStage{
 				{Key: "version", Name: "version", Detail: "v1.2.4 (patch bump)"},
 				{Key: "preflight", Name: "preflight", Detail: "tree clean, on main, v1.2.4 free, origin in sync, gh signed in"},
-				{Key: "pre_tag", Name: "pre_tag", Detail: "make build && make dist"},
+				{Key: "pre_tag", Name: "pre-tag", Detail: "make build && make dist"},
 				{Key: "notes", Name: "notes", Detail: "from the notes file"},
 				{Key: "record", Name: "record", Detail: "CHANGELOG.md + VERSION"},
 				{Key: "push", Name: "push", Detail: "main + v1.2.4 → origin, atomic"},
 				{Key: "publish", Name: "publish", Detail: "GitHub release"},
-				{Key: "post_release", Name: "post_release", Detail: "notify.sh"},
+				{Key: "post_release", Name: "post-release", Detail: "notify.sh"},
 			},
 		},
 		{

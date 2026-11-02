@@ -6,7 +6,7 @@
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
  │                skipping preflight hook
  ┆
- ○  pre_tag       npm ci && npm run build
+ ○  pre-tag       npm ci && npm run build
  ●  check         nothing to leave out                                                          0.7s
  ●  notes         generated                                                                     0.7s
  │
@@ -25,6 +25,6 @@
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  ○  push          main + v1.3.0 → origin, atomic
  ○  publish       provider release
- ○  post_release  ./scripts/notify.sh
+ ○  post-release  ./scripts/notify.sh
  ┆
  ◇  v1.3.0        dry run · nothing changed                                                     4.2s

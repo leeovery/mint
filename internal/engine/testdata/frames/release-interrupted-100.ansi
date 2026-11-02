@@ -4,7 +4,7 @@
  │
  ●  version       v1.3.0 (minor bump)
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync, gh signed in
- ✗  pre_tag       interrupted                                                                   0.7s
+ ✗  pre-tag       interrupted                                                                   0.7s
  │                │ ok      pigeon/webhooks 0.412s
  │
  ◇  v1.2.3        nothing pushed                                                                2.1s
