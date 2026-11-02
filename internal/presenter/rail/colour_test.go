@@ -194,10 +194,10 @@ func TestEachElementIsDrawnInItsOwnEscapesAtEachLevel(t *testing.T) {
 			want: func(string) []string { return []string{" " + dm("┿━━ point of no return "+rule(76))} },
 		},
 		{
-			name: "the point of no return crossed: its ┿ in the accent",
+			name: "the point of no return crossed: all of it in the accent",
 			item: rail.Rule{Crossed: true},
 			want: func(a string) []string {
-				return []string{" " + acc(a, "┿") + dm("━━ point of no return "+rule(76))}
+				return []string{" " + acc(a, "┿━━ point of no return "+rule(76))}
 			},
 		},
 		{
@@ -260,7 +260,7 @@ func TestTheDottedRailAndTheSolidRailInEscapes(t *testing.T) {
 		want := []string{
 			" " + acc(a, "●") + "  " + bld("record"),
 			" " + acc(a, "│"),
-			" " + acc(a, "┿") + dm("━━ point of no return "+rule(76)),
+			" " + acc(a, "┿━━ point of no return "+rule(76)),
 			" " + acc(a, "⠋") + "  " + bld("notes"),
 			" " + dm("┆"),
 			" " + dm("○") + "  " + dm("push"),

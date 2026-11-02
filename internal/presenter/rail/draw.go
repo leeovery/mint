@@ -406,13 +406,15 @@ const ruleLabel = "━━ point of no return "
 
 func (r Rule) reached() bool { return r.Reached || r.Crossed }
 
+// draw is the rule dim while the run has yet to cross it, and all of it in the
+// accent once it has, as the rail is dim ahead and in the accent behind.
 func (r Rule) draw(l Layout) []line {
-	mark := s("┿", dim)
+	ink := dim
 	if r.Crossed {
-		mark = s("┿", accent)
+		ink = accent
 	}
 	rest := strings.Repeat("━", l.width-cells(ruleLabel)-2)
-	return []line{{margin, mark, s(ruleLabel+rest, dim)}}
+	return []line{{margin, s("┿"+ruleLabel+rest, ink)}}
 }
 
 func (Body) reached() bool { return true }

@@ -190,8 +190,8 @@ type Choice struct {
 }
 
 // Rule is the point of no return drawn across the rail: the rail into it solid once
-// the run has Reached it, its stage under way or stopped there, and its ┿ in the
-// accent once the run has Crossed it.
+// the run has Reached it, its stage under way or stopped there, and all of it in
+// the accent once the run has Crossed it.
 type Rule struct {
 	Reached bool
 	Crossed bool
