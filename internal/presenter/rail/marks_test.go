@@ -130,14 +130,14 @@ func TestTheRailBetweenItemsSaysHowFarTheRunHasCome(t *testing.T) {
 			want:  []string{" ⠋  notes", " ○  push", " ○  push"},
 		},
 		{
-			name:  "the point of no return ahead, dotted",
+			name:  "the point of no return ahead, dotted either side",
 			items: []rail.Item{toCome, rail.Rule{}, toCome, rail.Station{Kind: rail.Pending, Name: "v1.4.0"}},
-			want:  []string{" ○  push", " ┆", " ┿━━ point of no return " + strings.Repeat("━", 76), " ○  push", " ┆", " ◇  v1.4.0"},
+			want:  []string{" ○  push", " ┆", " ┿━━ point of no return " + strings.Repeat("━", 76), " ┆", " ○  push", " ┆", " ◇  v1.4.0"},
 		},
 		{
-			name:  "the point of no return crossed, solid",
+			name:  "the point of no return crossed, solid either side",
 			items: []rail.Item{done, rail.Rule{Crossed: true}, done, rail.End{Landed: true, Name: "v1.4.0"}},
-			want:  []string{" ●  record        CHANGELOG.md", " │", " ┿━━ point of no return " + strings.Repeat("━", 76), " ●  record        CHANGELOG.md", " │", " ◆  v1.4.0"},
+			want:  []string{" ●  record        CHANGELOG.md", " │", " ┿━━ point of no return " + strings.Repeat("━", 76), " │", " ●  record        CHANGELOG.md", " │", " ◆  v1.4.0"},
 		},
 		{
 			name:  "the rail around a body, and the question under it",

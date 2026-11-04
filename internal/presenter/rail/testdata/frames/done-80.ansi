@@ -13,6 +13,7 @@
  [38;2;95;215;175m●[39m  [1mrecord[22m        CHANGELOG.md · package.json → 🌿 Release v1.4.0
  [38;2;95;215;175m│[39m
  [38;2;95;215;175m┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m
+ [38;2;95;215;175m│[39m
  [38;2;95;215;175m●[39m  [1mpush[22m          main + v1.4.0 → origin, atomic                            [2m1.9s[22m
  [38;2;95;215;175m●[39m  [1mpublish[22m       GitHub release                                            [2m1.3s[22m
  [38;2;95;215;175m●[39m  [1mpost_release[22m  ./scripts/notify.sh                                       [2m0.8s[22m

@@ -25,6 +25,7 @@
  ○  record        CHANGELOG.md
  ┆
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ┆
  ○  push          main + v1.3.0 → origin, atomic
  ○  publish       provider release
  ┆

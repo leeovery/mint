@@ -20,6 +20,7 @@
  ○  record
  ┆
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ┆
  ○  push
  !  publish       provider could not be resolved (unrecognised host "gitlab.com"); downgrading to
  │                tag + push only

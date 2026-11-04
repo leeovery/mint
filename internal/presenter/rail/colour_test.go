@@ -261,6 +261,7 @@ func TestTheDottedRailAndTheSolidRailInEscapes(t *testing.T) {
 			" " + acc(a, "●") + "  " + bld("record"),
 			" " + acc(a, "│"),
 			" " + acc(a, "┿━━ point of no return "+rule(76)),
+			" " + acc(a, "│"),
 			" " + acc(a, "⠋") + "  " + bld("notes"),
 			" " + dm("○") + "  " + dm("push"),
 			" " + dm("┆"),

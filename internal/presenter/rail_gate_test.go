@@ -47,6 +47,7 @@ var commitAhead = []string{
 	" ○  commit",
 	" ┆",
 	" ┿━━ point of no return " + strings.Repeat("━", 56),
+	" ┆",
 	" ○  push",
 	" ┆",
 	" ◇  main",

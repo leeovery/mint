@@ -13,6 +13,7 @@
  ●  record        CHANGELOG.md · package.json → 🌿 Release v1.4.0
  │
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ │
  ●  push          main + v1.4.0 → origin, atomic                            1.9s
  ●  publish       GitHub release                                            1.3s
  ●  post_release  ./scripts/notify.sh                                       0.8s

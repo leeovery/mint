@@ -279,6 +279,7 @@ func TestADryRunsRailIntoItsEndIsDimAfterTheStagesItSkipped(t *testing.T) {
 			" " + dm("○") + "  " + dm("record"),
 			" " + dm("┆"),
 			" " + dm("┿━━ point of no return "+rule(76)),
+			" " + dm("┆"),
 			" " + dm("○") + "  " + dm("push"),
 			" " + dm("┆"),
 			" " + acc(a, "◇") + "  " + bld("v1.4.0") + pad(8) + "dry run · nothing changed" + pad(55) + dm("9s"),

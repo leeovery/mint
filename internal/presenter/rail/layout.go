@@ -138,8 +138,8 @@ func (l Layout) detailCol() int {
 var margin = s(" ", plain)
 
 // between is the line drawn between above and it, if any: a blank under the header
-// and over next; elsewhere the rail alone, under a start station and around a body,
-// over the rule and an end station. It is solid where the run has come both sides of
+// and over next; elsewhere the rail alone, under a start station, around a body and
+// the rule, and over an end station. It is solid where the run has come both sides of
 // it, dotted otherwise. Where the run's reach ends draws no line: the marks say it,
 // and a line there would move down the rail as the run does, then go, closing the
 // rows up behind it.
@@ -169,7 +169,7 @@ func gapped(above, it Item) bool {
 		return i.Kind != Start
 	}
 	switch a := above.(type) {
-	case Body:
+	case Rule, Body:
 		return true
 	case Station:
 		return a.Kind == Start

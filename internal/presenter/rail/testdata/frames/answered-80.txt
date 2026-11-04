@@ -16,6 +16,7 @@
  ○  record
  ┆
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ┆
  ○  push
  ○  publish
  ○  post_release

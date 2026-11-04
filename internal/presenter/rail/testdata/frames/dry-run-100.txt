@@ -14,6 +14,7 @@
  ○  record        CHANGELOG.md · package.json
  ┆
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ┆
  ○  push          main + v1.4.0 → origin, atomic
  ○  publish       GitHub release
  ○  post_release  ./scripts/notify.sh

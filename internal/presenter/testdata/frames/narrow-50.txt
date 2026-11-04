@@ -65,6 +65,7 @@ e
  │
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ━━━━━━━━━━
+ │
  ⠋  push
  ┆  pushing to origin…
  ●  push
