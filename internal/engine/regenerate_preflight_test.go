@@ -22,16 +22,16 @@ import (
 //   - fresh --target both → gh-auth + clean-tree + on-branch + remote-sync.
 //
 // Assertions are by the git/gh argv the FakeRunner records: gh-auth issues
-// `gh auth status`, clean-tree `git status --porcelain`, on-branch `git rev-parse
+// `gh auth status --active`, clean-tree `git status --porcelain`, on-branch `git rev-parse
 // --abbrev-ref HEAD`, remote-sync `git fetch --tags` then `git rev-list
 // --left-right --count @{u}...HEAD`, and the tag-free local probe `git rev-parse
 // -q --verify refs/tags/...` (which must NEVER appear).
 
 const regenReleaseBranch = "main"
 
-// ghAuthRan reports whether the gh-auth gate ran (`gh auth status`).
+// ghAuthRan reports whether the gh-auth gate ran (`gh auth status --active`).
 func ghAuthRan(f *runner.FakeRunner) bool {
-	return invokedWith(f, "gh", "auth", "status")
+	return invokedWith(f, "gh", "auth", "status", "--active")
 }
 
 // cleanTreeRan reports whether the clean-tree gate ran (`git status --porcelain`).
@@ -99,7 +99,7 @@ func TestRegeneratePreflight_Reuse_GhAuthOnly(t *testing.T) {
 	t.Parallel()
 
 	f := runner.NewFakeRunner()
-	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active (authenticated)
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.RegeneratePreflight(t.Context(), newDeps(rec, f), regenReleaseBranch, releaseGateSet())
@@ -170,7 +170,7 @@ func TestRegeneratePreflight_FreshBoth_AllApplicableGates(t *testing.T) {
 		ScriptedOut(""),                 // fetch --tags
 		ScriptedOut("0\t1"),             // rev-list left-right count (ahead only)
 	)
-	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active (authenticated)
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.RegeneratePreflight(t.Context(), newDeps(rec, f), regenReleaseBranch, bothGateSet())
@@ -200,7 +200,7 @@ func TestRegeneratePreflight_FreshRelease_GhAuthOnly(t *testing.T) {
 	t.Parallel()
 
 	f := runner.NewFakeRunner()
-	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active (authenticated)
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.RegeneratePreflight(t.Context(), newDeps(rec, f), regenReleaseBranch, releaseGateSet())

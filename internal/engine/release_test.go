@@ -214,7 +214,7 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
 	seedHappyGit(f, root, "main", "v0.0.1")
-	f.Seed("gh", runner.Result{}, nil) // gh auth status, then gh release create
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active, then gh release create
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
@@ -237,7 +237,7 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		"git rev-list --left-right --count @{u}...HEAD",
 		"git ls-remote --tags origin refs/tags/v0.0.1",
 		"git remote get-url origin",
-		"gh auth status",
+		"gh auth status --active",
 		"git rev-parse HEAD",
 		userChangesRead(root, "CHANGELOG.md"),
 		"git -C " + root + " add CHANGELOG.md",
@@ -776,7 +776,7 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 		ScriptedOut(""), // unwind: status (nothing staged)
 		ScriptedOut(""), // unwind: reset --keep startingSHA
 	)
-	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active (authenticated)
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
@@ -817,7 +817,7 @@ func TestRelease_GhSignedOut_FailsPreflightBeforeAnyHookTheNotesOrAMutation(t *t
 
 	assertAbortNonZero(t, err)
 	lines := commandLines(f.Invocations())
-	if last := lines[len(lines)-1]; last != "gh auth status" {
+	if last := lines[len(lines)-1]; last != "gh auth status --active" {
 		t.Errorf("last invocation = %q, want the gh check to end the run; got %v", last, lines)
 	}
 	for _, name := range []string{"sh", "claude"} {
@@ -1526,9 +1526,9 @@ func TestRelease_PublishFailsAfterPush_WarnsOnly(t *testing.T) {
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
 	seedHappyGit(f, root, "main", "v0.0.1")
-	// gh auth status succeeds, but `gh release create` fails after the push.
+	// gh auth status --active succeeds, but `gh release create` fails after the push.
 	f.SeedSequence("gh",
-		ScriptedOut(""), // gh auth status (authenticated)
+		ScriptedOut(""), // gh auth status --active (authenticated)
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("gh: server error")}, // release create fails
 	)
 	rec := &presentertest.RecordingPresenter{}

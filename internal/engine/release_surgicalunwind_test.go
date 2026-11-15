@@ -313,7 +313,7 @@ func TestRelease_PublishFailsAfterPush_NeverUnwinds_Surgical(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedHappyGit(f, root, "main", "v0.0.1")
 	f.SeedSequence("gh",
-		ScriptedOut(""), // gh auth status (authenticated)
+		ScriptedOut(""), // gh auth status --active (authenticated)
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("gh: server error")}, // release create fails
 	)
 	rec := &presentertest.RecordingPresenter{}

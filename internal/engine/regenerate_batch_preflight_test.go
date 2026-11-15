@@ -88,7 +88,7 @@ func TestRegenerateAllValidated_InteractiveRelease_RunsGhAuthBeforeFirstDispatch
 
 	f := runner.NewFakeRunner()
 	seedReuseGit(f)                    // for-each-ref reuse body reads per version
-	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active (authenticated)
 	pub := newFakePublisher()
 	pub.seedExists(batchV1Tag, true, nil)
 	pub.seedExists(batchV2Tag, true, nil)
@@ -169,7 +169,7 @@ func TestRegenerateAllValidated_ResolvedRelease_RunsGhAuthGate(t *testing.T) {
 
 	f := runner.NewFakeRunner()
 	seedReuseGit(f)                    // for-each-ref reuse body reads per version
-	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active (authenticated)
 	pub := newFakePublisher()
 	pub.seedExists(batchV1Tag, true, nil)
 	pub.seedExists(batchV2Tag, true, nil)

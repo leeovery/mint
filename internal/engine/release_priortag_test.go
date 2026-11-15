@@ -118,7 +118,7 @@ func TestRelease_PriorTag_NormalAI_EndToEnd(t *testing.T) {
 	seedNormalAINotes(f)
 	f.Seed("claude", runner.Result{Stdout: aiBody}, nil) // the AI returns the distinctive body
 	seedRecordTagPush(f, root)
-	f.Seed("gh", runner.Result{}, nil) // gh auth status, then gh release create
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active, then gh release create
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions())
@@ -655,9 +655,9 @@ func TestRelease_PriorTag_PublishFailsAfterPush_WarnsOnly(t *testing.T) {
 	seedNormalAINotes(f)
 	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
 	seedRecordTagPush(f, root)
-	// gh auth status succeeds, but `gh release create` fails after the push.
+	// gh auth status --active succeeds, but `gh release create` fails after the push.
 	f.SeedSequence("gh",
-		ScriptedOut(""), // gh auth status (authenticated)
+		ScriptedOut(""), // gh auth status --active (authenticated)
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("gh: server error")},
 	)
 	rec := &presentertest.RecordingPresenter{}

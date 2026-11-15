@@ -41,7 +41,7 @@ func TestRelease_PostReleaseHook_RunsAfterProviderRelease(t *testing.T) {
 
 	f := runner.NewFakeRunner()
 	seedHappyGit(f, root, "main", "v0.0.1")
-	f.Seed("gh", runner.Result{}, nil) // gh auth status, then gh release create
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active, then gh release create
 	f.Seed("sh", runner.Result{}, nil) // post_release hook exits zero
 	rec := &presentertest.RecordingPresenter{}
 

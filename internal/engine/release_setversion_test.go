@@ -171,7 +171,7 @@ func TestRelease_SetVersion_GreaterThanLatest_BecomesNext(t *testing.T) {
 		ScriptedOut(""),            // tag -a v2.0.0 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v2.0.0
 	)
-	f.Seed("gh", runner.Result{}, nil) // gh auth status, then gh release create
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active, then gh release create
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), setVersionOptions("2.0.0"))

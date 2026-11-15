@@ -503,7 +503,7 @@ func TestRegenerateRun_InteractiveRelease_RunsGhAuthBeforeProviderWrite(t *testi
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{}, nil)
-	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active (authenticated)
 	pub := newFakePublisher()
 	pub.seedExists(regenRunTag, true, nil)
 	// Snapshot whether gh-auth had run at the moment the provider write dispatches.
@@ -619,7 +619,7 @@ func TestRegenerateRun_ResolvedRelease_RunsGhAuthGate(t *testing.T) {
 
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
-	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active (authenticated)
 	pub := newFakePublisher()
 	pub.seedExists(regenRunTag, true, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}

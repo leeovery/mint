@@ -97,7 +97,7 @@ func TestRelease_PreTagHook_DirtyTree_CommitsArtifactsSeparately(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedPreTagDirty(f, root, "main", "v0.0.1")
 	f.Seed("sh", runner.Result{}, nil) // pre_tag hook exits zero
-	f.Seed("gh", runner.Result{}, nil) // gh auth status, then gh release create
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active, then gh release create
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
