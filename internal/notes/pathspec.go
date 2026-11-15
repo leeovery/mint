@@ -3,8 +3,21 @@ package notes
 import (
 	pathpkg "path"
 	"regexp"
+	"slices"
 	"strings"
 )
+
+// Unmatched is those of specs, pathspecs in diff_exclude's form, that match none of
+// paths, in specs' order, as git would match each to a path.
+func Unmatched(specs, paths []string) []string {
+	var unmatched []string
+	for _, spec := range specs {
+		if !slices.ContainsFunc(paths, pathspecMatcher(spec)) {
+			unmatched = append(unmatched, spec)
+		}
+	}
+	return unmatched
+}
 
 // pathspecMatches reports whether git matches path to spec, a pathspec without magic:
 // spec names path itself or a leading directory of it, or, holding a wildcard, matches
@@ -13,20 +26,30 @@ import (
 // spec is first normalised: "." and ".." segments and doubled slashes resolve, and a
 // spec naming the top of the repo matches every path.
 func pathspecMatches(spec, path string) bool {
+	return pathspecMatcher(spec)(path)
+}
+
+// pathspecMatcher is pathspecMatches for spec, its wildcard pattern compiled once, for
+// matching spec to many paths.
+func pathspecMatcher(spec string) func(path string) bool {
 	spec, everything := normalisePathspec(spec)
 	if everything {
-		return true
+		return func(string) bool { return true }
 	}
-	if rest, ok := strings.CutPrefix(path, spec); ok {
-		if rest == "" || strings.HasSuffix(spec, "/") || strings.HasPrefix(rest, "/") {
-			return true
+	var pattern *regexp.Regexp
+	if strings.ContainsAny(spec, `*?[\`) {
+		if p, ok := wildmatchPattern(spec); ok {
+			pattern = p
 		}
 	}
-	if !strings.ContainsAny(spec, `*?[\`) {
-		return false
+	return func(path string) bool {
+		if rest, ok := strings.CutPrefix(path, spec); ok {
+			if rest == "" || strings.HasSuffix(spec, "/") || strings.HasPrefix(rest, "/") {
+				return true
+			}
+		}
+		return pattern != nil && pattern.MatchString(path)
 	}
-	pattern, ok := wildmatchPattern(spec)
-	return ok && pattern.MatchString(path)
 }
 
 // normalisePathspec resolves spec lexically, keeping a trailing "/", and reports

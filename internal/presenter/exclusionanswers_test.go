@@ -68,6 +68,51 @@ func TestRecordingPresenter_ExclusionAnswersRecorded_RecordsItsPayload(t *testin
 
 var ignoredReleaseTableAnswers = presenter.ExclusionAnswers{Stage: "notes", File: ".mint.toml", Table: "[release]", Ignored: true}
 
+var (
+	droppedReleaseTableEntries = presenter.ExclusionAnswers{Stage: "notes", File: ".mint.toml", Table: "[release]",
+		Dropped: []string{".github/workflows/", ".goreleaser.yaml"}}
+	answeredAndDroppedReleaseTableEntries = presenter.ExclusionAnswers{Stage: "notes", File: ".mint.toml", Table: "[release]",
+		Answered: true, Dropped: []string{"old/"}}
+)
+
+// TestPlainPresenter_ExclusionAnswersRecorded_NamesTheEntriesTheEditDropped pins the
+// plain line for an edit that dropped entries matching no file: on its own, where no
+// pause was answered, and with the answers.
+func TestPlainPresenter_ExclusionAnswersRecorded_NamesTheEntriesTheEditDropped(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name    string
+		answers presenter.ExclusionAnswers
+		want    string
+	}{
+		{
+			name:    "dropped, nothing answered",
+			answers: droppedReleaseTableEntries,
+			want:    "notes: dropped .github/workflows/ and .goreleaser.yaml from .mint.toml's [release] table as they match no file, and committed\n",
+		},
+		{
+			name:    "answered and dropped",
+			answers: answeredAndDroppedReleaseTableEntries,
+			want:    "notes: answers written to .mint.toml's [release] table, with old/ dropped from it as it matches no file, and committed\n",
+		},
+		{
+			name: "three dropped, git ignoring the file",
+			answers: presenter.ExclusionAnswers{Stage: "notes", File: ".mint.toml", Table: "[release]", Ignored: true,
+				Dropped: []string{"a/", "b/", "c/"}},
+			want: "notes: dropped a/, b/ and c/ from .mint.toml's [release] table as they match no file, and not committed, as git ignores .mint.toml\n",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			out, errBuf := drive(func(p *presenter.PlainPresenter) { p.ExclusionAnswersRecorded(tt.answers) })
+			if got := out.String(); got != tt.want {
+				t.Errorf("output =\n%s\nwant\n%s", got, tt.want)
+			}
+			assertBytePureASCIIStreams(t, "plain dropped entries narration", out, errBuf)
+		})
+	}
+}
+
 func TestPlainPresenter_ExclusionAnswersRecorded_ForAnIgnoredFile_SaysTheyWereNotCommitted(t *testing.T) {
 	t.Parallel()
 
@@ -102,6 +147,22 @@ func TestRailPresenter_ExclusionAnswersRecorded_HangsWhereTheAnswersWent(t *test
 			want: []string{
 				" │                written to .mint.toml's [release] table and not committed, as git ignores",
 				" │                .mint.toml",
+			},
+		},
+		{
+			name:    "dropped, nothing answered",
+			answers: droppedReleaseTableEntries,
+			want: []string{
+				" │                dropped .github/workflows/ and .goreleaser.yaml from .mint.toml's [release] table",
+				" │                as they match no file, and committed",
+			},
+		},
+		{
+			name:    "answered and dropped",
+			answers: answeredAndDroppedReleaseTableEntries,
+			want: []string{
+				" │                written to .mint.toml's [release] table, with old/ dropped from it as it matches",
+				" │                no file, and committed",
 			},
 		},
 	}

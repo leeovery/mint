@@ -20,8 +20,8 @@ func appended(t *testing.T, file *string, globs config.ReleaseGlobs) (string, st
 			t.Fatal(err)
 		}
 	}
-	if err := config.AppendReleaseGlobs(root, globs); err != nil {
-		t.Fatalf("AppendReleaseGlobs returned unexpected error: %v", err)
+	if err := config.EditReleaseGlobs(root, globs, config.ReleaseGlobs{}); err != nil {
+		t.Fatalf("EditReleaseGlobs returned unexpected error: %v", err)
 	}
 	got, err := os.ReadFile(path)
 	if err != nil {
@@ -41,7 +41,7 @@ func loaded(t *testing.T, root string) config.Config {
 	return cfg
 }
 
-func TestAppendReleaseGlobs_AppendsToKeysTheReleaseTableAlreadySets(t *testing.T) {
+func TestEditReleaseGlobs_AppendsToKeysTheReleaseTableAlreadySets(t *testing.T) {
 	t.Parallel()
 
 	root, got := appended(t, written("[release]\ndiff_exclude = [\"specs/\"]\ndiff_keep = [\"docs/api/\"]\n"),
@@ -60,7 +60,7 @@ func TestAppendReleaseGlobs_AppendsToKeysTheReleaseTableAlreadySets(t *testing.T
 	}
 }
 
-func TestAppendReleaseGlobs_AddsAMissingKeyToTheExistingReleaseTable(t *testing.T) {
+func TestEditReleaseGlobs_AddsAMissingKeyToTheExistingReleaseTable(t *testing.T) {
 	t.Parallel()
 
 	root, got := appended(t, written("[release]\n"+
@@ -92,7 +92,7 @@ func TestAppendReleaseGlobs_AddsAMissingKeyToTheExistingReleaseTable(t *testing.
 	}
 }
 
-func TestAppendReleaseGlobs_AddsAReleaseTableToAFileWithNone(t *testing.T) {
+func TestEditReleaseGlobs_AddsAReleaseTableToAFileWithNone(t *testing.T) {
 	t.Parallel()
 
 	file := "# Paths no AI diff should read.\n" +
@@ -120,7 +120,7 @@ func TestAppendReleaseGlobs_AddsAReleaseTableToAFileWithNone(t *testing.T) {
 	}
 }
 
-func TestAppendReleaseGlobs_WithNoFile_CreatesItHoldingOnlyTheReleaseTable(t *testing.T) {
+func TestEditReleaseGlobs_WithNoFile_CreatesItHoldingOnlyTheReleaseTable(t *testing.T) {
 	t.Parallel()
 
 	root, got := appended(t, nil, config.ReleaseGlobs{DiffKeep: []string{"test/fixtures/"}})
@@ -133,7 +133,7 @@ func TestAppendReleaseGlobs_WithNoFile_CreatesItHoldingOnlyTheReleaseTable(t *te
 	}
 }
 
-func TestAppendReleaseGlobs_LeavesEveryCommentBlankLineAndAlignmentInPlace(t *testing.T) {
+func TestEditReleaseGlobs_LeavesEveryCommentBlankLineAndAlignmentInPlace(t *testing.T) {
 	t.Parallel()
 
 	head := "# mint config for this repo\n" +
@@ -172,7 +172,7 @@ func TestAppendReleaseGlobs_LeavesEveryCommentBlankLineAndAlignmentInPlace(t *te
 	}
 }
 
-func TestAppendReleaseGlobs_TakesTheReleaseTableInTheFormItIsWritten(t *testing.T) {
+func TestEditReleaseGlobs_TakesTheReleaseTableInTheFormItIsWritten(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -219,7 +219,7 @@ func TestAppendReleaseGlobs_TakesTheReleaseTableInTheFormItIsWritten(t *testing.
 	}
 }
 
-func TestAppendReleaseGlobs_ShapesOfAnExistingList(t *testing.T) {
+func TestEditReleaseGlobs_ShapesOfAnExistingList(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -264,7 +264,7 @@ func TestAppendReleaseGlobs_ShapesOfAnExistingList(t *testing.T) {
 	}
 }
 
-func TestAppendReleaseGlobs_ShapesOfAReleaseTableWithoutTheKey(t *testing.T) {
+func TestEditReleaseGlobs_ShapesOfAReleaseTableWithoutTheKey(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -313,7 +313,7 @@ func TestAppendReleaseGlobs_ShapesOfAReleaseTableWithoutTheKey(t *testing.T) {
 	}
 }
 
-func TestAppendReleaseGlobs_GlobsLoadBackAsWritten(t *testing.T) {
+func TestEditReleaseGlobs_GlobsLoadBackAsWritten(t *testing.T) {
 	t.Parallel()
 
 	globs := []string{`odd "name"/`, `back\slash/`, "tab\there/é/"}
@@ -324,7 +324,7 @@ func TestAppendReleaseGlobs_GlobsLoadBackAsWritten(t *testing.T) {
 	}
 }
 
-func TestAppendReleaseGlobs_KeepsTheFilesMode(t *testing.T) {
+func TestEditReleaseGlobs_KeepsTheFilesMode(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -335,8 +335,8 @@ func TestAppendReleaseGlobs_KeepsTheFilesMode(t *testing.T) {
 	if err := os.Chmod(path, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := config.AppendReleaseGlobs(root, config.ReleaseGlobs{DiffKeep: []string{"x/"}}); err != nil {
-		t.Fatalf("AppendReleaseGlobs returned unexpected error: %v", err)
+	if err := config.EditReleaseGlobs(root, config.ReleaseGlobs{DiffKeep: []string{"x/"}}, config.ReleaseGlobs{}); err != nil {
+		t.Fatalf("EditReleaseGlobs returned unexpected error: %v", err)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -347,7 +347,7 @@ func TestAppendReleaseGlobs_KeepsTheFilesMode(t *testing.T) {
 	}
 }
 
-func TestAppendReleaseGlobs_AFileThatDoesNotParse_IsAnErrorAndLeftAsItWas(t *testing.T) {
+func TestEditReleaseGlobs_AFileThatDoesNotParse_IsAnErrorAndLeftAsItWas(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -357,8 +357,8 @@ func TestAppendReleaseGlobs_AFileThatDoesNotParse_IsAnErrorAndLeftAsItWas(t *tes
 		t.Fatal(err)
 	}
 
-	if err := config.AppendReleaseGlobs(root, config.ReleaseGlobs{DiffKeep: []string{"x/"}}); err == nil {
-		t.Fatal("AppendReleaseGlobs returned no error")
+	if err := config.EditReleaseGlobs(root, config.ReleaseGlobs{DiffKeep: []string{"x/"}}, config.ReleaseGlobs{}); err == nil {
+		t.Fatal("EditReleaseGlobs returned no error")
 	}
 	if got, _ := os.ReadFile(path); string(got) != broken {
 		t.Errorf(".mint.toml =\n%s\nwant it left as it was", got)

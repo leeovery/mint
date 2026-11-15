@@ -98,6 +98,7 @@ func newAutostashedRelease(t *testing.T, rec *presentertest.RecordingPresenter, 
 	root := t.TempDir()
 	writeConfig(t, root, edit)
 	f := runner.NewFakeRunner()
+	seedTrees(f, priorTagTree...)
 	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),          // rev-parse --show-toplevel

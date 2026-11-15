@@ -237,8 +237,13 @@ func (p *PlainPresenter) ExclusionSuggestions(s ExclusionSuggestions) {
 	}
 }
 
-// ExclusionAnswersRecorded prints, as its own line, where the answers were recorded.
+// ExclusionAnswersRecorded prints, as its own line, where the answers were recorded
+// and which entries the edit dropped.
 func (p *PlainPresenter) ExclusionAnswersRecorded(a ExclusionAnswers) {
+	if a.droppedOnly() {
+		p.writef("%s: %s\n", a.Stage, exclusionAnswersText(a))
+		return
+	}
 	p.writef("%s: answers %s\n", a.Stage, exclusionAnswersText(a))
 }
 
