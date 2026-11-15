@@ -209,8 +209,9 @@ func lineEquals(lines []string, marker string) bool {
 }
 
 // TestGuide_MentionsReleaseShimRole proves the pipeline section carries the
-// one-line release-shim role mention: what ./release is and that mint init
-// creates it, so the agent's picture of the release pipeline is complete.
+// release shim's role: what ./release is, that mint init creates it, and that
+// it is then the project's, the place for a step that must ask in the terminal
+// before mint starts, since hooks have no terminal to ask on.
 func TestGuide_MentionsReleaseShimRole(t *testing.T) {
 	t.Parallel()
 
@@ -221,6 +222,12 @@ func TestGuide_MentionsReleaseShimRole(t *testing.T) {
 	}
 	if !strings.Contains(body, "mint init") {
 		t.Error("guide must say mint init creates the release shim")
+	}
+	if !strings.Contains(body, "it is then the project's") {
+		t.Error("guide must say the release shim is the project's once mint init writes it")
+	}
+	if !strings.Contains(body, "hooks run\nwith no terminal to ask on") {
+		t.Error("guide must say a step that asks in the terminal goes in the shim, as hooks have no terminal")
 	}
 }
 

@@ -1,0 +1,300 @@
+#!/usr/bin/env bash
+#
+# Builds a release's binaries on this Mac before mint tags it: mint's pre_tag
+# runs it after the gates, with the version about to be tagged in
+# MINT_NEW_VERSION. It builds HEAD in a checkout of its own outside the
+# repository, for each of release-common's targets: darwin arm64 and amd64,
+# each signed with this Mac's Developer ID, and linux arm64 and amd64. It
+# sends the darwin binaries to Apple's notary service and waits on its
+# answer, for about an hour at most, then archives every binary and sums the
+# archives under the names the Homebrew formula reads, and keeps them, with
+# the commit built, in ~/Library/Caches/mint/release/<version>/, in place of
+# any other version's, for scripts/release-upload once the release is made.
+# Any failure exits non-zero, so mint stops before the tag. It runs each
+# darwin binary to check its version, so it needs an Apple-silicon Mac with
+# Rosetta; the linux ones, which can't run here, are checked by the target
+# their build settings name.
+#
+# By hand it builds the version given, as scripts/release-build 0.0.0-check,
+# which checks signing and notarising without releasing anything; a ref after
+# the version builds that ref, as scripts/release-upload builds a tag's tree.
+# Each run logs to ~/Library/Logs/mint/release-<version>.log.
+set -euo pipefail
+
+scripts=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+# shellcheck source=scripts/release-common
+. "$scripts/release-common"
+
+identifier=io.github.leeovery.mint
+identity="Developer ID Application"
+# notarytool's login is the Mac's, whatever it notarises, so its profile is
+# named for notarytool, not for mint.
+profile=notarytool
+# notarytool waits on Apple this many seconds at a time, this many times at
+# most, so mint, which gives a hook no time limit, waits about an hour.
+notary_wait=900
+notary_waits=4
+keychain_hint="The login keychain may be locked, as over SSH (security unlock-keychain), or macOS may be asking on the Mac's screen to let codesign use the key."
+work=
+
+usage() {
+	release_fail "Usage: scripts/release-build [<version> [<ref>]]"
+}
+
+check_platform() {
+	[[ $(uname -s) == Darwin ]] || release_fail "release-build signs with macOS's codesign and notarytool: run it on a Mac."
+}
+
+check_version() {
+	[[ -n $1 ]] || release_fail "No version to build: mint gives it as MINT_NEW_VERSION; by hand, give it, as scripts/release-build 0.0.0-check."
+	release_valid_version "$1" || release_fail "$1 isn't a version, as 1.2.3 or 1.2.3-check."
+}
+
+# check_head checks that HEAD is what mint is about to tag $1 on: tracked
+# files with nothing uncommitted, as untracked ones never reach a build of
+# the commit, and no tag $1 yet.
+check_head() {
+	[[ -z $(git status --porcelain --untracked-files=no) ]] || release_fail "The checkout has changes: release-build builds HEAD, so commit or remove them."
+	if git rev-parse -q --verify "refs/tags/$1" >/dev/null; then
+		release_fail "$1 is tagged already, so HEAD isn't what's to be tagged: build the tag, as scripts/release-build ${1#v} $1."
+	fi
+}
+
+# commit_of is the commit ref $1 names.
+commit_of() {
+	git rev-parse -q --verify "$1^{commit}" || release_fail "$1 names no commit to build."
+}
+
+check_identity() {
+	local count
+	count=$(security find-identity -v -p codesigning | grep -c "\"$identity: ") || true
+	case $count in
+	0) release_fail "The keychain has no valid $identity certificate to sign with: add it, with its private key, to the login keychain. $keychain_hint" ;;
+	1) ;;
+	*) release_fail "The keychain has $count valid $identity certificates, and codesign can't choose one: remove all but one." ;;
+	esac
+}
+
+check_profile() {
+	if ! xcrun notarytool history --keychain-profile "$profile" >/dev/null; then
+		release_fail "notarytool can't use the keychain profile $profile, as it says above. If the profile isn't made, make it with xcrun notarytool store-credentials $profile; a locked keychain, or no network, fails the same way."
+	fi
+}
+
+# target_os and target_arch are Go's os and arch of the target $1, as
+# darwin_arm64.
+target_os() {
+	echo "${1%%_*}"
+}
+
+target_arch() {
+	echo "${1#*_}"
+}
+
+# arch_flag is arch(1)'s name for Go's arch $1.
+arch_flag() {
+	case $1 in
+	amd64) echo x86_64 ;;
+	*) echo "$1" ;;
+	esac
+}
+
+# binary_of is where the binary for target $1 is built, under the folder of
+# its os, so the darwin ones are notarised alone.
+binary_of() {
+	echo "$work/bin/$(target_os "$1")/$1/mint"
+}
+
+# build builds version $2 from the checkout $1 for target $3 into $4.
+build() {
+	(cd "$1" && CGO_ENABLED=0 GOOS=$(target_os "$3") GOARCH=$(target_arch "$3") go build -trimpath \
+		-ldflags "-s -w -X mint/internal/buildinfo.Version=$2" -o "$4" ./cmd/mint)
+}
+
+sign() {
+	codesign --force --options runtime --timestamp --identifier "$identifier" --sign "$identity" "$1" ||
+		release_fail "codesign couldn't sign $1, as it says above. $keychain_hint"
+}
+
+# cant_run says why the binary $1, built for arch $2, doesn't run here, and
+# what puts that right, and stops.
+cant_run() {
+	if [[ $(sysctl -in hw.optional.arm64) != 1 ]]; then
+		release_fail "$1 doesn't run on this Intel Mac, so its version can't be checked: a release needs an Apple-silicon Mac with Rosetta."
+	fi
+	if [[ $2 == amd64 ]] && ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+		release_fail "$1 needs Rosetta to run, so its version can't be checked: install it with softwareupdate --install-rosetta --agree-to-license."
+	fi
+	release_fail "$1 doesn't run here, so its version can't be checked."
+}
+
+# check_signature checks that $1 is signed as $2 by a Developer ID, with the
+# hardened runtime.
+check_signature() {
+	local details
+	codesign --verify --strict "$1" || release_fail "$1's signature doesn't verify."
+	details=$(codesign --display --verbose=2 "$1" 2>&1)
+	if ! grep -qx "Identifier=$2" <<<"$details" ||
+		! grep -q "^Authority=$identity: " <<<"$details" ||
+		! grep -q "^CodeDirectory .*(runtime)" <<<"$details"; then
+		echo "$details"
+		release_fail "$1 isn't signed as $2 by a $identity, with the hardened runtime."
+	fi
+}
+
+# check_darwin checks the signature of the darwin binary $1, built for arch
+# $2, and that it reports version $3.
+check_darwin() {
+	local reported
+	check_signature "$1" "$identifier"
+	reported=$(arch "-$(arch_flag "$2")" "$1" --version --plain) || cant_run "$1" "$2"
+	[[ $reported == "$3" ]] || release_fail "$1 reports version \"$reported\", not $3."
+}
+
+# check_target checks, for a binary that can't run here, that $1 was built
+# for os $2 and arch $3, as go version -m reads its build settings. Its
+# version isn't among them, as -trimpath leaves -ldflags out; build stamps it
+# with the line each darwin binary was run to check.
+check_target() {
+	local settings
+	settings=$(go version -m "$1") || release_fail "go version -m can't read $1's build settings, as it says above."
+	if ! grep -qx $'\tbuild\tGOOS='"$2" <<<"$settings" ||
+		! grep -qx $'\tbuild\tGOARCH='"$3" <<<"$settings"; then
+		echo "$settings"
+		release_fail "$1 isn't built for $2 $3, as its build settings above say."
+	fi
+}
+
+# field is the field $1 of notarytool's JSON answer $2; nothing when it has
+# none.
+field() {
+	plutil -extract "$1" raw -o - - <<<"$2" 2>/dev/null || true
+}
+
+# notarise sends the folder $1 to Apple's notary service, zipped as $2, and
+# waits on its answer.
+notarise() {
+	local result id status="In Progress" round started elapsed
+	ditto -c -k --keepParent "$1" "$2"
+	echo "Sending the darwin binaries to Apple's notary service…"
+	result=$(xcrun notarytool submit "$2" --keychain-profile "$profile" --no-wait --output-format json || true)
+	id=$(field id "$result")
+	if [[ -z $id ]]; then
+		echo "$result"
+		release_fail "notarytool gave no submission id, as its output above says: xcrun notarytool history --keychain-profile $profile shows what Apple has."
+	fi
+	local again="xcrun notarytool wait $id --keychain-profile $profile says when Apple has answered, and mint can then be run again."
+	for ((round = 1; round <= notary_waits; round++)); do
+		echo "Submission $id: waiting on Apple's answer…"
+		started=$(release_now)
+		result=$(xcrun notarytool wait "$id" --keychain-profile "$profile" --timeout "$notary_wait" --output-format json || true)
+		elapsed=$(($(release_now) - started))
+		status=$(field status "$result")
+		# A wait that ran its time ends with no answer, or in progress; one
+		# with no answer well before then failed, as on a locked keychain or
+		# with no network, and waiting again would only fail again.
+		if [[ -z $status ]] && ((elapsed < notary_wait - 60)); then
+			echo "$result"
+			release_fail "notarytool's wait on submission $id failed after $elapsed seconds, as it says above: $again"
+		fi
+		status=${status:-In Progress}
+		[[ $status == "In Progress" ]] || break
+	done
+	echo "Submission $id: $status"
+	if [[ $status == "In Progress" ]]; then
+		release_fail "Apple hasn't answered submission $id in about an hour: $again"
+	fi
+	if [[ $status != Accepted ]]; then
+		xcrun notarytool log "$id" --keychain-profile "$profile" || true
+		release_fail "Apple's notary service refused what was built, as its log above says."
+	fi
+}
+
+# archive archives the binary $1 alone, named mint, into $2.
+archive() {
+	COPYFILE_DISABLE=1 tar --create --gzip --file "$2" --format ustar \
+		--no-mac-metadata --no-xattrs --no-acls --no-fflags \
+		--uid 0 --gid 0 --uname root --gname wheel \
+		--directory "$(dirname "$1")" mint
+}
+
+# sum writes the checksums file of version $1's archives in the folder $2.
+sum() {
+	local names=() target
+	for target in "${release_targets[@]}"; do
+		names+=("$(release_archive "$1" "$target")")
+	done
+	(cd "$2" && shasum -a 256 "${names[@]}" | LC_ALL=C sort -k 2) >"$2/$(release_checksums "$1")"
+}
+
+# keep keeps the folder $1 as version $2's, in place of what's kept for any
+# version: one release is made at a time, and an upload of another that
+# finds nothing kept builds it again from its tag.
+keep() {
+	local kept
+	kept=$(release_kept "$2")
+	rm -rf "$(dirname "$kept")"
+	mkdir -p "$(dirname "$kept")"
+	mv "$1" "$kept"
+	echo "Kept in $kept:"
+	ls -l "$kept"
+}
+
+# clean_up removes the checkout built from, and the rest of $work.
+clean_up() {
+	git worktree remove --force "$work/tree" 2>/dev/null || true
+	rm -rf "$work"
+}
+
+main() {
+	[[ $# -le 2 ]] || usage
+	check_platform
+	local version ref=${2:-} tag
+	if [[ $# -ge 1 ]]; then
+		version=$1
+		tag=v$version
+	else
+		version=${MINT_NEW_VERSION:-}
+		tag=${MINT_VERSION_TAG:-v$version}
+	fi
+	check_version "$version"
+	cd "$scripts/.."
+	release_log release-build "$version"
+	if [[ -z $ref ]]; then
+		check_head "$tag"
+		ref=HEAD
+	fi
+	local commit
+	commit=$(commit_of "$ref")
+	check_identity
+	check_profile
+
+	work=$(mktemp -d)
+	trap clean_up EXIT
+	git worktree add --quiet --detach "$work/tree" "$commit"
+	echo "Building mint $version from $commit"
+
+	local target bin out=$work/out
+	mkdir "$out"
+	for target in "${release_targets[@]}"; do
+		bin=$(binary_of "$target")
+		build "$work/tree" "$version" "$target" "$bin"
+		if [[ $(target_os "$target") == darwin ]]; then
+			sign "$bin"
+			check_darwin "$bin" "$(target_arch "$target")" "$version"
+		else
+			check_target "$bin" "$(target_os "$target")" "$(target_arch "$target")"
+		fi
+	done
+	notarise "$work/bin/darwin" "$work/notarise.zip"
+	for target in "${release_targets[@]}"; do
+		archive "$(binary_of "$target")" "$out/$(release_archive "$version" "$target")"
+	done
+	sum "$version" "$out"
+	echo "$commit" >"$out/commit"
+	keep "$out" "$version"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+	main "$@"
+fi
