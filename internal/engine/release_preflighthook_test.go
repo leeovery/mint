@@ -74,7 +74,7 @@ func TestRelease_PreflightHook_RunsAfterGatesBeforeMutation(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedHappyGit(f, root, "main", "v0.0.1")
 	f.Seed("sh", runner.Result{}, nil) // preflight hook exits zero
-	f.Seed("gh", runner.Result{}, nil) // gh auth status, then gh release create
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active, then gh release create
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())

@@ -62,7 +62,7 @@ func TestRelease_AnyBranch_OffBranch_SkipsGateAndProceeds(t *testing.T) {
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
 	seedAnyBranchHappyGit(f, root, "main", "v0.0.1")
-	f.Seed("gh", runner.Result{}, nil) // gh auth status, then gh release create
+	f.Seed("gh", runner.Result{}, nil) // gh auth status --active, then gh release create
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), anyBranchOptions())

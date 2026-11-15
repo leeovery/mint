@@ -262,8 +262,12 @@ func CheckTagFreeRemote(ctx context.Context, r runner.CommandRunner, tag string)
 // it. The orchestrator (a separate task) owns this sequencing; this gate only
 // provides the check.
 //
-// The probe is `gh auth status`, which exits zero when authenticated and non-zero
-// when not. The two failure conditions are deliberately distinguished:
+// The probe is `gh auth status --active`, which exits zero when the account gh
+// will use is signed in and non-zero when not. `--active` is load-bearing: a bare
+// `gh auth status` checks every login gh knows of and fails if ANY one does, so an
+// inactive login gh never uses (an old keychain login a terminal over SSH can't
+// unlock, beside a working GH_TOKEN) would stop a release whose sign-in is fine.
+// The two failure conditions are deliberately distinguished:
 //
 //   - gh not installed: the runner reports ErrCommandNotFound. This is a missing
 //     prerequisite, surfaced as a *GateError naming "gh not installed".
@@ -275,7 +279,7 @@ func CheckTagFreeRemote(ctx context.Context, r runner.CommandRunner, tag string)
 // A cancel (context.Canceled) is neither: it surfaces wrapped, so the run reads as
 // interrupted rather than advising a sign-in nothing showed was missing.
 func CheckGhAuth(ctx context.Context, r runner.CommandRunner) error {
-	_, err := r.Run(ctx, "gh", "auth", "status")
+	_, err := r.Run(ctx, "gh", "auth", "status", "--active")
 	switch {
 	case err == nil:
 		return nil

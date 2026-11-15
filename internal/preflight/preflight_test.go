@@ -698,9 +698,9 @@ func TestFetchThenRemoteGates_FetchPrecedesChecks(t *testing.T) {
 func TestCheckGhAuth_InstalledAndAuthenticated_Passes(t *testing.T) {
 	t.Parallel()
 
-	// gh installed and authenticated: `gh auth status` exits zero. The gate passes
-	// and issues exactly that one probe — the conditional pre-tag gate that the
-	// orchestrator runs only when publishing.
+	// gh installed and authenticated: `gh auth status --active` exits zero. The
+	// gate passes and issues exactly that one probe — the conditional pre-tag gate
+	// that the orchestrator runs only when publishing.
 	r := runner.NewFakeRunner()
 	r.Seed("gh", runner.Result{Stdout: "github.com\n  ✓ Logged in to github.com\n"}, nil)
 
@@ -712,9 +712,41 @@ func TestCheckGhAuth_InstalledAndAuthenticated_Passes(t *testing.T) {
 	if len(invs) != 1 {
 		t.Fatalf("invocations = %d, want 1", len(invs))
 	}
-	if got := invs[0]; got.Name != "gh" ||
-		len(got.Args) != 2 || got.Args[0] != "auth" || got.Args[1] != "status" {
-		t.Errorf("invocation = %+v, want gh auth status", got)
+	if got := invs[0]; got.Name != "gh" || !slices.Equal(got.Args, []string{"auth", "status", "--active"}) {
+		t.Errorf("invocation = %+v, want gh auth status --active", got)
+	}
+}
+
+func TestCheckGhAuth_AFailingInactiveLogin_Passes(t *testing.T) {
+	t.Parallel()
+
+	// gh holds two logins: the active one (GH_TOKEN) works, and an inactive one in
+	// the macOS keychain fails because a terminal over SSH can't unlock it. A bare
+	// `gh auth status` checks every login and exits non-zero; the gate must probe
+	// only the login the release will use, so it passes.
+	r := runner.NewFakeRunner()
+	r.SeedCall("gh", []string{"auth", "status"}, runner.ScriptedCall{
+		Result: runner.Result{
+			Stderr: "github.com\n" +
+				"  ✓ Logged in to github.com account leeovery (GH_TOKEN)\n" +
+				"  - Active account: true\n\n" +
+				"  X Failed to log in to github.com account leeovery (default)\n" +
+				"  - Active account: false\n" +
+				"  - The token in default is invalid.\n",
+			ExitCode: 1,
+		},
+		Err: errExit,
+	})
+	r.SeedCall("gh", []string{"auth", "status", "--active"}, runner.ScriptedCall{
+		Result: runner.Result{
+			Stderr: "github.com\n" +
+				"  ✓ Logged in to github.com account leeovery (GH_TOKEN)\n" +
+				"  - Active account: true\n",
+		},
+	})
+
+	if err := preflight.CheckGhAuth(t.Context(), r); err != nil {
+		t.Fatalf("CheckGhAuth returned %v, want the gate to pass on the active login", err)
 	}
 }
 

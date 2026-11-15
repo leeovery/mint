@@ -80,7 +80,7 @@ func TestRelease_ProviderDetection_ResolvesGitHubAndPublishes(t *testing.T) {
 
 			f := runner.NewFakeRunner()
 			seedHappyGitRemote(f, root, "main", "v0.0.1", tt.remoteURL)
-			f.Seed("gh", runner.Result{}, nil) // gh auth status, then gh release create
+			f.Seed("gh", runner.Result{}, nil) // gh auth status --active, then gh release create
 			rec := &presentertest.RecordingPresenter{}
 
 			err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
@@ -107,7 +107,7 @@ func TestRelease_ProviderDetection_ResolvesGitHubAndPublishes(t *testing.T) {
 	}
 }
 
-// assertGhAuthBeforeTag asserts the `gh auth status` gate was invoked and that it
+// assertGhAuthBeforeTag asserts the `gh auth status --active` gate was invoked and that it
 // preceded `git tag -a` — the conditional gh gate still gates the resolved driver
 // before any tag is created.
 func assertGhAuthBeforeTag(t *testing.T, f *runner.FakeRunner) {
@@ -116,7 +116,7 @@ func assertGhAuthBeforeTag(t *testing.T, f *runner.FakeRunner) {
 	authAt, tagAt := -1, -1
 	for i, inv := range f.Invocations() {
 		switch commandLine(inv) {
-		case "gh auth status":
+		case "gh auth status --active":
 			if authAt == -1 {
 				authAt = i
 			}
