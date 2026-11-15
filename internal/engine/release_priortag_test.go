@@ -43,11 +43,32 @@ const aiBody = "TL;DR: the auth package landed and token refresh is fixed.\n\n" 
 // for priorTag..HEAD, driving the normal AI path (non-empty, non-whitespace).
 const priorTagDiff = "diff --git a/auth/login.go b/auth/login.go\n@@ -0,0 +1 @@\n+package auth\n"
 
+// priorTagTree is the repo's files at HEAD and at priorTag, as the answers commit's
+// ls-tree reads list them: a file under every path the tests' [release] lists name,
+// so no entry of theirs matches no file and the commit drops none. A test of the
+// drop seeds trees of its own (seedTrees).
+var priorTagTree = []string{
+	"auth/login.go", "src/export.go", "go.sum", "deps.lock", "web/app.min.js",
+	"specs/a.md", "tmp/scratch.txt", "dist/app.js", "skills/release/knowledge.cjs",
+	"docs/api.md", "docs/api/index.md", "docs/design/a.md", "docs/design/b.md",
+	"docs/design/spec.md", "docs/old/guide.md", "test/fixtures/x.json",
+}
+
+// seedTrees scripts the answers commit's ls-tree reads of HEAD and priorTag to list
+// paths, answering those exact calls ahead of any sequence.
+func seedTrees(f *runner.FakeRunner, paths ...string) {
+	listing := ScriptedOut(strings.Join(paths, "\x00") + "\x00")
+	for _, rev := range []string{"HEAD", priorTag} {
+		f.SeedCall("git", []string{"ls-tree", "-r", "-z", "--name-only", "--full-tree", rev}, listing)
+	}
+}
+
 // seedPriorTagReadGates scripts the read-side git timeline for a prior-tag run up
 // to and including the pre-gate `git rev-parse HEAD` capture: the same shape as
 // the first-release read gates, but `git tag --list` returns priorTag so the run
 // is NOT a first release and the diff base is priorTag..HEAD.
 func seedPriorTagReadGates(f *runner.FakeRunner, root, releaseBranch string) {
+	seedTrees(f, priorTagTree...)
 	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),                    // rev-parse --show-toplevel

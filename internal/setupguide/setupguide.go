@@ -293,7 +293,9 @@ core:
   and [release].diff_keep in .mint.toml and committing .mint.toml alone as
   "chore(release): release-notes path answers for {tag}"; an unattended release
   only prints the suggestions. Keep the entries mint recorded: they are the
-  user's answers. The changelog and version file are then updated and committed,
+  user's answers. In that same commit mint itself drops a [release] entry once it
+  matches no file at HEAD or at the last tag; the shared and [commit] lists it
+  never touches. The changelog and version file are then updated and committed,
   before the tag.
 - tag + atomic push is the POINT OF NO RETURN (PONR): the annotated tag and the
   branch go up together in one ` + "`git push --atomic`" + `. Everything before it is

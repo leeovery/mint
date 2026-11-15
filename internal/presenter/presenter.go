@@ -709,22 +709,57 @@ type ExclusionSuggestions struct {
 }
 
 // ExclusionAnswers carries the ExclusionAnswersRecorded payload: stage's answers went
-// into Table of File, committed unless Ignored reports that git ignores File. Key
-// names the check's plan stage, which plain doesn't read.
+// into Table of File, committed unless Ignored reports that git ignores File, and
+// Dropped are the entries the same edit took out of Table's lists, as they match no
+// file. Answered reports whether the run answered any pause; with no Dropped the
+// line tells of answers whatever it says. Key names the check's plan stage, which
+// plain doesn't read.
 type ExclusionAnswers struct {
-	Stage   string
-	Key     string
-	File    string
-	Table   string
-	Ignored bool
+	Stage    string
+	Key      string
+	File     string
+	Table    string
+	Ignored  bool
+	Answered bool
+	Dropped  []string
+}
+
+// droppedOnly reports whether the edit took entries out and recorded no answers.
+func (a ExclusionAnswers) droppedOnly() bool {
+	return !a.Answered && len(a.Dropped) > 0
 }
 
 func exclusionAnswersText(a ExclusionAnswers) string {
-	written := "written to " + a.File + "'s " + a.Table + " table"
-	if a.Ignored {
-		return written + " and not committed, as git ignores " + a.File
+	table := a.File + "'s " + a.Table + " table"
+	var did string
+	switch {
+	case len(a.Dropped) == 0:
+		did = "written to " + table + " "
+	case a.Answered:
+		did = "written to " + table + ", with " + droppedEntries(a.Dropped) + " dropped from it as " + matchingNoFile(a.Dropped) + ", "
+	default:
+		did = "dropped " + droppedEntries(a.Dropped) + " from " + table + " as " + matchingNoFile(a.Dropped) + ", "
 	}
-	return written + " and committed"
+	if a.Ignored {
+		return did + "and not committed, as git ignores " + a.File
+	}
+	return did + "and committed"
+}
+
+// droppedEntries names entries in a list, the last after "and".
+func droppedEntries(entries []string) string {
+	last := len(entries) - 1
+	if last == 0 {
+		return entries[0]
+	}
+	return strings.Join(entries[:last], ", ") + " and " + entries[last]
+}
+
+func matchingNoFile(entries []string) string {
+	if len(entries) == 1 {
+		return "it matches no file"
+	}
+	return "they match no file"
 }
 
 // ExclusionSuggestion is one glob the exclusion check suggests leaving out, the AI's

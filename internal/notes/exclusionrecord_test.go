@@ -45,16 +45,49 @@ func TestExclusionCheck_HandsRecordEveryAnswerOnceTheLastPauseIsAnswered(t *test
 	}
 }
 
-func TestExclusionCheck_AnswerNone_RecordsNothing(t *testing.T) {
+// TestExclusionCheck_AskingNothing_HandsRecordNoAnswers pins that a check that asks
+// nothing still hands record the run's answers, none, once it is over: the recorder
+// may have its own to record (entries matching no file), whatever the check found.
+func TestExclusionCheck_AskingNothing_HandsRecordNoAnswers(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name string
+		body string
+		err  error
+		keep []string
+	}{
+		{name: "answered none", body: "none\n"},
+		{name: "unusable answer", body: "no globs here\n"},
+		{name: "failed call", err: errors.New("ai down")},
+		{name: "every path kept", keep: []string{"."}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			recorded := &recordedAnswers{}
+			check := notes.NewExclusionCheck(&recordingTransport{body: tt.body, err: tt.err}, tt.keep, nil).
+				WithPauses(&recordedPauses{}).
+				WithRecord(recorded.record)
+
+			if _, err := check.Check(t.Context(), sourceDiff+designDiff, config.DefaultMaxPromptBytes); err != nil {
+				t.Fatalf("Check returned unexpected error: %v", err)
+			}
+			if want := []notes.Answers{{}}; !slices.EqualFunc(recorded.calls, want, equalAnswers) {
+				t.Errorf("recorded %v, want one call with no answers", recorded.calls)
+			}
+		})
+	}
+}
+
+func TestExclusionCheck_ACancel_HandsRecordNothing(t *testing.T) {
 	t.Parallel()
 
 	recorded := &recordedAnswers{}
-	check := notes.NewExclusionCheck(&recordingTransport{body: "none\n"}, nil, nil).
+	check := notes.NewExclusionCheck(&recordingTransport{err: context.Canceled}, nil, nil).
 		WithPauses(&recordedPauses{}).
 		WithRecord(recorded.record)
 
-	if _, err := check.Check(t.Context(), sourceDiff+designDiff, config.DefaultMaxPromptBytes); err != nil {
-		t.Fatalf("Check returned unexpected error: %v", err)
+	if _, err := check.Check(t.Context(), sourceDiff+designDiff, config.DefaultMaxPromptBytes); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Check error = %v, want the cancel", err)
 	}
 	if len(recorded.calls) != 0 {
 		t.Errorf("recorded %v, want nothing", recorded.calls)

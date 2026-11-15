@@ -15,7 +15,8 @@ import (
 	"mint/internal/fsutil"
 )
 
-// ReleaseGlobs are pathspec globs to append to the [release] table's lists.
+// ReleaseGlobs are pathspec globs for the [release] table's lists: to append, or to
+// drop.
 type ReleaseGlobs struct {
 	DiffExclude []string
 	DiffKeep    []string
@@ -27,20 +28,28 @@ const (
 	diffKeepKey    = "diff_keep"
 )
 
-// AppendReleaseGlobs appends globs to root's .mint.toml [release] lists, after any
-// entries they hold, adding the key, the [release] table, or the file holding only that
-// table, as needed. A [release] table written inline or with dotted keys takes them in
-// that form. Every other byte of the file is left as written. A file that does not
-// parse as TOML is an error and is left untouched.
-func AppendReleaseGlobs(root string, globs ReleaseGlobs) error {
+// EditReleaseGlobs edits root's .mint.toml [release] lists, mint's one write to the
+// file: it drops from each list every entry drop names for it (dropReleaseGlobs),
+// then appends add's globs after any entries the lists hold, adding the key, the
+// [release] table, or the file holding only that table, as needed. A [release] table
+// written inline or with dotted keys takes them in that form. Every other byte of the
+// file is left as written, and a file the edit leaves as it was is not written. A
+// file that does not parse as TOML is an error and is left untouched.
+func EditReleaseGlobs(root string, add, drop ReleaseGlobs) error {
 	path := filepath.Join(root, FileName)
 	src, mode, err := readForAppend(path)
 	if err != nil {
 		return err
 	}
-	out, err := appendReleaseGlobs(src, globs)
+	out, err := dropReleaseGlobs(src, drop)
+	if err == nil {
+		out, err = appendReleaseGlobs(out, add)
+	}
 	if err != nil {
 		return fmt.Errorf("parsing %s: %w", FileName, err)
+	}
+	if bytes.Equal(out, src) {
+		return nil
 	}
 	if err := fsutil.WriteFile(path, out, mode); err != nil {
 		return fmt.Errorf("writing %s: %w", FileName, err)
@@ -112,13 +121,22 @@ type releaseLayout struct {
 	indent string
 }
 
-// list is where a key's value sits: an array's closing bracket and its last entry.
+// list is where a key's value sits: an array's closing bracket, its entries and its
+// last entry.
 type list struct {
 	key     string
 	array   bool
 	closing int
+	entries []entry
 	// lastStart and lastEnd bound the last entry; lastEnd is 0 for an empty array.
 	lastStart, lastEnd int
+}
+
+// entry is an array entry: where it sits, and its value where it is a string.
+type entry struct {
+	start, end int
+	value      string
+	isString   bool
 }
 
 // edit inserts text at offset.
@@ -243,7 +261,9 @@ func rangeEnd(n *unstable.Node) int {
 func listOf(key string, kv *unstable.Node) list {
 	l := list{key: key, array: kv.Value().Kind == unstable.Array, closing: rangeEnd(kv) - 1}
 	for it := kv.Value().Children(); it.Next(); {
-		l.lastStart, l.lastEnd = int(it.Node().Raw.Offset), rangeEnd(it.Node())
+		n := it.Node()
+		l.lastStart, l.lastEnd = int(n.Raw.Offset), rangeEnd(n)
+		l.entries = append(l.entries, entry{start: l.lastStart, end: l.lastEnd, value: string(n.Data), isString: n.Kind == unstable.String})
 	}
 	return l
 }

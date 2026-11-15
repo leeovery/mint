@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -1151,7 +1152,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	selecting := chunkNotes.sinks(stage).wire(generator)
 	selector := notes.NewSelector(selecting, assembler, deps.Runner, root).
 		WithFallbackNotice(stage.fellBack).
-		WithExclusionCheck(exclusionCheck(deps, cfg, opts, transport, stage, answers))
+		WithExclusionCheck(exclusionCheck(deps, cfg, state.LastTag, opts, transport, stage, answers))
 
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
 	// diff the exclusions and the check's Exclude answers leave + resolved prompt/context
@@ -1189,14 +1190,15 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 }
 
 // exclusionCheck is the release's exclusion check, pausing on its suggestions on an
-// attended real run and recording the answers through answers, handing them to stage
-// to print on an unattended one, and on an attended dry run showing each where its
-// pause would be, unanswered.
-func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, transport notes.Transport, stage *notesStage, answers *answersCommit) *notes.ExclusionCheck {
+// attended real run and recording the answers through answers, with the [release]
+// entries that match no file since lastTag dropped, handing them to stage to print on
+// an unattended one, and on an attended dry run showing each where its pause would
+// be, unanswered.
+func exclusionCheck(deps ReleaseDeps, cfg config.Config, lastTag string, opts ReleaseOptions, transport notes.Transport, stage *notesStage, answers *answersCommit) *notes.ExclusionCheck {
 	check := notes.NewExclusionCheck(transport, cfg.Release.DiffKeep, stage)
 	switch {
 	case deps.asksAtTerminal(opts):
-		return check.WithPauses(exclusionPauses{p: deps.Presenter}).WithRecord(answers.record(deps))
+		return check.WithPauses(exclusionPauses{p: deps.Presenter}).WithRecord(answers.record(deps, cfg.Release, lastTag))
 	case !deps.attended():
 		return check.WithReport(stage.suggested)
 	default:
@@ -1205,8 +1207,9 @@ func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, tr
 	}
 }
 
-// answersCommit records the exclusion check's answers in root's .mint.toml and
-// commits that file alone for tag's release, unless git ignores it; wrote reports
+// answersCommit records the exclusion check's answers in root's .mint.toml, drops the
+// [release] entries that match no file (dropped), and commits that file alone for
+// tag's release, unless git ignores it; wrote reports
 // that the write began, landed whether the commit was made, leftInPlace that git ignores the file so the write
 // stays whatever the run does, position is how many of mint's commits it brought the
 // run to, and edit is the write until a commit holds it or git is found to ignore it.
@@ -1214,6 +1217,7 @@ type answersCommit struct {
 	root, tag   string
 	keepOut     git.Exclusion
 	globs       config.ReleaseGlobs
+	dropped     config.ReleaseGlobs
 	wrote       bool
 	landed      bool
 	leftInPlace bool
@@ -1224,8 +1228,20 @@ type answersCommit struct {
 // releaseTable is the .mint.toml table the answers are written to.
 const releaseTable = "[release]"
 
-func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Answers) error {
+// record is the exclusion check's recorder: once the check is over, it finds the
+// entries of release's diff_exclude and diff_keep lists that match no file
+// (unmatchedEntries), and where the run answered a pause or found any, writes the
+// answers and drops those entries in one edit, commits it, and narrates it.
+func (a *answersCommit) record(deps ReleaseDeps, release config.Release, lastTag string) func(context.Context, notes.Answers) error {
 	return func(ctx context.Context, answers notes.Answers) error {
+		dropped, output, err := unmatchedEntries(ctx, deps.Runner, a.root, lastTag, release)
+		if err != nil {
+			return &answersRecordingError{step: "finding the " + releaseTable + " entries that match no file", err: err, output: output}
+		}
+		answered := len(answers.Exclude) > 0 || len(answers.Keep) > 0
+		if !answered && len(dropped.DiffExclude) == 0 && len(dropped.DiffKeep) == 0 {
+			return nil
+		}
 		const writing = "recording the exclusion answers"
 		if err := refuseUserChanges(ctx, deps.Mutator, a.root, config.FileName); err != nil {
 			return &answersRecordingError{step: writing, err: err, output: gitOutput(err)}
@@ -1235,6 +1251,7 @@ func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Ans
 			return &answersRecordingError{step: writing, err: err, output: err.Error()}
 		}
 		a.globs = config.ReleaseGlobs{DiffExclude: answers.Exclude, DiffKeep: answers.Keep}
+		a.dropped = dropped
 		a.wrote = true
 		if err := a.write(); err != nil {
 			return &answersRecordingError{step: writing, err: err, output: err.Error()}
@@ -1255,25 +1272,73 @@ func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Ans
 		}
 		a.leftInPlace = ignored
 		a.edit = nil
-		narrateAnswers(deps.Presenter, ignored)
+		narrateAnswers(deps.Presenter, answered, dropped, ignored)
 		return nil
 	}
 }
 
-func narrateAnswers(p presenter.Presenter, ignored bool) {
+// unmatchedEntries is those of release's diff_exclude and diff_keep entries that match
+// no file in HEAD's tree or in lastTag's: every path the release's diff holds is in
+// one or the other, so an entry matching neither excludes or keeps nothing in this
+// release, and no file a later one starts from. An entry kept for files that may come
+// back goes too, and the check asks about them again if they do. Where both lists are
+// empty it reads no tree. On a failed read it returns git's output with the error.
+func unmatchedEntries(ctx context.Context, r runner.CommandRunner, root, lastTag string, release config.Release) (config.ReleaseGlobs, string, error) {
+	if len(release.DiffExclude) == 0 && len(release.DiffKeep) == 0 {
+		return config.ReleaseGlobs{}, "", nil
+	}
+	seen := map[string]bool{}
+	var paths []string
+	for _, rev := range []string{"HEAD", lastTag} {
+		if rev == "" {
+			continue
+		}
+		res, err := r.RunInDir(ctx, root, nil, "git", "ls-tree", "-r", "-z", "--name-only", "--full-tree", rev)
+		if err != nil {
+			return config.ReleaseGlobs{}, failedGitOutput(res.Stderr, err), fmt.Errorf("listing the files in %s: %w", rev, err)
+		}
+		for path := range strings.SplitSeq(res.Stdout, "\x00") {
+			if path != "" && !seen[path] {
+				seen[path] = true
+				paths = append(paths, path)
+			}
+		}
+	}
+	return config.ReleaseGlobs{
+		DiffExclude: notes.Unmatched(release.DiffExclude, paths),
+		DiffKeep:    notes.Unmatched(release.DiffKeep, paths),
+	}, "", nil
+}
+
+// narrateAnswers says where the answers went, answered telling whether the run
+// answered any pause, and which [release] entries dropped took out, each named once.
+func narrateAnswers(p presenter.Presenter, answered bool, dropped config.ReleaseGlobs, ignored bool) {
 	p.SuspendSpinner()
 	p.ExclusionAnswersRecorded(presenter.ExclusionAnswers{
-		Stage:   "notes",
-		Key:     stageCheck,
-		File:    config.FileName,
-		Table:   releaseTable,
-		Ignored: ignored,
+		Stage:    "notes",
+		Key:      stageCheck,
+		File:     config.FileName,
+		Table:    releaseTable,
+		Ignored:  ignored,
+		Answered: answered,
+		Dropped:  eachOnce(slices.Concat(dropped.DiffExclude, dropped.DiffKeep)),
 	})
 	p.ResumeSpinner()
 }
 
+// eachOnce is entries without repeats, each where it first appears.
+func eachOnce(entries []string) []string {
+	var once []string
+	for _, e := range entries {
+		if !slices.Contains(once, e) {
+			once = append(once, e)
+		}
+	}
+	return once
+}
+
 func (a *answersCommit) write() error {
-	return config.AppendReleaseGlobs(a.root, a.globs)
+	return config.EditReleaseGlobs(a.root, a.globs, a.dropped)
 }
 
 func (a *answersCommit) commit(ctx context.Context, m *git.Mutator) error {

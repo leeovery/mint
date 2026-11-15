@@ -18,8 +18,8 @@ import (
 // its answer was unreadable, and with no call at all when the call would not fit under
 // the cap. output is the AI's captured output, or its unreadable answer, verbatim but
 // for trailing whitespace, and empty when there is none. CheckDone is told, once a
-// call has started, that the check is over and the notes go on: after the call where
-// the check asks nothing, after the last pause's answers are recorded where it does;
+// call has started, that the check is over and the notes go on: after the call and
+// any pauses and, where a recorder is wired, after it records the run's answers;
 // never where Check returns an error.
 type CheckNarration interface {
 	Checking()
@@ -136,9 +136,13 @@ func (c *ExclusionCheck) WithReport(report func(Suggestion, Matches)) *Exclusion
 	return &d
 }
 
-// WithRecord returns a copy of c that, once its last pause is answered, hands record
-// the run's answers, unless no pause was answered; c itself is unchanged. An error
-// record returns is Check's.
+// WithRecord returns a copy of c that, once the check is over and before it is done,
+// hands record the run's answers: those of its pauses once the last is answered, and
+// none where it asked nothing, as where the keep list covers every path, the call
+// failed or found nothing to leave out. A cancel hands it nothing. record is told even
+// with no answers, as what it records may be its own, such as the keep and exclude
+// entries that match no file. c itself is unchanged. An error record returns is
+// Check's.
 func (c *ExclusionCheck) WithRecord(record func(context.Context, Answers) error) *ExclusionCheck {
 	d := *c
 	d.record = record
@@ -160,24 +164,37 @@ func (c *ExclusionCheck) Check(ctx context.Context, diff string, maxPromptBytes 
 	paths := slices.DeleteFunc(slices.Clone(files), func(p checkedPath) bool { return coveredBy(c.keep, p.path) })
 	if len(paths) == 0 {
 		c.narration.AllKept()
-		return nil, nil
+		return nil, c.recordAnswers(ctx, runAnswers{})
 	}
 	prompt := composeCheckPrompt(checkList(paths, maxPromptBytes))
 	if len(prompt) > maxPromptBytes {
 		c.narration.CheckFailed("")
-		return nil, nil
+		return nil, c.recordAnswers(ctx, runAnswers{})
 	}
 	c.narration.Checking()
-	excluded, err := c.call(ctx, prompt, paths, files)
+	decided, err := c.call(ctx, prompt, paths, files)
 	if err == nil {
-		c.narration.CheckDone()
+		err = c.recordAnswers(ctx, decided)
 	}
-	return excluded, err
+	if err != nil {
+		return nil, err
+	}
+	c.narration.CheckDone()
+	return decided.excluded, nil
+}
+
+// recordAnswers hands record, where one is wired, the run's answers, decided.
+func (c *ExclusionCheck) recordAnswers(ctx context.Context, decided runAnswers) error {
+	if c.record == nil {
+		return nil
+	}
+	return c.record(ctx, Answers{Exclude: decided.excluded, Keep: decided.kept})
 }
 
 // call makes the check's call with prompt over paths, of files the notes diff's
-// changed paths, and pauses on or reports what its answer suggests.
-func (c *ExclusionCheck) call(ctx context.Context, prompt string, paths, files []checkedPath) ([]string, error) {
+// changed paths, and pauses on or reports what its answer suggests, returning the
+// pauses' answers.
+func (c *ExclusionCheck) call(ctx context.Context, prompt string, paths, files []checkedPath) (runAnswers, error) {
 	answer, err := c.transport.Generate(ctx, prompt)
 	outcome, suggestions := checkOutcome(answer, err, paths)
 	if c.pauses != nil {
@@ -186,15 +203,15 @@ func (c *ExclusionCheck) call(ctx context.Context, prompt string, paths, files [
 	c.narration.Checked(CheckResult{Outcome: outcome, Flagged: len(suggestions), Asked: c.pauses != nil})
 	switch {
 	case errors.Is(err, context.Canceled):
-		return nil, err
+		return runAnswers{}, err
 	case err != nil:
 		c.narration.CheckFailed(failureOutput(err))
-		return nil, nil
+		return runAnswers{}, nil
 	case outcome == CheckUnusable:
 		c.narration.CheckFailed(strings.TrimRightFunc(answer, unicode.IsSpace))
-		return nil, nil
+		return runAnswers{}, nil
 	case outcome == CheckClear:
-		return nil, nil
+		return runAnswers{}, nil
 	}
 	switch {
 	case c.pauses != nil:
@@ -202,7 +219,7 @@ func (c *ExclusionCheck) call(ctx context.Context, prompt string, paths, files [
 	case c.report != nil:
 		c.reportAll(suggestions, files)
 	}
-	return nil, nil
+	return runAnswers{}, nil
 }
 
 // checkOutcome is how the check's call over paths ended, answer or err, with the
@@ -253,25 +270,21 @@ func (c *ExclusionCheck) undecided(suggestions []Suggestion, files []checkedPath
 	return asked
 }
 
-// pause asks about each of suggestions, those undecided, in order.
-func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion, files []checkedPath) ([]string, error) {
+// pause asks about each of suggestions, those undecided, in order, and returns the
+// answers.
+func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion, files []checkedPath) (runAnswers, error) {
 	decided := runAnswers{keep: slices.Clip(c.keep)}
 	for _, s := range suggestions {
 		answer, err := c.pauses.Pause(ctx, s, decided.matches(s.Glob, files))
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
+			return runAnswers{}, ctxErr
 		}
 		if err != nil {
-			return nil, err
+			return runAnswers{}, err
 		}
 		decided.record(s.Glob, answer)
 	}
-	if c.record != nil && decided.answered() {
-		if err := c.record(ctx, Answers{Exclude: decided.excluded, Keep: decided.kept}); err != nil {
-			return nil, err
-		}
-	}
-	return decided.excluded, nil
+	return decided, nil
 }
 
 // runAnswers is the keep list grown by this run's Keep answers, and the globs of its
@@ -289,10 +302,6 @@ func (a *runAnswers) record(glob string, answer Answer) {
 	}
 	a.keep = append(a.keep, glob)
 	a.kept = append(a.kept, glob)
-}
-
-func (a *runAnswers) answered() bool {
-	return len(a.excluded) > 0 || len(a.kept) > 0
 }
 
 func (a *runAnswers) matches(glob string, files []checkedPath) Matches {
