@@ -1,0 +1,61 @@
+# shellcheck shell=bash
+#
+# What scripts/release-build and scripts/release-upload, which source it,
+# agree on: the targets built, the names the Homebrew formula reads, where a
+# build is kept and where each run logs.
+
+# shellcheck disable=SC2034 # read by the scripts that source this
+# The targets a release ships, as <os>_<arch>. The darwin ones are signed and
+# notarised and are what the Homebrew formula installs; the linux ones are
+# only downloads from the release.
+release_targets=(darwin_arm64 darwin_amd64 linux_arm64 linux_amd64)
+
+# release_archive names the archive of version $1's binary for target $2, as
+# darwin_arm64.
+release_archive() {
+	printf 'mint_%s_%s.tar.gz\n' "$1" "$2"
+}
+
+# release_checksums names the checksums file of version $1.
+release_checksums() {
+	printf 'mint_%s_checksums.txt\n' "$1"
+}
+
+# release_kept is the folder version $1's build is kept in.
+release_kept() {
+	printf '%s/Library/Caches/mint/release/%s\n' "$HOME" "$1"
+}
+
+# release_valid_version reports whether $1 is a version as mint tags one,
+# without its v.
+release_valid_version() {
+	[[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+}
+
+# release_prerelease reports whether version $1 is a pre-release, as
+# 1.2.3-rc.1.
+release_prerelease() {
+	[[ $1 == *-* ]]
+}
+
+# release_now is the seconds the script has run, by which its waits are
+# bounded.
+release_now() {
+	echo "$SECONDS"
+}
+
+# release_fail says why the run stops, and stops it.
+release_fail() {
+	echo "$1" >&2
+	exit 1
+}
+
+# release_log sends everything the script $1 prints for version $2 to stderr
+# and to its log, as mint shows nothing of a hook that succeeds and only the
+# stderr of one that fails.
+release_log() {
+	local log=$HOME/Library/Logs/mint/release-$2.log
+	mkdir -p "$(dirname "$log")"
+	exec > >(tee -a "$log" >&2) 2>&1
+	echo "== $1 $2, $(date), logged to $log"
+}

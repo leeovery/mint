@@ -256,7 +256,8 @@ func procedure() string {
 }
 
 // pipelineSection carries mint's pipeline/stage model — the ordered stages and
-// which hook fires where — plus the one-line release-shim role mention. This
+// which hook fires where — plus the release shim's role, and that a step needing
+// the terminal before mint starts goes in the shim, not a hook. This
 // content is drift-sensitive: it must match the engine. Hook-detection guidance
 // (best-fit mapping, never silently skip, pre_tag-as-array widens what fits) is
 // woven in here because it depends on the model.
@@ -313,7 +314,11 @@ hooks.
 The release shim: ` + "`./release`" + ` is the small executable wrapper mint init drops
 at the repo root alongside .mint.toml; it invokes mint release so the project
 keeps a familiar ./release entry point. mint init creates it — you do not write
-it by hand.
+it by hand — and it is then the project's: mint never reads it again, and mint
+init leaves it alone unless run with --force. A step that must ask in the user's
+terminal before mint starts, such as unlocking the keychain a pre_tag signing
+step needs, goes in the shim above its exec line, never in a hook: hooks run
+with no terminal to ask on.
 
 Mapping an existing release process onto these hooks is the centrepiece of
 setup:
