@@ -1,0 +1,8 @@
+AGENT: duplication
+FINDINGS:
+- FINDING: Inline pretty-presenter-with-width construction idiom repeated in width tests
+  SEVERITY: low
+  FILES: pretty_width_test.go:38, pretty_width_test.go:59, pretty_width_test.go:118, pretty_width_test.go:148, pretty_width_test.go:174
+  DESCRIPTION: Five test functions in pretty_width_test.go open a buffer and build the presenter inline with the same idiom — `out := &bytes.Buffer{}; p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(N)` — rather than routing through a shared construction helper the way the rest of the package's pretty tests do. The package already establishes the "centralise presenter construction in a helper" convention everywhere else, so these inline sites are a small drift from it. This is a 2-line idiom, well below the Rule-of-Three-block threshold, so it is borderline and flagged only for completeness — not a high-impact extraction.
+  RECOMMENDATION: Optionally add a small `drivePrettyWidth(width int, fn func(p *presenter.PrettyPresenter)) *bytes.Buffer` helper and route the five call sites through it. Given the proportionally tiny size, leaving it as-is is also defensible.
+SUMMARY: The implementation is strongly factored against duplication — production already extracts every cross-file shared pattern (writeNotesBody, formatElapsed, readChoice/parseChoice, bufferedReader, leafOrDefault, IsTerminal, renderReleaseFooter) and the test suite consistently routes through shared helpers. The only repetition found is a sub-threshold 2-line inline construction idiom in one width-test file; no high-impact cross-file duplication warrants consolidation.

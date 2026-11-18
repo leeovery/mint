@@ -1,0 +1,88 @@
+{
+  "classes": {
+    "lead and headline": {
+      "pass": false,
+      "new_clean_lead": 38,
+      "new_headline_match": 38,
+      "new_wrong_subject": 0,
+      "new_bodies": 52,
+      "current_clean_lead": 21
+    },
+    "order within sections": {
+      "pass": false,
+      "new": 16,
+      "current": 30,
+      "limit": 15.0
+    },
+    "section placement": {
+      "pass": false,
+      "new": 97,
+      "current": 113,
+      "limit": 45.2
+    },
+    "user-facing only": {
+      "pass": false,
+      "new": 28,
+      "current": 77,
+      "limit": 23.099999999999998
+    },
+    "true to the release": {
+      "pass": false,
+      "new": 47,
+      "current": 47,
+      "limit": 18.8
+    },
+    "breaking changes": {
+      "pass": true,
+      "new_flagged": 8,
+      "new_bodies": 10,
+      "current_flagged": 1
+    }
+  },
+  "guards": {
+    "missing items": {
+      "hold": false,
+      "new": 13,
+      "current": 9
+    },
+    "format slips": {
+      "hold": true,
+      "new": 5,
+      "current": 5
+    },
+    "judges prefer new": {
+      "hold": true,
+      "releases_preferring_new": 21,
+      "releases": 26
+    }
+  },
+  "residuals": {
+    "lead and headline": {
+      "verdict": "needs more prompt work",
+      "input_absent": 0,
+      "instances": 28
+    },
+    "order within sections": {
+      "verdict": "needs more prompt work",
+      "input_absent": 0,
+      "instances": 16
+    },
+    "section placement": {
+      "verdict": "needs more prompt work",
+      "input_absent": 0,
+      "instances": 97
+    },
+    "user-facing only": {
+      "verdict": "needs more prompt work",
+      "input_absent": 0,
+      "instances": 28
+    },
+    "true to the release": {
+      "verdict": "needs more prompt work",
+      "input_absent": 3,
+      "instances": 47
+    }
+  },
+  "headline_shape_slips_new": 7,
+  "verdict": "Short of the bar: rewritten prompt passes breaking changes; lead and headline, order within sections, section placement, user-facing only, true to the release need more prompt work; guard rail broken (missing items) \u2014 not taken as tested"
+}

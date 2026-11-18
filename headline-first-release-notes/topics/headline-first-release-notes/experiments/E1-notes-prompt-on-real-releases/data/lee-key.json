@@ -1,0 +1,30 @@
+{
+  "seed": 20261021,
+  "new_version": "v3",
+  "key": {
+    "portal-v0.11.1": {
+      "A": "new",
+      "B": "current"
+    },
+    "tick-v0.3.0": {
+      "A": "current",
+      "B": "new"
+    },
+    "switchboard-v0.2.6": {
+      "A": "new",
+      "B": "current"
+    },
+    "agentic-workflows-v0.8.0": {
+      "A": "new",
+      "B": "current"
+    },
+    "agntc-v0.5.2": {
+      "A": "new",
+      "B": "current"
+    },
+    "mint-v0.0.2": {
+      "A": "new",
+      "B": "current"
+    }
+  }
+}

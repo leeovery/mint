@@ -1,0 +1,36 @@
+{
+  "name": "headline-first-release-notes",
+  "work_type": "feature",
+  "status": "completed",
+  "created": "2026-10-21",
+  "description": "Release notes portray what a release actually did: they open by naming its main work, order changes by their weight to the user, and state only true, user-facing changes in the right section",
+  "phases": {
+    "discussion": {
+      "items": {
+        "headline-first-release-notes": {
+          "status": "completed"
+        }
+      }
+    },
+    "experiment": {
+      "items": {
+        "headline-first-release-notes": {
+          "status": "completed",
+          "experiments": {
+            "E1": {
+              "slug": "notes-prompt-on-real-releases",
+              "status": "concluded",
+              "verdict": "Short of the bar: rewritten prompt passes breaking changes; lead and headline, order within sections, section placement, user-facing only, true to the release need more prompt work; guard rail broken (missing items) — not taken as tested"
+            }
+          }
+        }
+      }
+    }
+  },
+  "completed_at": "2026-10-25",
+  "spec": {
+    "joined": [
+      "headline-first-release-notes"
+    ]
+  }
+}

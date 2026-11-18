@@ -1,0 +1,94 @@
+{
+  "project_id": "3rVucKmEBOqNsSRegltMj",
+  "work_units": {
+    "mint-release-tool": {
+      "work_type": "epic"
+    },
+    "ai-model-selection": {
+      "work_type": "feature"
+    },
+    "interactive-mint-init-setup": {
+      "work_type": "feature"
+    },
+    "notes-failure-output-ugly-and-uninformative": {
+      "work_type": "bugfix"
+    },
+    "dry-run-autostash-mutation": {
+      "work_type": "quick-fix"
+    },
+    "token-aware-diff-sizing": {
+      "work_type": "feature"
+    },
+    "headline-first-release-notes": {
+      "work_type": "feature"
+    }
+  },
+  "defaults": {
+    "session_labels": true
+  },
+  "walkthrough": {
+    "status": "skipped"
+  },
+  "roadmap": {
+    "horizons": [
+      "Next"
+    ],
+    "items": {
+      "headline-first-release-notes": {
+        "horizon": "Next",
+        "summary": "Release notes lead with the release's main feature, named clearly, with the smaller changes that shipped alongside it listed after",
+        "kind": "idea",
+        "origin": "park:token-aware-diff-sizing",
+        "sources": [
+          "token-aware-diff-sizing/topics/token-aware-diff-sizing/log.md"
+        ],
+        "pulled_to": {
+          "work_unit": "headline-first-release-notes"
+        }
+      },
+      "agent-authored-release-notes": {
+        "horizon": "Next",
+        "summary": "An AI agent running a release can follow mint's notes standard — mint hands it the writing instructions and change summary, or takes a one-line statement of what the release is about",
+        "kind": "idea",
+        "origin": "park:token-aware-diff-sizing",
+        "sources": [
+          "token-aware-diff-sizing/topics/token-aware-diff-sizing/log.md"
+        ]
+      },
+      "agent-guide-for-running-releases": {
+        "horizon": "Next",
+        "summary": "mint's agent guide teaches an AI agent how to drive releases — every release and regenerate surface, supplying a notes file, recovering saved chunk notes, the choices when notes fail — so nobody has to remember the flags",
+        "kind": "idea",
+        "origin": "park:token-aware-diff-sizing",
+        "sources": [
+          "token-aware-diff-sizing/topics/token-aware-diff-sizing/log.md"
+        ]
+      }
+    }
+  },
+  "brownfield_offer": "native",
+  "environment": {
+    "linters": [
+      {
+        "name": "gofmt",
+        "command": "gofmt -l -w ."
+      },
+      {
+        "name": "go vet",
+        "command": "go vet ./..."
+      },
+      {
+        "name": "golangci-lint",
+        "command": "golangci-lint run"
+      }
+    ]
+  },
+  "checklists": {
+    "directive": {
+      "079-records": {
+        "items": {},
+        "closed": "2026-11-18T16:48:17.397Z"
+      }
+    }
+  }
+}

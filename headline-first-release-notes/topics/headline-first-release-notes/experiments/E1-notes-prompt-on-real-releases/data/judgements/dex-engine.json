@@ -1,0 +1,630 @@
+[
+  {
+    "release": "dex-engine-v0.2.2",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Captures are named with a random suffix (`20260917-082604-a3f9`) — two machines capturing in the same second no longer conflict.",
+        "outranks_by": "A rerun whose re-fetch fails keeps the stored copy and a stored transcript instead of replacing it. (also below the GitHub unrouted-park bullet)",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Media captures are filed by their staged asset rather than file name — repeated names like `screenshot.png` no longer overwrite each other.",
+        "outranks_by": "A rerun whose re-fetch fails keeps the stored copy and a stored transcript instead of replacing it.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "X long-form articles keep their code listings, link targets, dividers, embedded posts and figures, with figures and the cover downloaded in reading order.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Math in web pages and arXiv papers is preserved as TeX, and LaTeXML tables and equations come through intact.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Captures are named with a random suffix (`20260917-082604-a3f9`) — two machines capturing in the same second no longer conflict.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Media captures are filed by their staged asset rather than file name — repeated names like `screenshot.png` no longer overwrite each other.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "`dex-enrich compact` keeps the last line that named an output for a requeued unit.",
+        "why": "ledger-compaction plumbing run by the health check; the user-facing effect is already covered by the rerun bullets",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Accurate and complete, but with no headline the release's single theme (captured links now land what they actually hold, with migrations healing old captures) is spread over 20 bullets led by one piece. Several fixes (X articles, math, collision fixes) are filed as Added or Changed."
+  },
+  {
+    "release": "dex-engine-v0.2.2",
+    "label": "B",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "`dex-enrich compact` keeps a requeued unit's last landing so the stored file stays identifiable.",
+        "outranks_by": "Links to GitHub pages with no route (commits, release pages, wikis) now park naming their shape instead of storing the repo's root README.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Session captures get a random suffix in the file name (`yyyyMMdd-HHmmss-a3f9`) so two machines never collide.",
+        "outranks_by": "Four migrations re-read already-stored GitHub links, X video posts, X articles and article-seam pages with the fixed extraction.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "X long-form articles keep their code listings, link targets, dividers and embedded posts, and their figures and cover are downloaded.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Math is kept as TeX in extracted pages and arXiv papers, with equation tables and span-typeset tables rebuilt.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Session captures get a random suffix in the file name (`yyyyMMdd-HHmmss-a3f9`) so two machines never collide.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Staged media is filed under its asset id rather than its file name, so repeated names like `screenshot.png` no longer share a directory.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "GitHub links to a directory, a branch root, a raw file or an issue form were stored as the repo's root README or failed as dead; they now read what they point at.",
+        "duplicates": "GitHub directory links give that directory's README and file listing, and `raw` and `tree` links to a file read the file.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Math values were deleted from arXiv text, leaving gaps like \"an average gain of  points\".",
+        "duplicates": "Math is kept as TeX in extracted pages and arXiv papers, with equation tables and span-typeset tables rebuilt.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Table-only appendices in arXiv papers vanished from the stored text.",
+        "duplicates": "Math is kept as TeX in extracted pages and arXiv papers, with equation tables and span-typeset tables rebuilt.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "`dex-enrich compact` keeps a requeued unit's last landing so the stored file stays identifiable.",
+        "why": "ledger-compaction plumbing run by the health check",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "The scheduled-task (routine) setup hand-off now gives the New-routine form's folder control and required Description",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "No headline, and the main work is both fragmented and repeated: GitHub routes and the math/appendix fix each appear in Added and again in Fixed. The Fixed bullets read as bug reports rather than fixes. Content is otherwise accurate."
+  },
+  {
+    "release": "dex-engine-v0.2.2",
+    "label": "C",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Capture files now carry a random suffix (`20260917-082604-a3f9.md`) — same-second captures from different machines no longer conflict.",
+        "outranks_by": "Reruns that fail to re-fetch keep the stored copy — a rotted source no longer replaces good content with a dead entry.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Media captured through the inbox is filed by its asset rather than its file name — repeated names like `screenshot.png` no longer overwrite each other.",
+        "outranks_by": "Reruns that fail to re-fetch keep the stored copy — a rotted source no longer replaces good content with a dead entry.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`issues/new` links are no longer treated as issue \"new\" and marked dead.",
+        "outranks_by": "Docs pages with scrollbar-styled wrappers no longer lose their tables and code blocks.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "X long-form articles keep their code listings, link targets, dividers and embedded posts, and their figures and cover are downloaded in reading order.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Math is preserved in fetched pages and arXiv papers as TeX, and LaTeXML equation tables and span-typeset tables come through as real content.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Capture files now carry a random suffix (`20260917-082604-a3f9.md`) — same-second captures from different machines no longer conflict.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Media captured through the inbox is filed by its asset rather than its file name — repeated names like `screenshot.png` no longer overwrite each other.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "`dex-enrich compact` keeps the last output-bearing line for a requeued unit.",
+        "why": "ledger-compaction plumbing run by the health check",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "Posts' video renditions are matched by video ID, so the right downloaded file is retired when a transcript lands.",
+        "why": "X video transcription, and retiring the downloaded video when its transcript lands, are both new in v0.2.2; matching by video ID was corrected within the release",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Complete and readable, but there is no headline to frame the extraction theme. The collision fixes sit atop Changed above the rerun work, fixes are filed as Added or Changed, and a fix inside the release is presented as a fix of v0.2.1."
+  },
+  {
+    "release": "dex-engine-v0.2.2",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "X articles keep their code listings, figures, embedded posts, dividers and link targets, and the cover and figures are saved beside the post.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Captures written from a session or `dex` are named with a random suffix (`20260917-082604-a3f9`) so same-second captures never collide.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "GitHub `user-attachments` links, directory blob links and `issues/new` links no longer end up dead or blocked.",
+        "duplicates": "GitHub raw links, documents attached to issues, and released document downloads are read as files. (and the directory-link bullet in Added)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "`dex-enrich compact` keeps the last output-bearing line for a requeued unit, so its stored file is still recognised.",
+        "why": "ledger-compaction plumbing run by the health check",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "This set has the best sectioning of the four: math, collisions and the healing migrations sit under Fixed. But with no headline the main theme is scattered over 24 bullets, X articles and the capture suffix are still filed as Added, and the GitHub attachment change is stated twice."
+  },
+  {
+    "release": "dex-engine-v0.2.0",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": true,
+      "text": "Every dex now reads what you share through a lens you write, instead of filtering shares against a scope list.",
+      "verdict": "incomplete",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "CLAUDE.md is now engine-owned and identical in every instance — what an instance reads for moves to `lens.md`, and a directive migrates your old CLAUDE.md content on the next run, so don't hand-edit CLAUDE.md afterward.",
+        "section": "Breaking",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Content commands (`dex-inbox`, `dex-normalize`, `dex-enrich`, `dex-exclude`) now refuse while directives are pending — run `bin/dex directive list` and follow it first.",
+        "section": "Breaking",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The scope check at the door is gone — every capture becomes an item, and only content that yields nothing through the lens is dropped afterward.",
+        "section": "Breaking",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "Sync overwrites CLAUDE.md only once git history holds the current copy, so an uncommitted edit is never lost.",
+        "why": "sync never wrote CLAUDE.md before v0.2.0; the takeover and its guard are both new in this release, so this is not a change to earlier sync behaviour",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "The headline and order are clear, accurate and complete, but the headline names only the lens, not directives, the co-equal second body. A Breaking section presents changes that existing instances are carried through automatically, and the CLAUDE.md takeover guard is described as a change to sync."
+  },
+  {
+    "release": "dex-engine-v0.2.0",
+    "label": "B",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": true,
+      "text": "Every dex now reads what you share through a lens you write, instead of filtering shares against a scope list.",
+      "verdict": "incomplete",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "CLAUDE.md is now engine-owned and identical in every instance, so scope written there moves to `lens.md` — the first run after upgrading does this for you through a directive, and `bin/dex sync` leaves a CLAUDE.md that git history does not hold alone until you commit it.",
+        "section": "Breaking",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Content commands (`dex-inbox`, `dex-normalize`, `dex-enrich`, `dex-exclude`) refuse while an engine directive is pending — run `bin/dex directive list` and follow it, then re-run.",
+        "section": "Breaking",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The scope check at the door is gone: every capture now becomes an item, and only content that yields nothing through the lens is dropped later.",
+        "section": "Breaking",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`dex-new` seeds a `lens.md` and a README named for the instance, and records every shipped directive as done.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The inbox release checks read the stored `origin` URL, so a git `insteadOf` rewrite no longer hides the GitHub repository.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "Clear, accurate and well ordered, with a useful headline that names only the lens, not directives. A Breaking section overstates changes that existing instances are carried through automatically; dex-new and the origin fix are misfiled."
+  },
+  {
+    "release": "dex-engine-v0.2.0",
+    "label": "C",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "The inbox release check reads the stored `origin` URL, so `insteadOf` rewrites no longer hide the GitHub repo.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "The \"In scope\" lists in CLAUDE.md and README.md, and the scope-filter step at ingest — replaced by the lens.",
+        "duplicates": "Nothing is rejected at the door any more — every capture becomes an item, and only content that yields nothing through the lens is dropped after it lands.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Accurate and complete, with lens and directives as the first two Added bullets. But there is no headline to tie the two bodies together, the scope removal is stated in both Changed and Removed, and the origin fix sits under Changed."
+  },
+  {
+    "release": "dex-engine-v0.2.0",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "The inbox release checks read the stored `origin` URL, so a `url.insteadOf` rewrite no longer hides a GitHub repository.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "The \"In scope\" list in CLAUDE.md and README, and the owner's scope check at the door, replaced by the lens.",
+        "duplicates": "Nothing is rejected for its subject any more — every share becomes an item and is dropped only if it yields nothing through the lens, with the reason named in the run report.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [
+      {
+        "text": "🗑️ Removed section placed after 🐛 Fixed",
+        "kind": "section-order"
+      }
+    ],
+    "overall": 3,
+    "notes": "Accurate and complete with lens and directives leading Added. But there is no headline, the scope removal is repeated in Changed and Removed, the origin fix sits under Changed, and the sections are out of order."
+  },
+  {
+    "release": "dex-engine-v0.1.13",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "The notes are accurate, well filed and well ordered, and they keep the graph cap as part of the new tool. But there is no headline across 13 bullets, so nothing says the map backs both the wiki index and the chat tools; the first bullet frames it only as a compile command."
+  },
+  {
+    "release": "dex-engine-v0.1.13",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "A compiled map of each instance's topics, entities and relations now backs both the catalog and the chat tools.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 5,
+    "notes": "The headline states the whole release. The sections are accurate, complete, well ordered and correctly filed, and the in-release graph cap and exclude recompile are not presented as changes to v0.1.12."
+  },
+  {
+    "release": "dex-engine-v0.1.13",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Instances get a compiled map of their topics, entities and relations, served to chat clients and kept fresh by the engine.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "Per-entry index checks (pages missing from index, ghost index entries) — replaced by the single map freshness row.",
+        "duplicates": "Health check reports when `state/map.json` or `wiki/index.md` is missing or out of date, with `bin/dex map` as the repair.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "A good headline names the map and its use, and the sections are accurate and well filed. The only blemish is that the lint freshness replacement is stated in both Added and Removed."
+  },
+  {
+    "release": "dex-engine-v0.1.13",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "`dex-exclude` recompiles the map and index after a purge, and a recompile failure no longer hides the deletions that landed.",
+        "why": "the post-purge recompile is new in v0.1.13, so no earlier recompile failure ever hid deletions",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "Accurate, complete and well ordered, but there is no headline across 13 bullets and it leads with the compile command rather than the map as a whole. One clause presents in-release behaviour as a fix."
+  }
+]

@@ -1,0 +1,3 @@
+AGENT: duplication
+FINDINGS: none
+SUMMARY: Since cycle 2 the code changes are `resetTo`'s restore step, now quoted through `cmdline.Quote` so every printed paste-ready command shares one quoting rule, plus README and comment edits; none adds cross-site duplication. A re-survey of the plan's rules turned up nothing that clears the floor. Every cap check uses the same strict `>`. Notes exclusion is composed only in `notesExcludeConfig`. The three `GenerationError` output wrappers delegate to `Output()`, which holds the rule. The saved-notes guidance is worded differently at the floor, the fallback warning and the batch skip because the spec sets each one.

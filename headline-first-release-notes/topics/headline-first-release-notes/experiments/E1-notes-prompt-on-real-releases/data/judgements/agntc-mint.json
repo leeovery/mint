@@ -1,0 +1,1148 @@
+[
+  {
+    "release": "agntc-v0.6.0",
+    "label": "A",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "The terminal output of every command is redrawn so each run reads as a header, rows showing what happened, and a closing tally.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": [
+        "inventory"
+      ]
+    },
+    "inversions": [
+      {
+        "text": "Per-run tally closing the output, counting outcomes with the time the run took.",
+        "outranks_by": "`list` dashboard grouped by repo, showing each install's kind, version, constraint and status, with counts of what needs attention.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "`list` dashboard grouped by repo, showing each install's kind, version, constraint and status, with counts of what needs attention.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`list` detail view with the install's version, constraint, commit, install date, contents and status.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`add` shows a pack's kind and contents (skills, folders, agents, hooks) in its menu and `--list` output.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`init` shows the files it will create as a tree and marks those already there.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "Colour now follows `NO_COLOR` and `FORCE_COLOR`, and layout adapts to narrow terminals.",
+        "why": "v0.5.3 already honoured NO_COLOR and FORCE_COLOR through picocolors (the removed banner comment says so); only the narrow-terminal layout is new",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "A clean headline naming the whole redesign and well-chosen bullets; marked down for redesigned existing views (list, init, add) filed as Added and the tally ranked above the list dashboard."
+  },
+  {
+    "release": "agntc-v0.6.0",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Every command now draws its own terminal output: a header, a row for each thing it did with its contents as a tree, and a closing tally.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": [
+        "inventory"
+      ]
+    },
+    "inversions": [
+      {
+        "text": "Closing tally counts a run's outcomes with the time it took, shown when a run has more than one outcome or anything under Next.",
+        "outranks_by": "`list` dashboard groups installs by repo with kind, version, constraint and status, plus a footer counting what wants attention.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "`list` dashboard groups installs by repo with kind, version, constraint and status, plus a footer counting what wants attention.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`list` detail view shows an install's version, constraint, commit, install date, contents and update status.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`add --list` shows each pack with its skill, folder, agent and hook counts.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Colour follows `NO_COLOR` and `FORCE_COLOR`, and Ctrl-C clears the spinner or question and exits cleanly.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "`init` shows the files it will create as a tree before asking, and leaves files that already exist alone.",
+        "why": "v0.5.3 already previewed the files as a tree before asking and skipped files that already existed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Colour follows `NO_COLOR` and `FORCE_COLOR`, and Ctrl-C clears the spinner or question and exits cleanly.",
+        "why": "colour already honoured NO_COLOR and FORCE_COLOR through picocolors in v0.5.3",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Failures that the previous release printed in two styles now print once, with their cause and remedy laid out under the error.",
+        "why": "v0.5.3 printed each failure once, as either a cancel line or an error line; there was no double printing to fix",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Good headline and coverage, but three claims of new or fixed behaviour were already true in v0.5.3, on top of the same Added misfilings and the tally above the list dashboard."
+  },
+  {
+    "release": "agntc-v0.6.0",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Questions now appear directly under the row they're about and disappear once answered, in a new select, multi-select and confirm prompt set with scrolling, key hints and narrow-terminal handling.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The `list` dashboard groups installs by repo, showing each one's kind, version, constraint and update status, with a footer counting what needs attention.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The `list` detail view shows an install's version, constraint, commit, install date, contents and status, with Update, Change version and Remove actions.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`init` shows the files it will create as a tree, marks those already present, and skips the question when nothing would be written.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`add --list` and the `add` menu show each pack's kind and contents and each skill's description, with a folder shown beside items that share a name.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Ctrl-C and Ctrl-Z are handled cleanly mid-run, clearing spinners and questions, restoring the terminal and still printing what the run had left to say.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "The README was rewritten around packs, with screenshots, a \"Why agntc?\" section and updated command docs.",
+        "why": "README restructure with no product change",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The `@clack/prompts` and `picocolors` dependencies, replaced by agntc's own renderer.",
+        "why": "dependency swap a user never meets",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Colour follows `NO_COLOR` and `FORCE_COLOR`, and the cursor row picks up a highlight band matched to your terminal's background.",
+        "why": "colour already honoured NO_COLOR and FORCE_COLOR through picocolors in v0.5.3; only the highlight band is new",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Leads with the whole renderer, but 18 bullets with six reworks of existing behaviour filed as Added and two internal items dilute it."
+  },
+  {
+    "release": "agntc-v0.6.0",
+    "label": "D",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "`list` is now a dashboard grouped by repo, showing each install's kind, version, constraint and status, with a footer counting updates, newer tags and failed checks.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`list` detail view shows an install's version, constraint, commit, install date, contents and update status, with Update, Change version and Remove actions.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`init` shows the files it will create as a tree and asks before writing, marking files that already exist.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Ctrl-C and Ctrl-Z are handled cleanly — spinners and questions are cleared and the terminal is restored.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "The boxed file lists, spinner messages and outro lines of the previous interface, replaced by the new rows and tally.",
+        "duplicates": "A new terminal interface for every command — each run opens with a header, draws its work as rows with trees of what was installed, and closes with a tally and elapsed time.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "README rewritten with a clearer explanation of packs, commands and scripting.",
+        "why": "README restructure with no product change",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Colour and layout adapt to the terminal — respects `NO_COLOR` and `FORCE_COLOR`, wraps to the terminal width, and fits long lists to the screen height.",
+        "why": "colour already honoured NO_COLOR and FORCE_COLOR through picocolors in v0.5.3",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "Leads with the whole new interface and stays lean and well ordered; marked down for the list and init redesigns filed as Added, a README bullet and a Removed bullet restating the redesign."
+  },
+  {
+    "release": "agntc-v0.4.0",
+    "label": "A",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Update-all now checks and clones each repo once instead of once per plugin, and streams progress as it goes.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Streamed `update` progress — each repo shows an `Updating <repo> <old> -> <new> (N members)` header with a per-plugin line beneath it as it finishes.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Out-of-constraint notices now give an exact re-add command, such as `npx agntc add owner/repo` for caret users or `npx agntc add owner/repo@<newest>` for exact pins.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "The out-of-constraint footer names the version you landed on this run as the current version, not the pre-update one.",
+        "why": "v0.3.3's footer printed no current version at all; the current version is part of this release's new footer",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "The headline names the update-all overhaul as a whole and the bullets cover every piece; marked down for output reworks filed as Added and a never-shipped footer presented as a correction."
+  },
+  {
+    "release": "agntc-v0.4.0",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Per-group progress output during update-all — an `Updating <repo> <old> -> <new> (N members)` header with a line per member, then a trailing summary.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "The out-of-constraint footer now reports the version you actually landed on after a same-run update, instead of the stale pre-update version.",
+        "why": "v0.3.3's footer printed no current version, so there was no stale version to fix; the current version is new in this release",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Accurate and well ordered with a first bullet that names grouped, streamed update, but no headline where one was expected, and its only Fixed bullet fixes something that never shipped."
+  },
+  {
+    "release": "agntc-v0.4.0",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Updating all plugins now clones each repo once and streams progress per group instead of cloning for every plugin.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Out-of-constraint footer now gives the move and the exact command — e.g. `v1.3.0 -> v2.0.0 available. To upgrade: npx agntc add owner/repo`.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "The out-of-constraint footer's \"current\" version now reflects the version the run just landed on rather than the pre-update one.",
+        "why": "v0.3.3's footer printed no current version; it is part of this release's new footer",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "A precise headline and six lean bullets covering the overhaul; one footer rework filed as Added and one never-shipped footer state presented as a change."
+  },
+  {
+    "release": "agntc-v0.4.0",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Streamed per-group progress — each repo shows an `Updating <repo> <old> -> <new> (N members)` header with a `✓ member → agents` line per member as it finishes.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "A failed update check for a repo no longer repeats per member — it warns once, with exit code 0.",
+        "duplicates": "The trailing update summary collapses to one line per repo for up-to-date counts, newer-tag notices, check failures, and unmatched constraints instead of one line per member.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "The out-of-constraint footer names the version you actually landed on after a same-run bump, so it agrees with the `Updated` line.",
+        "why": "v0.3.3's footer printed no current version; the current version is new in this release",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Single-entry updates now show the bare repo with a collapsed one-line result instead of a header plus a separate line.",
+        "why": "the header-plus-member-line layout it contrasts with is this release's own streamed output; single-key update is unchanged",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "A constrained plugin updated on its own stays grouped with its behind siblings, so the rest of the collection still updates in one clone.",
+        "why": "grouping is new in this release, so there was no broken grouping in v0.3.3 to fix",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 2,
+    "notes": "No headline and a first bullet naming only the clone dedup; three bullets present this release's own design as changes or fixes, and Fixed restates the summary collapse."
+  },
+  {
+    "release": "agntc-v0.5.2",
+    "label": "A",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Skills taken from a pack with `--skill` now note the support folders left behind.",
+        "outranks_by": "Failed update checks now print one readable line, e.g. `couldn't check for updates (<cause>) — left untouched`, and copy-failure hints name the cause.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "Pack support folders — folders in a pack's `skills/` that hold no skill now install whole to `.claude/skills/<name>/`, so skills can share references.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`list` detail view counts what an entry installs the way `add` does, telling skills from support folders.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "Packs only absorb loose skills through their skills; a support folder landing on a loose skill is reported as files in the way.",
+        "why": "v0.5.1 installed no support folders, so none could ever be absorbed; the rule is part of this release's support-folder work",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "`update` brings back the support folders a 0.5 install lost",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Leads with support folders and groups the retries in Fixed, but has no headline, presents the restored folders as new, and omits that update brings back what 0.5 lost."
+  },
+  {
+    "release": "agntc-v0.5.2",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Packs can now ship shared folders alongside their skills, and updates no longer silently delete folders the repo still has.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Pack support folders — folders in a pack's `skills/` with no skill in them (shared references, gates) now install whole to `.claude/skills/<name>/` beside its skills.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`list` detail counts each installed skill folder, hook and agent once, however many paths are recorded.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "Failed version fetches in `list` no longer crash the flow, and instead report why and leave the install untouched.",
+        "duplicates": "Update check failures print one line with the cause — `<repo>: couldn't check for updates (<cause>) — left untouched` — and `list` and version-change report failures the same way.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "A support folder landing on a loose skill from the same source is now reported as files in the way instead of being absorbed.",
+        "why": "v0.5.1 installed no support folders, so none was ever absorbed; the rule is part of this release's support-folder work",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "`update` brings back the support folders a 0.5 install lost",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "The headline names both the folders and the update safety net, and the retries sit high in Fixed; the restored folders still read as a new feature and one fix is stated twice."
+  },
+  {
+    "release": "agntc-v0.5.2",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Packs can now install the shared folders in their `skills/` directory, so skills that load shared references work after install.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Packs install support folders — a folder in a pack's `skills/` that holds no skill installs whole as `.claude/skills/<name>/`, so shared references, gates and similar travel with the pack.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`list` detail counts each skill folder and hook once, however many of its paths are recorded.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "A pack's support folder landing on a loose skill from the same source is treated as files in the way rather than absorbing the skill.",
+        "why": "v0.5.1 installed no support folders, so none was ever absorbed; the rule is part of this release's support-folder work",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "`update` brings back the support folders a 0.5 install lost",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "A clear headline on the support folders, a good order and the retries well placed in Fixed; 19 bullets, the restored folders framed as new, and the 0.5 recovery left out."
+  },
+  {
+    "release": "agntc-v0.5.2",
+    "label": "D",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "A skill taken from a pack with `--skill` installs without the pack's support folders, and its note names them.",
+        "outranks_by": "Remote git reads (tags, default branch, update probes) now retry up to three times, and SSH \"Permission denied\" is retried rather than failing at once.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Update failure lines no longer repeat the member name, and copy-failure hints now say why the copy failed.",
+        "outranks_by": "Remote git reads (tags, default branch, update probes) now retry up to three times, and SSH \"Permission denied\" is retried rather than failing at once.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "Pack support folders — folders in a pack's `skills/` that hold no skill (shared references, gates) now install whole to `.claude/skills/<name>/` alongside its skills.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "A pack's support folder landing on a loose skill from the same source now counts as files in the way rather than being absorbed.",
+        "why": "v0.5.1 installed no support folders, so none was ever absorbed; the rule is part of this release's support-folder work",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "`update` brings back the support folders a 0.5 install lost",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "A sharp two-bullet Added on the main work, but no headline, and the git retries sit near the bottom of a 13-bullet Changed under cosmetic items."
+  },
+  {
+    "release": "mint-v0.0.2",
+    "label": "A",
+    "lead": "no",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Gate questions now say what accepting does, such as \"Release with these notes?\" and \"Commit this message?\".",
+        "outranks_by": "Pretty output is redesigned flush-left, with notes and commit messages shown in a gutter panel and stages narrated as plain sentences.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "The dry-run note cache moved from `.mint/cache` inside the repo to your user cache directory — previews cached by an earlier release are no longer found, so re-run `mint release -d` before relying on reuse.",
+        "section": "Breaking",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Dry runs are marked \"dry run\" from the first line and end with a \"no changes made\" summary instead of a success footer.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Pressing Escape at a review gate declines it, and a second Ctrl-C force-quits if a prompt ever hangs.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Complete and accurate, but it opens on a Breaking section for a one-hour optimisation cache moving, with no headline, so neither the redesign nor the dry-run preview leads."
+  },
+  {
+    "release": "mint-v0.0.2",
+    "label": "B",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Release notes are now concise one-line bullets with no TL;DR, and the prompt ends with a reminder to output only the notes.",
+        "outranks_by": "Terminal output has a new look — flush-left layout, a hotkey bar for gates, and a guttered panel for notes and commit messages.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Commit message prompts end with a reminder to output only the message, preventing models from narrating before it.",
+        "outranks_by": "Terminal output has a new look — flush-left layout, a hotkey bar for gates, and a guttered panel for notes and commit messages.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "Single-keypress review gates — press y/n/e/r to decide with no Enter needed, Esc declines, and Ctrl-C aborts cleanly.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Commit message prompts end with a reminder to output only the message, preventing models from narrating before it.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "A `release` shim script at the repo root that runs `mint release` and tells you how to install mint if it's missing.",
+        "why": "mint's own contributor wrapper in its repo, not part of the shipped tool",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Covers both bodies, but there is no headline, the lead is one piece of the redesign, and prompt tweaks sit above the new look."
+  },
+  {
+    "release": "mint-v0.0.2",
+    "label": "C",
+    "lead": "no",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Gate wording is clearer: \"Release with these notes?\", \"Commit this message?\" and \"Use these notes?\", with short action labels.",
+        "outranks_by": "Dry runs no longer ask any questions or show review gates, and they reuse a cached preview silently.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "The dry-run note cache moved from the repo's `.mint/cache` to your user cache directory — previews from earlier dry runs are no longer found, so run `mint release -d` again before a real release to reuse the notes.",
+        "section": "Breaking",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Dry runs are marked \"dry run\" in the header and end with a \"no changes made\" summary instead of a release line.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Spinners and completion lines now say what is happening in plain sentences, such as \"Generated release notes (8.2s)\" and \"Pushed branch + v1.2.4 atomically\".",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Record, publish and preflight steps now report what was actually done, such as \"Committed CHANGELOG.md + version file\".",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Release notes are now one-line bullets with no TL;DR, matching the intended format.",
+        "section": "Fixed",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 2,
+    "notes": "Complete, but it leads with a spurious Breaking cache move, has no headline, and files five items in the wrong section, including a deliberate TL;DR removal presented as a fix."
+  },
+  {
+    "release": "mint-v0.0.2",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Single-keypress review gates — press y/n/e/r to decide with no Enter; Esc declines and Ctrl-C aborts cleanly.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "AI prompts now end with a reminder to output only the message, curbing preamble and narration from the model.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "A `release` shim script at the repo root that runs `mint release` and points to the install command if mint is missing.",
+        "why": "mint's own contributor wrapper in its repo, not part of the shipped tool",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Changed is well ordered, with the dry-run preview and the redesign on top, but there is no headline, the lead is one piece of the redesign, and the repo's own shim is listed as a feature."
+  },
+  {
+    "release": "mint-v0.0.3",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "`ai_command` and `timeout` resolve independently as `[verb]` → shared → shipped default, and `regenerate` uses the `[release]` settings.",
+        "duplicates": "Per-verb overrides — set `ai_command` and `timeout` under `[release]` or `[commit]` to use a different AI command or deadline for just that verb.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "A blank `ai_command` at any level now falls through to the next level instead of being used as-is.",
+        "why": "v0.0.2 already re-defaulted a blank ai_command to the default, and the per-verb levels are new",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "AI timeouts are fatal and never retried — only bad output is retried once.",
+        "why": "already true in v0.0.2; the bullet comes from new README text, and the retry routing is unchanged",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [
+      {
+        "text": "Negative `timeout` values are ignored and fall through to the next level.",
+        "why": "the timeout key is new in this release, so there was no earlier negative-value behaviour to change",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 2,
+    "notes": "No headline and a lead naming only the timeout; three of five Changed bullets restate, invent, or present as changes behaviour that was already there or new."
+  },
+  {
+    "release": "mint-v0.0.3",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Control which AI command and timeout each of `mint release` and `mint commit` uses, with a pinned default model.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "The default AI command is now `claude -p --model sonnet` instead of `claude -p` — set `ai_command = \"claude -p\"` in `.mint.toml` to keep using your Claude CLI's own default model.",
+        "section": "Breaking",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "A timeout is reported immediately as a failure and is never retried.",
+        "why": "already true in v0.0.2; the bullet comes from new README text, and the retry routing is unchanged",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "A blank `ai_command` at any level now falls through to the next level instead of being used as-is.",
+        "why": "v0.0.2 already re-defaulted a blank ai_command to the default, and the per-verb levels are new",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "A clean headline over the whole feature, but the new default is labelled Breaking and both Changed bullets claim changes that were already true."
+  },
+  {
+    "release": "mint-v0.0.3",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Control which AI command and time limit each of `mint release` and `mint commit` uses, with a pinned default model.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Regenerating release notes uses the `[release]` AI command and timeout settings.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "A blank `ai_command` at any level now falls through to the next level instead of being used as-is.",
+        "why": "v0.0.2 already re-defaulted a blank ai_command to the default, and the per-verb levels are new",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "A clean headline, the pinned default correctly under Changed, and six lean bullets; one per-verb detail sits under Changed and the blank-command bullet claims a change that is not there."
+  },
+  {
+    "release": "mint-v0.0.3",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "`ai_command` and `timeout` resolve independently as `[verb]` → shared → default, and `regenerate` uses the `[release]` settings.",
+        "duplicates": "Per-verb overrides for `ai_command` and `timeout` under `[release]` and `[commit]` — pin a different model or deadline for one command without affecting the other.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "A blank `ai_command` at any level now falls through to the next level instead of being passed along empty.",
+        "why": "v0.0.2 already re-defaulted a blank ai_command to the default rather than passing it along empty",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [
+      {
+        "text": "Invalid values like `timeout = \"fast\"` or a non-string per-verb `ai_command` now fail at load with a clear error naming the key.",
+        "why": "these keys are new in this release; their type errors were built with them, so there was nothing to fix",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Covers the feature, with the pinned default correctly in Changed, but there is no headline, the lead is the timeout alone, and it carries a restated override, a false change and an invented fix."
+  }
+]

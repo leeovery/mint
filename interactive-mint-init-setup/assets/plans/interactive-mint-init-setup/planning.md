@@ -1,0 +1,147 @@
+# Plan: Interactive Mint Init Setup
+
+## Phases
+
+### Phase 1: Config-metadata SoT + drift test
+status: approved
+approved_at: 2026-06-16
+
+**Goal**: Establish the single in-binary, schema-adjacent config-metadata table — one row per (level, key) pair carrying key · level · default · description — and the drift test that mechanically derives the schema's leaf-key set from the config decode-shape structs and proves a total bijection against it.
+
+**Why this order**: This table is the foundation every downstream surface renders from (the `mint setup` config reference) and the carrier into which the old `initgen` scaffold value-drift pin is subsumed. Building it first, with anti-drift enforcement in place, gives the strongest foundation before anything consumes or renders it — no forward reference to a render target that doesn't yet exist.
+
+**Acceptance**:
+- [ ] A structured SoT of config metadata lives in the binary with one row per config key, carrying the four columns key · level · default · description.
+- [ ] `ai_command` and `timeout` appear as distinct rows at the shared top level and under `[release]` and `[commit]`; the `release`/`commit`/`hooks` container fields emit no row and are recursed into to supply the level for their leaf rows; `[release.hooks]` keys are their own rows.
+- [ ] The `default` column uses the decided representation convention: empty-string defaults blank, sentinel-auto defaults as `auto`, empty collection as `[]`, per-verb inherit defaults as `shared`, and hooks keys with no default blank/`—`.
+- [ ] A Go drift test derives the authoritative leaf-key set mechanically from the `fileShape`/`releaseShape`/`commitShape`/`hooksShape` `toml` tags (not a hand-maintained list) and fails the build on any divergence — a schema leaf with no matching SoT row at its level, or an SoT row with no matching leaf.
+- [ ] The default values previously pinned by `initgen` (`DefaultAICommand`, `DefaultTimeout`) are carried and pinned by the SoT `default` column, so no default value is left unpinned.
+- [ ] All standard gates pass (`go build`, `gofmt -l`, `go vet`, `go test -race`, `golangci-lint`).
+
+#### Tasks
+status: approved
+approved_at: 2026-06-16
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-1-1 | Define the config-metadata SoT table (rows + typed level) | ai_command/timeout duplicated as distinct rows at top-level, [release], and [commit]; no row for the release/commit/hooks container fields |
+| interactive-mint-init-setup-1-2 | Apply the decided default-column representation convention to the SoT rows | plain-blank (context/prompt/fallback/version_file/version_pattern) vs auto (release_branch/provider); shared cells on per-verb ai_command/timeout rows vs real-default cells on top-level rows; hooks-blank rows carry no default |
+| interactive-mint-init-setup-1-3 | Mechanically derive the schema leaf-key set from the decode-shape structs via reflection | recurse-don't-count for release/commit/hooks container fields; dual-level ai_command/timeout produce one leaf pair per level; nested-tag-supplies-level for [release], [commit], [release.hooks] |
+| interactive-mint-init-setup-1-4 | Drift test: total bijection over leaf keys (SoT ↔ derived schema set) | schema leaf missing from SoT; SoT row with no schema leaf (removed/renamed key); duplicate SoT row for one (level, key); each of the three dual-level rows must match independently |
+| interactive-mint-init-setup-1-5 | Pin the subsumed scaffold default values on the SoT default column | timeout pinned as integer seconds derived from config.DefaultTimeout, not a re-typed 60; ai_command pinned to config.DefaultAICommand |
+
+### Phase 2: mint setup subcommand — guide emitter, sections, help wiring
+status: approved
+approved_at: 2026-06-16
+
+**Goal**: Add the new top-level `mint setup` verb as a pure stdout string emitter (in the spirit of `initgen`) that prints the embedded AI setup guide — the inspect-and-map procedure, AI etiquette, minimalism rule, and the existing-config/upgrade branch — plus the config reference rendered from the Phase 1 SoT, each required section carrying a stable test-detectable marker, running unconditionally with no git/cwd guard, and threaded through mint's curated-help surface.
+
+**Why this order**: `mint setup` is the core new user-facing capability and the SoT's single in-binary render target. It consumes the Phase 1 table and integrates with the existing `cmd/mint` dispatch and curated-help patterns. It must exist before `initgen` can honestly point its header at it.
+
+**Acceptance**:
+- [ ] `mint setup` emits the guide to stdout and performs no IO beyond stdout; it runs unconditionally (prints even outside a work tree — no `git rev-parse` / cwd guard).
+- [ ] The emitted output renders the config reference (key · level · default · description table) from the Phase 1 SoT.
+- [ ] Each required section emits a stable section marker; a structural test greps the markers — pipeline/hook model, etiquette, minimalism, the existing-config/upgrade branch, and the config reference — and proves each section's presence without coupling to body prose.
+- [ ] `classifyCommand`/`run` route a new `commandSetup`; `rootUsage` gains a curated one-line `setup` command description; a curated `setupUsage` exists and `mint setup --help` prints it to stdout with exit 0 via the `flag.ErrHelp` path.
+- [ ] The existing usage-coverage test is extended to pin `mint setup` (rootUsage line + `setupUsage`); `mint help` stays the frozen curated text apart from the added `setup` line and carries no config reference.
+- [ ] All standard gates pass.
+
+#### Tasks
+status: approved
+approved_at: 2026-06-16
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-2-1 | Author the embedded setup-guide body with stable section markers | markers must be greppable anchors decoupled from body prose; section present but marker absent must fail the structural test; emission-surface decision (presenter vs cmd-layer stdout write) flagged for the author, not silently fixed |
+| interactive-mint-init-setup-2-2 | Render the config-reference section from the Phase 1 SoT | dual-level ai_command/timeout rows render distinctly per level; default-column representations carried verbatim from the SoT (blank / auto / [] / shared / hooks-blank); render reads the SoT, never re-derives metadata |
+| interactive-mint-init-setup-2-3 | Wire the commandSetup dispatch route and the runSetup runner | runs anywhere — no git rev-parse / repo-root resolution before emitting; mint setup --help exits 0 (not the usage-error exit 2); unknown command message updated to mention setup |
+| interactive-mint-init-setup-2-4 | Thread mint setup through the curated-help surface and extend the coverage test | setupUsage opens with the "usage: mint " synopsis line; mint help gains only the setup line and carries no config reference; coverage test pins setup in rootUsage and the setupUsage --help line |
+
+### Phase 3: initgen strip-to-minimal
+status: approved
+approved_at: 2026-06-16
+
+**Goal**: Change `MintTOML()` to return the minimal `.mint.toml` — an empty body plus a header comment pointing to the GitHub docs and `mint setup` — remove the commented-template test assertions, and add tests pinning the minimal shape and both header pointers.
+
+**Why this order**: Stripping the in-repo config docs is only honest once `mint setup` (Phase 2) exists to carry the agent's config reference and the header can point to it; the header pointer is also the cold-arrival recovery net. This depends on Phase 2 and is isolated to `MintTOML()` — `ReleaseShim()` and `mint init` behaviour are untouched.
+
+**Acceptance**:
+- [ ] `MintTOML()` returns an empty-body file with a header comment carrying both pointers — the GitHub docs (human config reference) and `mint setup` (AI-assisted setup).
+- [ ] The commented-template assertions are removed (active-keys-at-defaults, optional-keys-present-but-commented, per-verb override comments, `pre_tag` both forms, prompt-override-in-comment-only, hooks-only-under-`[release.hooks]`, uncommented-loads-cleanly).
+- [ ] New `initgen` tests assert the minimal shape — empty body with no active or commented keys — and pin the header's two pointers as the load-bearing recovery net.
+- [ ] `ReleaseShim()` and its tests are unchanged; `mint init` still emits both `.mint.toml` (now minimal) and the `release` shim at the git-resolved repo root with unchanged non-clobber / `--force` / idempotent behaviour.
+- [ ] All standard gates pass.
+
+#### Tasks
+status: approved
+approved_at: 2026-06-16
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-3-1 | Strip MintTOML() to the minimal template (empty body + dual-pointer header) and swap in the minimal-shape tests | header is the only content (empty body — no active keys AND no commented keys); both pointers present (GitHub docs + `mint setup`) as the cold-arrival recovery net; package/function doc comments updated to as-built (no stale "commented template" / "uncomment to enable" claims); ReleaseShim() and shim tests untouched |
+| interactive-mint-init-setup-3-2 | Remove the now-subsumed scaffold value-drift pins and sever the config import from the initgen test package | initgen test package no longer imports config/time/strconv (minimal template references no config constants); no orphaned helper left referencing the removed pins; subsumption is real — Phase 1 SoT drift test carries the default values, nothing left unpinned |
+
+### Phase 4: README reconciliation + entry-point + tripwire
+status: approved
+approved_at: 2026-06-16
+
+**Goal**: Make the README the human config-reference surface and the entry point that routes operators to `mint setup` — correct the now-false Configuration and Commands framing, replace or drop the embedded full commented-template block, add the tiny "any AI" entry-point prompt, verify the per-key tables declare every config key and its default, and optionally add the key-presence tripwire test.
+
+**Why this order**: The README routes to `mint setup` (Phase 2) and must reflect the now-minimal template (Phase 3), so it is the final human-facing layer once both binary surfaces are complete. It adds no scope to the binary — it reconciles documentation with what the prior phases shipped.
+
+**Acceptance**:
+- [ ] The `## Configuration` intro and the Commands-section `init` line state that `mint init` now writes a minimal `.mint.toml` (empty body + header pointer), correcting the "commented `.mint.toml`" framing.
+- [ ] The embedded full commented-template TOML block is replaced with the new minimal template (empty body + header) or dropped, leaving the per-key reference tables as the authoritative human config reference.
+- [ ] The README carries the entry-point prompt routing operators to `mint setup` ("run `mint setup` and follow what it prints"), framed for any AI with the light Opus-level steer and no fidelity-floor machinery.
+- [ ] The per-key reference tables are verified to declare every config key and its default; an optional tripwire test asserts every schema key name appears somewhere in the README.
+- [ ] All standard gates pass.
+
+#### Tasks
+status: approved
+approved_at: 2026-06-16
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-4-1 | Reconcile the Configuration + Commands sections with the minimal template | embedded-template block replaced with minimal (empty body + header) OR dropped — per-key tables stay the authoritative human reference either way; Configuration intro and Commands init line must agree on "minimal .mint.toml (empty body + header pointer)"; per-key tables already cover every schema key + default — verification confirms none missed, not a rewrite |
+| interactive-mint-init-setup-4-2 | Add the any-AI entry-point prompt routing operators to mint setup | routes to the binary guide, never restates it (binary is the version-matched source); "any AI" framing (Claude, Codex, …) with a light Opus-level steer and no fidelity-floor machinery; strict-schema loud-fail + natural verify-config-loads remain as backstops, not added machinery |
+| interactive-mint-init-setup-4-3 | Add the optional key-presence tripwire test | OPTIONAL per the spec; key-source choice (schema decode-shape toml tags vs config.MetadataRows() SoT) flagged for the author; dedupe dual-level ai_command/timeout to the distinct key-name set (substring presence, not the (level,key) pairs the Phase 1 drift test uses); a removed/renamed schema key with no README mention must fail the build |
+
+### Phase 5: Analysis (Cycle 1)
+
+**Goal**: Address findings from Analysis (Cycle 1).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-5-1 | Disambiguate the "shared" level token and single-source the levelCell placeholder | Level-column "shared" placeholder collides with the Default-column inherit "shared" token in adjacent cells; cell must stay driven by MetadataLevel.String() with the placeholder applied only when String() is empty; do not alter the SoT Default-column tokens; test re-implements levelCell byte-for-byte (self-fulfilling) — replace with a single production-sourced expectation |
+| interactive-mint-init-setup-5-2 | Give the blank-default render a real assertion | blank-default assertion collapses to strings.Contains(line, "") (unconditionally true); pin defaultCell("") == " " (single space) and defaultCell(x) == x; assert the exact single-space cell / delimiter shape so "auto", an empty token, or a dropped delimiter turns the test red; test-coverage fix only — no production behaviour change |
+
+### Phase 6: Analysis (Cycle 2)
+
+**Goal**: Address findings from Analysis (Cycle 2).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-6-1 | Consolidate the 25-pair (level, key) expected census to one shared list | the full 25-pair enumeration appears exactly once in config test sources; both naming tests reference the shared census, neither carries an inline literal; MetadataRows() and schemaLeafKeys() stay separate independent derivations; a deliberate single-pair removal still fails the bijection drift test |
+| interactive-mint-init-setup-6-2 | Reuse a single toml-tag-reading primitive in tomlTagsOf and schemaLeafKeysInto | the Tag.Get("toml") read and the ""/"-" skip guard appear in exactly one helper; both tomlTagsOf and schemaLeafKeysInto consume it, neither carries its own inline tag read; bijection/independence tests pass unchanged; future tag-option suffix like ,omitempty handled in one place |
+| interactive-mint-init-setup-6-3 | Single-source the rowKey struct and (level,key) index map across the config and setupguide test packages | rowKey struct and the index-map builder defined exactly once in config; both metadata_test.go and setupguide_test.go consume the single seam; duplicate-(level,key) collision detection preserved; seam stays test-support-only, not on the production render path |
+| interactive-mint-init-setup-6-4 | Reword emitted-guide procedure step 2 to name mint's own README unambiguously | "the project's README" misreads as the target project's README; reword to name mint's own README (human config reference); minimalism-philosophy clause retained; structural markers unchanged; load-bearing prose with no compiler — add an assertion on the disambiguated wording |
+| interactive-mint-init-setup-6-5 | Make MetadataLevel.String() distinguish an invalid level from the shared scope | LevelShared and the default branch both return "" today; keep LevelShared == "", make the default branch fail loud (panic) or return an unmistakable sentinel; render seam can no longer map an out-of-range level onto the shared/top-level cell; latent until a fifth level is added without a String() case |
+| interactive-mint-init-setup-6-6 | Add an end-to-end run("setup") dispatch test | three seams (classifyCommand route, runSetup emitter, run() switch wiring) tested alone but composition unproven; drive run([]string{"setup"}) to stdout asserting guide-on-stdout and exit 0; would catch a stdout/stderr argument swap or a mis-wired route; do not duplicate the emitter's internal content checks |
+
+### Phase 7: Analysis (Cycle 3)
+
+**Goal**: Address findings from Analysis (Cycle 3).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-7-1 | Pin the max_diff_lines SoT default to its canonical constant (close the last unpinned shared scalar default) | max_diff_lines is the one shared scalar whose SoT cell is a re-typed literal "50000" (const defaultMaxDiffLines is unexported) while ai_command/timeout source their cells from exported constants with dedicated pins; export the const, source the cell from strconv.Itoa(DefaultMaxDiffLines), add a symmetric subsuming drift pin; the bijection test guards key presence not default values so gives no cover; also normalise the value-render test's timeout-seconds spelling from int(DefaultTimeout.Seconds()) to int(DefaultTimeout / time.Second) to match the production SoT and dedicated pin; README row left as-is (human surface, value unchanged); value-preserving — 50000 and 60 unchanged |
+
+## Manual Acceptance (not a phase)
+
+The spec's "Acceptance — prose quality" is a one-time manual run against representative repos (a fresh JS project, a Go project, a repo with an existing release script, a repo with an existing `.mint.toml`), eyeballing that each yields a sensible config. It cannot be unit-tested (spawning an AI is forbidden by the test culture). Tracked as a manual acceptance step after Phases 2 and 4 land — not modelled as implementation work.

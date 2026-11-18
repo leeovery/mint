@@ -1,0 +1,9 @@
+# Rate-limit-aware publish
+
+The v0.6.0 release (2026-07-20) failed at the publish step because the GitHub API budget was empty: the release ran at the end of a day that landed a 75-PR stack, and the merge tooling's per-cycle API traffic had consumed the full 5,000/hr allowance. The publish call was just the first request to arrive after the bucket ran dry. The limit reset seven minutes later and the identical call succeeded.
+
+The idea: mint's publish step (and the regenerate path that re-runs it) should recognise this condition and treat it as the transient it is. GitHub's 403 response identifies itself unambiguously ("API rate limit exceeded"), and the reset moment is queryable (`gh api rate_limit` — the response carries a `reset` epoch; the endpoint itself is not rate-limited). With that, publish could tell the user something true and useful — "GitHub rate limit exhausted; resets at 21:04 (7m)" — instead of a bare failure, and could offer to wait out the window and retry automatically, or exit with the reset time so the user re-runs when it matters.
+
+Context worth keeping: this failure mode is most likely precisely on big release days — heavy merge/CI activity beforehand is what drains the budget — so it correlates with exactly the releases where a confusing failure stings most. Everything else in the run had succeeded (tag pushed atomically, changelog and version file committed), so the state mint leaves behind is fine; the whole cost was human confusion about whether something was broken. A publish that names the condition and offers to wait would reduce this class of failure to a progress message.
+
+The idea pairs naturally with the two bugs logged the same day (swallowed gh stderr; the misleading heal hint) — those cover surfacing what went wrong, this one covers handling the specific transient gracefully once it's recognisable.

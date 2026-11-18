@@ -1,0 +1,3 @@
+# Release Notes Quality
+
+A speculative research thread motivated by the user current agentic-workflows release script, whose AI notes are not always great, especially on bigger releases where large diffs summarise to mush (echoing the first discussion max_diff_lines cost and quality note). The first discussion tuned the prompt and output format but always fed the AI a raw textual diff. This thread explores enriching the input instead: feeding AST or semantic structure of the change, or some other signal, to produce more accurate and meaningful notes. Framed explicitly as speculative (a suspicion we can do better), an open what-is-possible question, hence research routing.

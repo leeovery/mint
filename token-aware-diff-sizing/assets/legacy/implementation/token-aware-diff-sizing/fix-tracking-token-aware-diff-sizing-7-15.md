@@ -1,0 +1,14 @@
+## Attempt 1
+
+ISSUES:
+- /Users/leeovery/Code/mint/README.md:115: the example `(`docs/specs/: 12 files, 48 KB`)` is a line mint never emits. Folder runs are keyed by `leadingDir` (/Users/leeovery/Code/mint/internal/notes/changemap.go:351-357), which returns only the first path segment. `checkList` keys every path through `runOf("", p.path)` (/Users/leeovery/Code/mint/internal/notes/exclusioncheck.go:284), so twelve files under `docs/specs/` condense to `docs/: 12 files, 48 KB`, never `docs/specs/: …`. The executed test pins the as-built shape: `vendor/pkg/fileNNNN.go` paths condense to `- vendor/: 4,312 files, 38 MB` (/Users/leeovery/Code/mint/internal/notes/exclusioncondense_test.go:22-32). The failure this causes: an operator reading the README expects condensed lines at nested-folder granularity. On a large release the list shows only top-level folders, which contradicts the documented example. The task exists solely to make this paragraph true to the code.
+  FIX: Replace the parenthetical with the spec's own example, which the condense test pins as real output: `(`vendor/: 4,312 files, 38 MB`)`. No test change is needed, because no pin covers the example.
+  ALTERNATIVE: Keep a docs-flavoured example but make it top-level: `(`docs/: 12 files, 48 KB`)`. This is equally true, but the vendor example is better: it matches §6.2 word for word and shows the case condensing exists for, thousands of files. You could also write "condenses by top-level folder", which is more precise as built. §6.3 leaves the folder choice to the implementer, though, so the plain "by folder" wording is acceptable.
+  CONFIDENCE: high
+
+NOTES:
+- /Users/leeovery/Code/mint/README.md:119: the inserted clause "…even condensed, in which case no call is made, mint warns …" sits right before the main verb. A reader can wrongly attach "in which case" to "mint warns" and read the warning as specific to the over-cap cause. If the fix round touches this file anyway, a parenthetical would read more cleanly: "…will not fit in `max_prompt_bytes` even condensed (then no call is made), mint warns …". The new pin, "or because the list of changed paths will not fit in `max_prompt_bytes` even condensed", still holds under that wording. This is optional and does not block.
+- The executor added a pin for the extended no-pause sentence that the task did not ask for. It is a useful guard: it fails against the old README, as checked above. It is not over-testing.
+- AC1's condensing sentence has no pin. The task's test instructions only call for pause and failure pins, so this is not a gap against the task.
+- The `.tick/tasks.jsonl` diff is only the task's status flip from `open` to `in_progress`, made by the orchestrator. It is outside this review.
+- Nothing arrived with the dispatch beyond the enumerated inputs.

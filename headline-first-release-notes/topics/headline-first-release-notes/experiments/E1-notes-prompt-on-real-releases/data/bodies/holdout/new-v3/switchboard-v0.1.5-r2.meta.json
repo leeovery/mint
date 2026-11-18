@@ -1,0 +1,30 @@
+{
+  "repo": "/Users/leeovery/Code/switchboard",
+  "prev": "v0.1.4",
+  "tag": "v0.1.5",
+  "arm": "new",
+  "instructions_sha256": "05adb1a0423a767529fd67768af43064a9dfc9a19113d2fc0112aeb24f99910f",
+  "reminder_sha256": "bb0d20a7522ce0d07705e5a6a678dfdc56599470b3fd178995933e107b3d4f63",
+  "exclude_globs": [
+    ".claude/**",
+    "CLAUDE.md",
+    "docs/**",
+    "ideas/**",
+    "scripts/**",
+    ".github/**",
+    "go.sum",
+    "**/*_test.go",
+    "**/testdata/**"
+  ],
+  "version_file": "",
+  "version_pattern_set": false,
+  "prompt_bytes": 502074,
+  "prompt_sha256": "217512c8db6f691fc67c3c1bc61081586b9806c61d8abaebe33114935df8ea36",
+  "input_sha256": "8899ca92486f4470c285a19fdda3a904e7eb8491c8214c6c215dac420cb79a72",
+  "ai_command": "claude -p --model sonnet --safe-mode --tools \"\" --strict-mcp-config --no-session-persistence --system-prompt \"Follow the instructions you are given and output only what they ask for.\"",
+  "timeout_seconds": 600,
+  "started": "2026-10-22T06:55:02Z",
+  "finished": "2026-10-22T06:55:16Z",
+  "seconds": 14.395448708,
+  "body_bytes": 2281
+}

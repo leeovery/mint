@@ -1,0 +1,15 @@
+## Attempt 1
+
+ISSUES:
+- /Users/leeovery/Code/mint/internal/engine/notes_floor_causemoves_test.go:189-202 — `TestRelease_NotesFloorCauseMoves_MergeTooLargeWithTheRepoOwnCommandTakesOnlyTheAlwaysMoves` passes even with the explicit `case errors.Is(failure, notes.ErrMergeTooLarge): return nil` (`/Users/leeovery/Code/mint/internal/engine/notesfloor.go:61-62`) deleted. It drives `mergeTooLargeTransport(bigPartNotes)`, which takes the over-cap path. That path returns a bare `notes.ErrMergeTooLarge` (`/Users/leeovery/Code/mint/internal/notes/chunk.go:70`) with no `ai.ErrGenerationFailed` in its chain, so the OTHER branch could never catch it anyway. The case the explicit check exists for is a merge call the classifier reads as SIZE. That error is `fmt.Errorf("%w: %w", ErrMergeTooLarge, err)` wrapping the AI's `GenerationError` (`chunk.go:76`), and nothing tests it under a repo's own command. The existing size-moves merge test runs with the default command, where the OTHER branch also returns nil. I confirmed this with a mutation run in a scratch copy:
+  - With the explicit case removed, the whole engine floor suite passed.
+  - Switching this test to `apiPartNotes` made it fail on exactly the regression: the lean pointer was appended to a `part notes too large to merge` stop, against §12.4's rule that a merge too large, by the cap or by the model, takes only the Always moves.
+  - With the real code, the `apiPartNotes` version passes.
+  FIX: Make the test table-driven over both merge paths, mirroring `TestRelease_NotesFloorSizeMoves_MergeTooLargeTakesOnlyTheAlwaysMoves` (`/Users/leeovery/Code/mint/internal/engine/notes_floor_sizemoves_test.go:177-202`). Use the cases `{name: "merge prompt over the cap", partNotes: bigPartNotes}` and `{name: "merge call classified SIZE", partNotes: apiPartNotes}`, each passed to `mergeTooLargeTransport(tc.partNotes)`, with the same `writeConfig(... "ai_command = \"llm -m gpt-4o\"\nmax_prompt_bytes = 20000\n\n"+abortConfig)`, phrase assertion and moves assertion as now. The classified-SIZE row is the one that guards line 61.
+  CONFIDENCE: high
+
+NOTES:
+- AC3 says "classified OTHER". The single-pass OTHER tests reach OTHER through a failed classify call, because `freshTransport` returns the same error for every call, not through an `OTHER` answer. `causeMoves` receives the identical original error on both paths, so the moves are covered either way. The test exercises the §9.7 failure (the classify call fails the same way).
+- The `causeMoves` doc comment (`/Users/leeovery/Code/mint/internal/engine/notesfloor.go:52-56`) is accurate. It does not say that the `ErrMergeTooLarge` case also has to come before the OTHER branch because it can wrap the call's generation failure, which makes lines 61-62 look like a removable redundancy. Once the ISSUE's test row is in, that test guards the ordering, so no comment change is required.
+- The README sentence (`/Users/leeovery/Code/mint/README.md:111`) and its docs test (`/Users/leeovery/Code/mint/internal/config/notes_floor_docs_test.go:97-112`) match the built behaviour.
+- Nothing arrived in the dispatch beyond the enumerated inputs.

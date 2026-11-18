@@ -1,0 +1,66 @@
+# Consolidation Tasks: Token Aware Diff Sizing (Phase 5)
+
+## Task 1: One notes-failure cause classification for the ✗ phrase and the next moves
+placement: phase 5
+severity: duplication
+
+**Problem**: `notes.CauseText` (internal/notes/resolve.go:125-148) and `causeMoves` (internal/engine/notesfloor.go:79-99) each test the same six sentinels in the same order, and the order is load-bearing: `ErrTooLargeForModel` and `ErrMergeTooLarge` wrap the call's own `ai.ErrGenerationFailed` (internal/notes/chunk.go:43, :76, :228). A cause added to one switch and not the other, such as the RATE_LIMIT code spec §9.3 expects later, gets a ✗ line naming it and moves that fit another cause: on a repo's own `ai_command`, a rate-limit stop is told to switch to the lean command. No compile error, lint rule or test catches it, since each cause's moves are pinned only for today's causes. The readers keyed on `CauseText`'s known bit pick a new cause up at once: `reachesNotesFloor` (internal/engine/notesfloor.go:32-38) sends it to the floor, `notesSkipCause` (internal/engine/regenerate_batch.go:384-389) and `failureMessage` (internal/engine/release.go:1832-1841) print its phrase. The repo carries no golangci config, so `exhaustive` is not on.
+**Solution**: Define the precedence once in `notes`: a closed `Cause` type with one classifier (e.g. `ClassifyFailure(err error) (Cause, bool)`) holding the single ordered switch. `CauseText` maps the `Cause` to its phrase, keeping its location suffix and its output-dependent wording for a generation failure; `causeMoves` switches on the `Cause` instead of re-testing sentinels; `reachesNotesFloor` and `notesSkipCause` use the classifier's known bit. Every rendered phrase and move stays byte-identical. Derived from the finding-floor's silent-divergence rule: one ordered switch is the only shape in which adding a cause forces both readers to handle it.
+**Outcome**: Adding a notes-failure cause is one new constant that the phrase and the moves both visibly map. Every ✗ phrase, `--all` skip reason and next move renders byte-identical to today.
+
+**Acceptance Criteria**:
+- [ ] Each of the six causes renders today's ✗ phrase, single-pass and chunked, with today's location suffix or none: the existing `CauseText` tests (internal/notes/causetext_test.go, halvebound_test.go, halveparts_test.go, waveend_test.go, savenotes_test.go) pass unchanged.
+- [ ] An unattended release or `regenerate <version>` stopped at the floor prints today's next moves for each cause, byte for byte: the existing tests in internal/engine/notes_floor_causemoves_test.go, notes_floor_sizemoves_test.go, notes_floor_nextmoves_test.go and regenerate_floor_nextmoves_test.go pass unchanged.
+- [ ] A size failure carrying the call's own generation failure keeps the size cause: `ErrTooLargeForModel` over an `ai.GenerationError` reads `too large for the model, even in smaller parts` and takes the three size moves, and a merge too large on a repo's own `ai_command` takes only the Always moves, never the lean-command pointer an OTHER failure gets.
+- [ ] An error none of the six sentinels match (e.g. `notes.ErrDiffTooLarge`) is not a notes failure: `CauseText` reports `("", false)`, the run prints no next moves, and an `--all` skip reads `notes generation failed` with no output beneath it.
+- [ ] The sentinel precedence lives in one switch: `rg -n 'errors\.Is\(\w+, (notes|ai)\.Err' internal/engine -g '!*_test.go'` matches nothing (today: 6 matches, all `causeMoves`, notesfloor.go:81-95).
+
+**Do**:
+- In `internal/notes` (resolve.go, beside `CauseText`): a closed `Cause` type and one classifier holding the single ordered switch, the findings' shape being `ClassifyFailure(err error) (Cause, bool)`. Its order is today's, matched through the `%w` chain: `ErrNoRoomForDiff`, `ErrMergeTooLarge`, `ErrTooLargeForModel`, `ai.ErrTimeout`, `ai.ErrCommandMissing`, `ai.ErrGenerationFailed`; any other error is not known.
+- `CauseText` (resolve.go:123-146) classifies, then maps the `Cause` to its phrase: no-room and merge-too-large with no location, the other four with the `callError` location suffix, a generation failure worded by `generationFailurePhrase` from its captured output.
+- `causeMoves` (internal/engine/notesfloor.go:79-99) switches on the `Cause` instead of re-testing sentinels; merge-too-large keeps no moves, and the generation-failure arm keeps its `cfg.AICommandFor(config.VerbRelease) != config.DefaultAICommand` condition.
+- `reachesNotesFloor` (notesfloor.go:32-38, its `context.Canceled` check still first) and `notesSkipCause` (internal/engine/regenerate_batch.go:384-389) take their known/unknown branch from the classifier. `failureMessage` (internal/engine/release.go:1832-1841) and `causeText` (resolve.go:160-165) print the phrase and stay on `CauseText`.
+- Pure refactor: behaviour unchanged, existing tests stay green, test semantics untouched.
+
+## Task 2: Printed `--notes-file` commands quote the saved path, built in one place
+placement: phase 5
+severity: behaviour
+
+**Problem**: The commands that put saved chunk notes to use are hand-concatenated at six sites: `mint release --notes-file P` at internal/engine/notesfloor.go:46 (via `notesFileMove`, :69), internal/engine/notesstage.go:62 and :70; `mint release regenerate V --notes-file P` at notesfloor.go:59 (via `notesFileMove`), notesstage.go:61 and internal/engine/regenerate_batch.go:256. Each prints the saved path raw, and the path keeps any space or shell metacharacter in the repo path, since `repoScope` turns only separators into dashes (internal/notescache/cache.go:189-191). A repo at `~/Code/My App` prints a command that splits when pasted: the re-run the next moves, the fallback warning or the `--all` skip promised fails with a usage error or `reading --notes-file …: no such file`. A fix made at one site and missed at another drifts silently, as each site's tests pin their own literal.
+**Solution**: One engine helper renders the command, `base + " --notes-file " + quoted path`, where `base` is `mint release` or `mint release regenerate <version>`; `notesFileMove`, `warnFallback`, `warnDryRunFallback` and `savedNotesPointer` call it and stop concatenating. The path goes through a POSIX single-quoting helper placed beside `internal/cmdline.Split` as its inverse (`cmdline.Quote`), with a round-trip test against `Split`. It quotes only a path holding a byte outside `[A-Za-z0-9_@%+=:,./-]`, writing `'` as `'\''`, so every path today's tests pin prints unchanged. The `<file>` placeholder form and the display-only paths (the `part notes saved to P` line, `tidy the saved notes at P`) stay raw. Derived from §12.4: the printed command is the one the reader is told to run, so it has to survive being pasted into a shell.
+**Outcome**: A saved path with a space prints as a quoted argument in every `--notes-file` command mint prints, and the commands come from one renderer. A path that needs no quoting prints exactly as today.
+
+**Acceptance Criteria**:
+- [ ] An unattended release from a repo whose path holds a space, its chunked notes failing with part notes saved, stops with the next move `tidy the saved notes at <path>, filling in any files its marker lists, and release with mint release --notes-file '<path>'`; an unattended `mint release regenerate <version>` failing the same way ends its move with `mint release regenerate <version> --notes-file '<path>'`.
+- [ ] Under `on_notes_failure = "fallback"` from that repo, the fallback warning names `mint release regenerate <version> --notes-file '<path>'` and `mint release --notes-file '<path>'`, and a dry run's warning names `mint release --notes-file '<path>'`.
+- [ ] A `regenerate --all` version skipped with saved part notes from that repo names `mint release regenerate <version> --notes-file '<path>'` in its skip warning and in the end summary.
+- [ ] A saved path shown rather than passed prints raw, a space included: the ✗ line's `part notes saved to <path>`, the fallback warning's and the `--all` skip's `part notes saved to <path>`, and the next move's `tidy the saved notes at <path>`.
+- [ ] A printed command split by POSIX shell rules passes the saved path whole as `--notes-file`'s value, a path holding a `'` included (written `'\''` inside the quotes): `cmdline.Split` of `cmdline.Quote(p)` gives back `[p]` for a path with a space, a `'`, or any of `$`, `` ` ``, `*`, `;`, `&`, `|`, `~`.
+- [ ] A saved path made only of `[A-Za-z0-9_@%+=:,./-]` bytes prints unquoted, byte-identical to today: the existing literals at internal/engine/notes_floor_nextmoves_test.go:22, regenerate_floor_nextmoves_test.go:22, notes_fallback_warning_test.go:32-33, notes_fallback_dryrun_test.go:18 and regenerate_chunknotes_test.go:184 pass unchanged.
+- [ ] With no chunk notes saved, the move still reads `write the notes to a file and release with <command> --notes-file <file>`, the placeholder unquoted.
+
+**Do**:
+- The complete set: `rg -n -- '--notes-file " \+' internal cmd -g '!*_test.go'` → 5 lines in 4 functions: internal/engine/notesfloor.go:69 (`notesFileMove`, serving `notesFloorMoves` :46 and `regenerateNotesFloorMoves` :59), internal/engine/notesstage.go:61 and :62 (`warnFallback`), notesstage.go:70 (`warnDryRunFallback`), internal/engine/regenerate_batch.go:256 (`savedNotesPointer`). All 5 render through the helper; afterwards the helper's own line is the grep's only match.
+- `cmdline.Quote` in `internal/cmdline`, beside `Split` as its inverse: the string unchanged when every byte is in `[A-Za-z0-9_@%+=:,./-]`, else wrapped in single quotes with each `'` written `'\''`. A round-trip test against `Split` pins it.
+- One engine helper (the findings name it `notesFileCommand(base, path string) string`) renders `base + " --notes-file " + cmdline.Quote(path)`, `base` being `mint release` or `mint release regenerate <version>`.
+- Stays raw: the `<file>` placeholder, a separate literal in `notesFileMove`'s no-file branch (notesfloor.go:67); `tidy the saved notes at P` (notesfloor.go:69); `part notes saved to P` (notesstage.go:80, regenerate_batch.go:256, internal/presenter/presenter.go:552). The README's `<path>` forms need no change.
+- Behaviour change: the executor writes the tests that pin the quoted commands from the criteria above.
+
+## Task 3: Fold `RangeNoAIBody` back into the notes package
+placement: phase 5
+severity: dead-code
+
+**Problem**: Task 5-9 exported `notes.RangeNoAIBody` for the regenerate floor's `c`; task 5-10 replaced that call with `VersionNoAIBody`, which drops the version's `Release {tag}` bookkeeping commit. The export now has no caller outside `notes` (internal/notes/resolve.go:66-78, where `resolveFallbackBody` is its only non-test caller) and sits beside its replacement with a near-identical signature (`revRange` against `revRange, tag`). A later version-range caller that picks the export puts the bookkeeping subject into that version's notes, the defect 5-10 fixed, and nothing flags it: the output is a plausible subject list, and `unused` ignores exported identifiers. The regenerate floor's `c` now calls `VersionNoAIBody` (internal/engine/notesfloor.go:185).
+**Solution**: Unexport it (`rangeNoAIBody`, or fold it into `resolveFallbackBody`, which keeps the `{lastTag}..HEAD` range), and drop the three `TestRangeNoAIBody_*` tests (internal/notes/noai_test.go:195-240): the `NoAIBody` tests (noai_test.go:14-72, :144-193) already pin the same argv and maintenance-release body, and the `VersionNoAIBody` git-failure test (noai_test.go:308-318) pins the error. `VersionNoAIBody` is then the one exported way to list a range other than `{lastTag}..HEAD`.
+**Outcome**: `notes` exports one range-listing body, `VersionNoAIBody`, so a version-range caller cannot pick the builder that keeps the bookkeeping commit; the bodies `--no-ai`, `on_notes_failure = "fallback"` and the regenerate floor's `c` produce are unchanged.
+
+**Acceptance Criteria**:
+- [ ] `--no-ai` and `on_notes_failure = "fallback"` still produce the commit-subject list since the last tag from one `git log --format=%s {lastTag}..HEAD`, and the maintenance-release body when it lists none: the `NoAIBody` and `ResolveFailure` tests in internal/notes/noai_test.go (:14-193) pass unchanged.
+- [ ] The regenerate floor's `c` still lists the version's own range less its bookkeeping commit, and a git failure still reads `building commit-subject fallback for <range>: <cause>`: the `VersionNoAIBody` tests (noai_test.go:242-319) pass unchanged.
+- [ ] `notes` exports no `RangeNoAIBody`: `rg -n 'RangeNoAIBody' internal cmd` matches nothing (today: 11 matches, resolve.go:65-70 and the three tests).
+
+**Do**:
+- In internal/notes/resolve.go (:64-76): unexport `RangeNoAIBody` as `rangeNoAIBody`, or fold it into `resolveFallbackBody`, which keeps the `{lastTag}..HEAD` range.
+- Drop `TestRangeNoAIBody_ListsTheRangesCommitSubjects`, `TestRangeNoAIBody_EmptyRangeGivesTheMaintenanceReleaseBody` and `TestRangeNoAIBody_GitFailureNamesTheRange` (internal/notes/noai_test.go:195-240); no other test changes.
+- `VersionNoAIBody` (resolve.go:83-89) and `NoAIBody` (internal/notes/noai.go:25-27) keep their signatures and bodies.
+- Pure refactor: behaviour unchanged, existing tests stay green, test semantics untouched.

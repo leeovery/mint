@@ -1,0 +1,29 @@
+{
+  "name": "ai-model-selection",
+  "work_type": "feature",
+  "status": "completed",
+  "created": "2026-06-13",
+  "description": "Pin a model in mint's default AI command and decide the AI model/command config shape per verb (top-level vs per-verb override)",
+  "phases": {
+    "discussion": {
+      "items": {
+        "ai-model-selection": {
+          "status": "completed"
+        }
+      }
+    }
+  },
+  "seeds": [
+    {
+      "path": "seeds/2026-06-11-ai-model-selection.md",
+      "source": "inbox:idea",
+      "seeded_at": "2026-06-13T13:56:06Z"
+    }
+  ],
+  "completed_at": "2026-06-14",
+  "spec": {
+    "joined": [
+      "ai-model-selection"
+    ]
+  }
+}

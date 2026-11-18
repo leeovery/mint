@@ -1,0 +1,22 @@
+{
+  "repo": "/Users/leeovery/Code/dex/dex-engine",
+  "prev": "v0.2.1",
+  "tag": "v0.2.2",
+  "arm": "current",
+  "instructions_sha256": "e25d36b546116de49b6e870c99c092c9a0b56b16ca5df2a3e469a08f5fd73e88",
+  "reminder_sha256": "4c0f0580b4484133a7de59c77d60b3ec89629babd0adb880f79d4a30d05fd6e1",
+  "exclude_globs": [
+    "design/"
+  ],
+  "version_file": "pyproject.toml",
+  "version_pattern_set": true,
+  "prompt_bytes": 713159,
+  "prompt_sha256": "8179ce8425d8032968ad0820c5ea0e3fafc57d8d4007c053c8264db54b4a997f",
+  "input_sha256": "ed802a5392701fa8f45a4c0c495d233f4f659323068ef9018d7daaf3f74dcfee",
+  "ai_command": "claude -p --model sonnet --safe-mode --tools \"\" --strict-mcp-config --no-session-persistence --system-prompt \"Follow the instructions you are given and output only what they ask for.\"",
+  "timeout_seconds": 600,
+  "started": "2026-10-22T06:53:23Z",
+  "finished": "2026-10-22T06:53:39Z",
+  "seconds": 15.503884709,
+  "body_bytes": 2191
+}

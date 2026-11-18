@@ -1,0 +1,3 @@
+# Commit Command
+
+Reintroduces mint commit, parked in the first discussion as its own separate feature with the mint verb namespace adopted to leave room; the pivot from feature to epic is the trigger flagged for promoting it. The command wraps the user existing AI-commit shell function: an AI-generated commit message from the staged diff, with --all, --no-ai, one-time context injection, and auto-push, fitting the minting-a-commit brand. The user wants it built into mint, sharing the AI engine, the .mint.toml config, and the styled presentation layer, with the integration details (how much it reuses the release pipeline versus stands alone) deliberately left for its own discussion.
