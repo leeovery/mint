@@ -93,5 +93,8 @@
   },
   "github_rule": {
     "status": "set"
+  },
+  "github_squash": {
+    "status": "set"
   }
 }
