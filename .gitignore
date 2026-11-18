@@ -9,3 +9,4 @@ dist/
 
 # demo recordings: the world and frames demo/record.sh makes (the art goes to art/)
 /demo/out/
+.ledger/
