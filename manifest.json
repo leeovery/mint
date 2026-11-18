@@ -90,5 +90,8 @@
         "closed": "2026-11-18T16:48:17.397Z"
       }
     }
+  },
+  "github_rule": {
+    "status": "set"
   }
 }
