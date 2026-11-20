@@ -28,22 +28,24 @@ scripts=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 identifier=io.github.leeovery.mint
 identity="Developer ID Application"
 # The signing keychain, which kit's developer-id step makes, holds the
-# Developer ID identity and notarytool's profile, and nothing else. It opens
-# with the .p12's password, DEVELOPER_ID_P12_PASSWORD, which kit writes to
-# ~/.secrets.zsh, so release-build unlocks it itself and asks nothing, at the
-# Mac or over SSH; every codesign and notarytool call names it, and no other
-# keychain is read.
+# Developer ID identity and notarytool's profile. It opens with the .p12's
+# password, DEVELOPER_ID_P12_PASSWORD, which kit writes to ~/.secrets.zsh, so
+# release-build unlocks it itself and asks nothing, at the Mac or over SSH;
+# every codesign and notarytool call names it, and no other keychain is read.
 keychain=$HOME/Library/Keychains/signing.keychain-db
 # notarytool's login is the Mac's, whatever it notarises, so its profile is
 # named for notarytool, not for mint.
 profile=notarytool
 # How every notarytool call signs in: the profile, in the signing keychain.
 notary=(--keychain "$keychain" --keychain-profile "$profile")
+# What a command handed to a person runs first, so it opens the signing
+# keychain however the shell came: the variable's name, never its value.
+unlock_command="security unlock-keychain -p \"\$DEVELOPER_ID_P12_PASSWORD\" $keychain"
 # notarytool waits on Apple this many seconds at a time, this many times at
 # most, so mint, which gives a hook no time limit, waits about an hour.
 notary_wait=900
 notary_waits=4
-keychain_hint="macOS may be asking on the Mac's screen to let codesign use the signing keychain's key: kit apply's developer-id step lets codesign use it with no dialog."
+keychain_hint="macOS may be asking on the Mac's screen to let codesign use the signing keychain's key: security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k \"\$DEVELOPER_ID_P12_PASSWORD\" $keychain lets codesign use it with no dialog."
 work=
 
 usage() {
@@ -78,9 +80,15 @@ commit_of() {
 # that signs or notarises asks for it.
 unlock_keychain() {
 	[[ -f $keychain ]] || release_fail "There's no signing keychain at $keychain: kit apply makes it, its developer-id step."
-	[[ -n ${DEVELOPER_ID_P12_PASSWORD:-} ]] || release_fail "DEVELOPER_ID_P12_PASSWORD isn't set, so the signing keychain can't be unlocked: kit secret sync writes it, and a shell that hasn't sourced ~/.secrets.zsh lacks it."
+	# A shell that hasn't read ~/.secrets.zsh, as a plain ssh command's, an
+	# agent's or one started before kit wrote it, finds the password there.
+	if [[ -z ${DEVELOPER_ID_P12_PASSWORD:-} && -f $HOME/.secrets.zsh ]]; then
+		DEVELOPER_ID_P12_PASSWORD=$(zsh -fc 'source ~/.secrets.zsh && print -rn -- "${DEVELOPER_ID_P12_PASSWORD-}"') ||
+			DEVELOPER_ID_P12_PASSWORD=
+	fi
+	[[ -n ${DEVELOPER_ID_P12_PASSWORD:-} ]] || release_fail "DEVELOPER_ID_P12_PASSWORD isn't set, nor in ~/.secrets.zsh, so the signing keychain can't be unlocked: kit secret sync writes it to ~/.secrets.zsh."
 	security unlock-keychain -p "$DEVELOPER_ID_P12_PASSWORD" "$keychain" ||
-		release_fail "The signing keychain doesn't unlock with DEVELOPER_ID_P12_PASSWORD, as security says above: kit apply makes it with that password, its developer-id step."
+		release_fail "The signing keychain doesn't open with DEVELOPER_ID_P12_PASSWORD, as security says above: security delete-keychain $keychain, then kit apply, which makes it again with notarytool's profile."
 }
 
 check_identity() {
@@ -199,9 +207,9 @@ notarise() {
 	id=$(field id "$result")
 	if [[ -z $id ]]; then
 		echo "$result"
-		release_fail "notarytool gave no submission id, as its output above says: xcrun notarytool history ${notary[*]} shows what Apple has."
+		release_fail "notarytool gave no submission id, as its output above says: $unlock_command && xcrun notarytool history ${notary[*]} shows what Apple has."
 	fi
-	local again="xcrun notarytool wait $id ${notary[*]} says when Apple has answered, and mint can then be run again."
+	local again="$unlock_command && xcrun notarytool wait $id ${notary[*]} says when Apple has answered, and mint can then be run again."
 	for ((round = 1; round <= notary_waits; round++)); do
 		echo "Submission $id: waiting on Apple's answer…"
 		started=$(release_now)
