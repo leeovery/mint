@@ -1,0 +1,22 @@
+# How press builds, signs and ships mint: `press prepare` before mint tags a
+# release, `press upload` after (.mint.toml's hooks).
+name = "mint"
+
+# darwin and linux, each archived; press signs and notarises the darwin
+# binaries, which the Homebrew formula installs, and checks every binary's
+# build settings name its target and no build tag.
+[binary]
+identifier = "io.github.leeovery.mint"
+targets = ["darwin/arm64", "darwin/amd64", "linux/arm64", "linux/amd64"]
+build = 'go build -trimpath -ldflags "-s -w -X mint/internal/buildinfo.Version={version}" -o {out} ./cmd/mint'
+version = "{version}"
+version_flags = "--version --plain"
+
+[package]
+name = "mint_{version}_{os}_{arch}.tar.gz"
+checksums = "mint_{version}_checksums.txt"
+
+# The formula in leeovery/homebrew-tools, moved on to each release that is
+# the latest and no pre-release.
+[tap]
+kind = "formula"
