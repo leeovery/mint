@@ -27,14 +27,23 @@ scripts=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 
 identifier=io.github.leeovery.mint
 identity="Developer ID Application"
+# The signing keychain, which kit's developer-id step makes, holds the
+# Developer ID identity and notarytool's profile, and nothing else. It opens
+# with the .p12's password, DEVELOPER_ID_P12_PASSWORD, which kit writes to
+# ~/.secrets.zsh, so release-build unlocks it itself and asks nothing, at the
+# Mac or over SSH; every codesign and notarytool call names it, and no other
+# keychain is read.
+keychain=$HOME/Library/Keychains/signing.keychain-db
 # notarytool's login is the Mac's, whatever it notarises, so its profile is
 # named for notarytool, not for mint.
 profile=notarytool
+# How every notarytool call signs in: the profile, in the signing keychain.
+notary=(--keychain "$keychain" --keychain-profile "$profile")
 # notarytool waits on Apple this many seconds at a time, this many times at
 # most, so mint, which gives a hook no time limit, waits about an hour.
 notary_wait=900
 notary_waits=4
-keychain_hint="The login keychain may be locked, as over SSH (security unlock-keychain), or macOS may be asking on the Mac's screen to let codesign use the key."
+keychain_hint="macOS may be asking on the Mac's screen to let codesign use the signing keychain's key: kit apply's developer-id step lets codesign use it with no dialog."
 work=
 
 usage() {
@@ -65,19 +74,28 @@ commit_of() {
 	git rev-parse -q --verify "$1^{commit}" || release_fail "$1 names no commit to build."
 }
 
+# unlock_keychain unlocks the signing keychain with its password, so nothing
+# that signs or notarises asks for it.
+unlock_keychain() {
+	[[ -f $keychain ]] || release_fail "There's no signing keychain at $keychain: kit apply makes it, its developer-id step."
+	[[ -n ${DEVELOPER_ID_P12_PASSWORD:-} ]] || release_fail "DEVELOPER_ID_P12_PASSWORD isn't set, so the signing keychain can't be unlocked: kit secret sync writes it, and a shell that hasn't sourced ~/.secrets.zsh lacks it."
+	security unlock-keychain -p "$DEVELOPER_ID_P12_PASSWORD" "$keychain" ||
+		release_fail "The signing keychain doesn't unlock with DEVELOPER_ID_P12_PASSWORD, as security says above: kit apply makes it with that password, its developer-id step."
+}
+
 check_identity() {
 	local count
-	count=$(security find-identity -v -p codesigning | grep -c "\"$identity: ") || true
+	count=$(security find-identity -v -p codesigning "$keychain" | grep -c "\"$identity: ") || true
 	case $count in
-	0) release_fail "The keychain has no valid $identity certificate to sign with: add it, with its private key, to the login keychain. $keychain_hint" ;;
+	0) release_fail "The signing keychain has no valid $identity certificate to sign with: kit apply imports it, its developer-id step." ;;
 	1) ;;
-	*) release_fail "The keychain has $count valid $identity certificates, and codesign can't choose one: remove all but one." ;;
+	*) release_fail "The signing keychain has $count valid $identity certificates, and codesign can't choose one: remove all but one." ;;
 	esac
 }
 
 check_profile() {
-	if ! xcrun notarytool history --keychain-profile "$profile" >/dev/null; then
-		release_fail "notarytool can't use the keychain profile $profile, as it says above. If the profile isn't made, make it with xcrun notarytool store-credentials $profile; a locked keychain, or no network, fails the same way."
+	if ! xcrun notarytool history "${notary[@]}" >/dev/null; then
+		release_fail "notarytool can't use the keychain profile $profile in the signing keychain, as it says above. If the profile isn't made, kit apply makes it, its notarytool step; no network fails the same way."
 	fi
 }
 
@@ -112,7 +130,7 @@ build() {
 }
 
 sign() {
-	codesign --force --options runtime --timestamp --identifier "$identifier" --sign "$identity" "$1" ||
+	codesign --force --options runtime --timestamp --identifier "$identifier" --keychain "$keychain" --sign "$identity" "$1" ||
 		release_fail "codesign couldn't sign $1, as it says above. $keychain_hint"
 }
 
@@ -177,22 +195,22 @@ notarise() {
 	local result id status="In Progress" round started elapsed
 	ditto -c -k --keepParent "$1" "$2"
 	echo "Sending the darwin binaries to Apple's notary service…"
-	result=$(xcrun notarytool submit "$2" --keychain-profile "$profile" --no-wait --output-format json || true)
+	result=$(xcrun notarytool submit "$2" "${notary[@]}" --no-wait --output-format json || true)
 	id=$(field id "$result")
 	if [[ -z $id ]]; then
 		echo "$result"
-		release_fail "notarytool gave no submission id, as its output above says: xcrun notarytool history --keychain-profile $profile shows what Apple has."
+		release_fail "notarytool gave no submission id, as its output above says: xcrun notarytool history ${notary[*]} shows what Apple has."
 	fi
-	local again="xcrun notarytool wait $id --keychain-profile $profile says when Apple has answered, and mint can then be run again."
+	local again="xcrun notarytool wait $id ${notary[*]} says when Apple has answered, and mint can then be run again."
 	for ((round = 1; round <= notary_waits; round++)); do
 		echo "Submission $id: waiting on Apple's answer…"
 		started=$(release_now)
-		result=$(xcrun notarytool wait "$id" --keychain-profile "$profile" --timeout "$notary_wait" --output-format json || true)
+		result=$(xcrun notarytool wait "$id" "${notary[@]}" --timeout "$notary_wait" --output-format json || true)
 		elapsed=$(($(release_now) - started))
 		status=$(field status "$result")
 		# A wait that ran its time ends with no answer, or in progress; one
-		# with no answer well before then failed, as on a locked keychain or
-		# with no network, and waiting again would only fail again.
+		# with no answer well before then failed, as with no network, and
+		# waiting again would only fail again.
 		if [[ -z $status ]] && ((elapsed < notary_wait - 60)); then
 			echo "$result"
 			release_fail "notarytool's wait on submission $id failed after $elapsed seconds, as it says above: $again"
@@ -205,7 +223,7 @@ notarise() {
 		release_fail "Apple hasn't answered submission $id in about an hour: $again"
 	fi
 	if [[ $status != Accepted ]]; then
-		xcrun notarytool log "$id" --keychain-profile "$profile" || true
+		xcrun notarytool log "$id" "${notary[@]}" || true
 		release_fail "Apple's notary service refused what was built, as its log above says."
 	fi
 }
@@ -266,6 +284,7 @@ main() {
 	fi
 	local commit
 	commit=$(commit_of "$ref")
+	unlock_keychain
 	check_identity
 	check_profile
 
