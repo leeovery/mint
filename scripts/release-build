@@ -30,8 +30,10 @@ identity="Developer ID Application"
 # The signing keychain, which kit's developer-id step makes, holds the
 # Developer ID identity and notarytool's profile. It opens with the .p12's
 # password, DEVELOPER_ID_P12_PASSWORD, which kit writes to ~/.secrets.zsh, so
-# release-build unlocks it itself and asks nothing, at the Mac or over SSH;
-# every codesign and notarytool call names it, and no other keychain is read.
+# release-build unlocks it itself and asks nothing, at the Mac or over SSH.
+# Every codesign and notarytool call names it, and kit's step puts it first
+# on the keychain search list, where codesign finds the key whatever
+# --keychain names.
 keychain=$HOME/Library/Keychains/signing.keychain-db
 # notarytool's login is the Mac's, whatever it notarises, so its profile is
 # named for notarytool, not for mint.
@@ -89,6 +91,10 @@ unlock_keychain() {
 	[[ -n ${DEVELOPER_ID_P12_PASSWORD:-} ]] || release_fail "DEVELOPER_ID_P12_PASSWORD isn't set, nor in ~/.secrets.zsh, so the signing keychain can't be unlocked: kit secret sync writes it to ~/.secrets.zsh."
 	security unlock-keychain -p "$DEVELOPER_ID_P12_PASSWORD" "$keychain" ||
 		release_fail "The signing keychain doesn't open with DEVELOPER_ID_P12_PASSWORD, as security says above: security delete-keychain $keychain, then kit apply, which makes it again with notarytool's profile."
+	# Behind a keychain holding the same identity, as the login keychain may,
+	# codesign takes that one's key, locked over SSH.
+	[[ $(security list-keychains -d user | head -n 1 | tr -d ' "') == "$keychain" ]] ||
+		release_fail "The signing keychain isn't first on the keychain search list, where codesign finds its key whatever --keychain names: kit apply puts it there, its developer-id step."
 }
 
 check_identity() {
