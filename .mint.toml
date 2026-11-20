@@ -11,7 +11,7 @@ diff_exclude = ['.workflows', '.claude', '.tick', '.agntc']
 # No CI runs the tests or builds a release: both happen on this Mac, before
 # the irreversible tag and push. This array runs in order after preflight and
 # before the notes: every gate, then scripts/release-build, which builds HEAD
-# for darwin and linux, signs the darwin binaries with the keychain's
+# for darwin and linux, signs the darwin binaries with the signing keychain's
 # Developer ID and notarises them, and keeps the archives, so a failing gate,
 # or a failure about the binary, the certificate or Apple's answer, stops the
 # release before any notes are written or anything is tagged or pushed.

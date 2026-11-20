@@ -3,21 +3,4 @@ if ! command -v mint >/dev/null 2>&1; then
   echo "mint is not installed. Install it with: brew install leeovery/tools/mint" >&2
   exit 1
 fi
-# scripts/release-build, in pre_tag, signs with the login keychain's Developer
-# ID and notarises with its notarytool profile, and a terminal over SSH finds
-# that keychain locked. mint runs its hooks with no terminal to ask on, so a
-# locked keychain is unlocked here, before mint starts, asking for its
-# password. A dry run, regenerate and --help run no hooks, so they ask nothing.
-keychain="$HOME/Library/Keychains/login.keychain-db"
-needs_keychain=yes
-[ "${1:-}" = regenerate ] && needs_keychain=
-for arg in "$@"; do
-  case $arg in
-  -d | --dry-run | -h | --help) needs_keychain= ;;
-  esac
-done
-if [ -n "$needs_keychain" ] && [ "$(uname -s)" = Darwin ] &&
-  ! security show-keychain-info "$keychain" >/dev/null 2>&1; then
-  security unlock-keychain "$keychain" || exit 1
-fi
 exec mint release "$@"
