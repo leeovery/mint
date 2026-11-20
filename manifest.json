@@ -81,6 +81,13 @@
         "name": "golangci-lint",
         "command": "golangci-lint run"
       }
+    ],
+    "prepare": [
+      {
+        "name": "From before Ledger",
+        "when": "first",
+        "note": "Go must be available on the system (`go` toolchain in PATH).\n\nNo other special setup required."
+      }
     ]
   },
   "checklists": {
