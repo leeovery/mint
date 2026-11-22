@@ -9,26 +9,28 @@ diff_exclude = ['.workflows', '.claude', '.tick', '.agntc']
 
 [release.hooks]
 # No CI runs the tests or builds a release: both happen on this Mac, before
-# the irreversible tag and push. This array runs in order after preflight and
-# before the notes: every gate, then scripts/release-build, which builds HEAD
-# for darwin and linux, signs the darwin binaries with the signing keychain's
-# Developer ID and notarises them, and keeps the archives, so a failing gate,
-# or a failure about the binary, the certificate or Apple's answer, stops the
-# release before any notes are written or anything is tagged or pushed.
+# the irreversible tag and push. press check (preflight) fails in seconds
+# where the signing keychain won't open or the notary login has lapsed,
+# before mint writes notes. pre_tag runs in order before the notes: every
+# gate, then press prepare, which builds what .press.toml names, HEAD for
+# darwin and linux, signs the darwin binaries with this Mac's Developer ID and
+# notarises them, and keeps the archives, so a failing gate, or a failure
+# about the binary, the certificate or Apple's answer, stops the release
+# before any notes are written or anything is tagged or pushed.
+preflight = ['press check']
 pre_tag = [
     'go build ./...',
     'go vet ./...',
     'go test -race ./...',
     'golangci-lint run',
-    'scripts/release-build',
+    'press prepare',
 ]
-# Once the tag and the release are up: scripts/release-upload uploads the
-# kept archives to the release and moves the Homebrew formula on to them.
-# mint only warns when it fails, so scripts/release-upload <version>, run by
-# hand, finishes the release.
-post_release = ['scripts/release-upload']
+# Once the tag and the release are up: press upload uploads the kept archives
+# to the release and moves the Homebrew formula on to them. mint only warns
+# when it fails, so press upload <version>, run by hand, finishes the release.
+post_release = ['press upload']
 
 [release]
 # Recorded by mint's exclusion check: paths answered Exclude at a release's
 # pauses, kept out of the release-notes diff only.
-diff_exclude = ["*_test.go", ".worktreeinclude", "CLAUDE.md", "internal/presenter/presentertest/", "internal/runner/fake_runner.go", "internal/runner/deadline_recording_runner.go", "design/", "demo/", "art/", "internal/presenter/frametest/", "internal/ptytest/", ".gitignore", "go.sum", "internal/engine/testdata/", "internal/presenter/rail/testdata/", "internal/presenter/testdata/", "internal/commit/testdata/", ".github/workflows/", ".goreleaser.yaml", "release", "scripts/"]
+diff_exclude = ["*_test.go", ".worktreeinclude", "CLAUDE.md", "internal/presenter/presentertest/", "internal/runner/fake_runner.go", "internal/runner/deadline_recording_runner.go", "design/", "demo/", "art/", "internal/presenter/frametest/", "internal/ptytest/", ".gitignore", "go.sum", "internal/engine/testdata/", "internal/presenter/rail/testdata/", "internal/presenter/testdata/", "internal/commit/testdata/", ".github/workflows/", ".goreleaser.yaml", "release", "scripts/", ".press.toml"]
