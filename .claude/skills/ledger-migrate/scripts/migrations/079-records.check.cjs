@@ -117,6 +117,19 @@
 // record not yet carried is named where it stands: none composed, what the
 // carry would refuse it for on its own, through the carry's own guards, or
 // passed and waiting to be carried.
+// Each record not done also names its one next step, `next`, which the
+// session runs the check for after each agent returns, so a verb's refusal
+// only ever means a slip (`nextStep`): compose it; settle what its composer
+// handed back; a verifier that gave no verdict on an entry asked, replaced;
+// wait for its verifier; remove what an agent left, then read the sections
+// and judge the contradictions named on it; check it and brief its
+// verifier, or a fresh one where it changed since; a fresh per-topic agent
+// to answer its findings, or the session where one reverses a ruling or
+// the round is the third or later; a fresh per-topic agent to amend it,
+// where the carry refused it, the refusal kept beside it until that
+// agent's brief carries it; once passed, what its carry waits on, each
+// record by its place; else ready to carry. A carried record never in
+// the ledger is carried again.
 // And the contradictions a unit's records name between sections of the
 // sources they share — its approved specs, its discovery sessions and the
 // assets its records walk — each by an open question's `at_odds`, two of
@@ -172,8 +185,9 @@
 // marked to raise whose `at_odds` holds the same sections, a candidate for
 // the session to judge one point with it or not by the texts the engine
 // gives it; and each record marked as its own log's for them, its
-// decisions citing a side, listed until the person's answer replaces
-// them or the session marks that it agrees.
+// decisions citing a side, listed once the person answers until the
+// answer replaces them or the session marks that it agrees; left open
+// once raised, it is listed no more.
 //
 // `.workflows/` is read where the move read it: the working tree of the
 // project's folder in the repository's main checkout, whichever checkout
@@ -181,16 +195,16 @@
 // changed there in the same run, none of it committed (21.5.8). It reads
 // and changes nothing, and calls no model. Beside the check it answers a
 // topic's sources as the rules read them, which the per-topic agent's
-// brief draws (brief-records.cjs), and a record laid against them for its
-// verifier's walk (`sheetOf`): the topic's own markdown files, but its
+// brief draws (brief-records.cjs), with each heading of them a cite names
+// by more than its own words (`heldTwice`), and a record laid against them
+// for its verifier's walk (`sheetOf`): the topic's own markdown files, but its
 // mail, its specs, the discovery sessions it draws on, the unit's walked
 // assets and any other file an entry cites, each section by its lines with
 // the entries citing it — of a file it does not walk, a spec of the unit's
 // it draws no part of among them, only the sections cited. The unit's assets are every file under its
 // `assets/` but a dotfile, each with where it came from, and an import
 // whose file is gone; those walked are its markdown files but its specs,
-// read as specs, its plans and old reviews, the building's reference,
-// which the cut reads where building started, and its legacy files, which
+// read as specs, and its legacy files, which
 // the person sorts after the migration (21.5.24): the documents the person
 // shared, walked by each of the unit's records, and the research a legacy
 // split superseded (21.5.25), walked by the topic it was copied from alone
@@ -222,7 +236,10 @@ const { spawnSync } = require('child_process');
 const CUT = require('./080-cut-and-merges.check.cjs');
 // The files a record is kept in, and what the carry still refuses a record
 // its verifier passed for, read as the carry reads them.
-const { COMPOSED, RECORD_ENDINGS, carriedPath, composedPath, findingsPath, verifyingPath, handedBack, unsettledRound } = require('../record-files.cjs');
+const {
+  COMPOSED, RECORD_ENDINGS, SETTLED_FROM, carriedPath, composedPath, findingsPath, refusedPath, settledPath, verifyingPath, handbackPath, roundsPath,
+  briefedOn, recordHash, roundsKept, findingItems, handedBack, verdictGaps, verdictlessFiles, unsettledRound,
+} = require('../record-files.cjs');
 // The section a cite names, which every reader of a cite takes.
 const { PATH_JOIN, HEADING, FENCE, outlineOf, citedSection, couldMean, nameOf, citeNameOf, shownPath } = require('../cited-sections.cjs');
 
@@ -248,10 +265,10 @@ const ASSETS = 'assets';
 // The directive this checks, by its file's name.
 const DIRECTIVE = path.basename(__filename, '.check.cjs');
 // The folders of a unit's assets the move fills (078), by what each holds.
-const ASSET_FOLDERS = new Map([['specs', 'spec'], ['plans', 'plan'], ['reviews', 'review'], ['legacy', 'legacy'], ['research', 'research']]);
-// The kinds of asset no record walks: a spec, read as a spec; a plan and an
-// old review, the building's reference; a legacy file, the person's to sort.
-const UNWALKED = Object.freeze(['spec', 'plan', 'review', 'legacy']);
+const ASSET_FOLDERS = new Map([['specs', 'spec'], ['legacy', 'legacy'], ['research', 'research']]);
+// The kinds of asset no record walks: a spec, read as a spec; a legacy file,
+// the person's to sort.
+const UNWALKED = Object.freeze(['spec', 'legacy']);
 // A legacy split's copy of the research it superseded (077), by the name of
 // the research it copied.
 const SUPERSEDED_COPY = /^(.+)-superseded-[^/]+\.md$/;
@@ -806,13 +823,17 @@ function partsDrawn(specs, at) {
 }
 
 /**
- * What a cited section lacks: a file that stays with its entry, which the
- * state holds, holding a heading the cite names; and one heading alone so
- * named (`citedSection`), else the name of each it could mean.
+ * What a cited section lacks: a file named by its path from the state's
+ * folder — a whole path in it so refused, naming that path — that stays
+ * with its entry, which the state holds, holding a heading the cite names;
+ * and one heading alone so named (`citedSection`), else the name of each it
+ * could mean.
  * @param {Project} project @param {Unit} unit @param {string|null} topic
  * @param {Record<string, unknown>} cite @returns {string[]}
  */
 function citeProblems(project, unit, topic, { path: cited, section }) {
+  const within = typeof cited === 'string' && cited.startsWith(`${project.stateDir}${path.sep}`) ? cited.slice(project.stateDir.length + 1) : null;
+  if (within !== null) return [`cites ${cited}, a whole path — a cite names its file by its path from the state's folder: ${within}`];
   if (typeof cited !== 'string' || !lasting(project, unit, topic, cited)) {
     return [`cites ${cited}, which is neither its topic's own, but its mail, nor the unit's beside its topics, nor a discovery session it draws on — a cite names a file that stays with its entry`];
   }
@@ -1035,9 +1056,12 @@ const carriedOf = (project, unit, topic) => readJson(path.join(project.stateDir,
  * @param {string} stateDir @param {string} unit @param {string|null} topic @returns {string|null}
  */
 function unverified(stateDir, unit, topic) {
-  const findings = findingsPath(unit, topic);
-  const text = readText(path.join(stateDir, findings));
-  if (text === null) return settledBySession(stateDir, unit, topic) ? null : `${findings} is no file`;
+  const findings = path.join(stateDir, findingsPath(unit, topic));
+  const text = readText(findings);
+  if (text === null) {
+    if (settledBySession(stateDir, unit, topic)) return null;
+    return isFile(path.join(stateDir, verifyingPath(unit, topic))) ? `its verifier has not reported yet, no findings written to ${findings}` : 'no verifier has been briefed on it';
+  }
   return text.trim() === '' ? null : `its findings stand in ${findings}`;
 }
 
@@ -1274,8 +1298,16 @@ const keyOfSides = (sides) => [...sides.keys()].sort().join('\n\n');
 /** Names in a sentence: `a and b`, `a, b and c`. @param {string[]} names */
 const inWords = (names) => (names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
-/** Sections as a sentence names them, each with when it was settled where that shows. @param {Side[]} sides @param {(string|null)[]} [dates] */
-const sidesSaid = (sides, dates = []) => inWords(sides.map(({ path: at, section }, index) => `"${section}" in ${at}${dates[index] ? ` (${dates[index]})` : ''}`));
+/** Sections as a sentence names them, each in its file by its whole path, with when it was settled where that shows. @param {Project} project @param {Side[]} sides @param {(string|null)[]} [dates] */
+const sidesSaid = (project, sides, dates = []) => inWords(sides.map(({ path: at, section }, index) => `"${section}" in ${path.join(project.stateDir, at)}${dates[index] ? ` (${dates[index]})` : ''}`));
+
+/**
+ * The files a record the session amends is settled in, by their whole
+ * paths: the settled file a line goes into, and the findings a `Settled:`
+ * finding goes into.
+ * @param {Project} project @param {Unit} unit @param {string|null} topic
+ */
+const settledIn = (project, unit, topic) => ({ settled: path.join(project.stateDir, settledPath(unit.name, topic)), findings: path.join(project.stateDir, findingsPath(unit.name, topic)) });
 
 /**
  * How the sections a contradiction sits in are read, in the sources a
@@ -1388,58 +1420,82 @@ function markedSides(marks, place) {
   });
 }
 
-/** What a contradiction left unshared asks of the record it is named on, in the directive's order. @param {Unit} unit @param {Unshared} unshared */
-function unsharedProblem(unit, { place, sides, dates, cited, by }) {
-  const marked = atOddsMarked(unit.name);
+/** What a contradiction left unshared asks of the record it is named on, in the directive's order. @param {Project} project @param {Unit} unit @param {Unshared} unshared */
+function unsharedProblem(project, unit, { topic, place, sides, dates, cited, by }) {
+  const marked = path.join(project.stateDir, atOddsMarked(unit.name));
+  const { settled, findings } = settledIn(project, unit, topic);
   return [
-    `${sidesSaid(sides, dates)} are at odds, as ${inWords(by)} ${by.length === 1 ? 'names' : 'name'} them, and this record cites ${sidesSaid(cited)} without naming that contradiction — judge first whether it stands.`,
-    'Where a later answer settles it — an approved spec, or a part of one, approved after the other side was written — it is settled on each record naming it, and on this one where it carries the side the later answer replaced, this record keeping its answer only where it is the later one.',
+    `${sidesSaid(project, sides, dates)} are at odds, as ${inWords(by)} ${by.length === 1 ? 'names' : 'name'} them, and this record cites ${sidesSaid(project, cited)} without naming that contradiction — judge first whether it stands.`,
+    `Where a later answer settles it — an approved spec, or a part of one, approved after the other side was written — it is settled on each record naming it, and on this one where it carries the side the later answer replaced, this record keeping its answer only where it is the later one: a line in ${settled} naming the section that settles it, and into ${findings} \`Settled: {sections} settled by {section}, amend to agree\`.`,
     `Where this record's own log settled the point after the approval, its answer is its log's: it is marked in ${marked} as ${JSON.stringify({ [place]: [{ log: sides }] })}, and each record naming the contradiction keeps naming what its own sources hold.`,
-    'Where it stands and this record carries a side of the point at odds, it names the contradiction, an open question holding those sections as its at_odds, and carries neither side as settled.',
+    `Where it stands and this record carries a side of the point at odds, it names the contradiction, an open question holding those sections as its at_odds, and carries neither side as settled: a line in ${settled} naming the sections at odds and the point, and into ${findings} \`Settled: {sections} at odds, amend to agree\`.`,
     `Where what it cites of them is not that point, it is marked in ${marked} as ${JSON.stringify({ [place]: [sides] })}`,
   ].join(' ');
 }
+
+/** What a unit's records wait on before any is carried: each record not passed, with where it stands, and how many sections and contradictions the check names. @typedef {{unpassed: {record: RecordOf, said: string}[], uncited: number, unshared: number}} Waiting */
 
 /**
  * What a unit's records wait on before any of them is carried, where any
  * topic draws on an approved spec or the unit holds a shared source of
  * text: each record not carried with no record composed, or one its
  * verifier has not passed — each topic of the unit drawing on a spec, and
- * every record walking a shared source — and, once each has passed, how
- * many sections of the unit's specs and shared sources no record cites,
- * which the check names.
- * @param {Project} project @param {Unit} unit @returns {string[]}
+ * every record walking a shared source — with where it stands; and, once
+ * each has passed, how many sections of the unit's specs and shared
+ * sources no record cites, and how many contradictions a record names go
+ * unnamed on another citing a side of them, which the check names.
+ * @param {Project} project @param {Unit} unit
+ * @returns {Waiting}
  */
-function waitsOf(project, unit) {
+function waitingOn(project, unit) {
+  /** @type {Waiting} */
+  const none = { unpassed: [], uncited: 0, unshared: 0 };
   const topics = topicsOf(unit.manifest);
   const drawing = topics.some((topic) => specsOf(project, unit, topic).some(({ approved }) => approved)) ? topics.map((topic) => ({ unit, topic })) : [];
   /** @type {Map<string, RecordOf>} */
   const records = new Map([...drawing, ...sharedOf(project, unit).flatMap(({ walkers }) => walkers)].map((record) => [`${record.unit.name}/${record.topic}`, record]));
-  if (records.size === 0) return [];
-  const unpassed = [...records.values()].filter(({ unit: of, topic }) => carriedOf(project, of, topic) === null).flatMap(({ unit: of, topic }) => {
-    const said = uncarried(project, of, topic);
-    return WAITING.includes(said) ? [] : [`${of.name}'s ${topic ?? 'own record'} ${said}`];
+  if (records.size === 0) return none;
+  const unpassed = [...records.values()].filter(({ unit: of, topic }) => carriedOf(project, of, topic) === null).flatMap((record) => {
+    const said = /** @type {string} */ (uncarried(project, record.unit, record.topic));
+    return WAITING.includes(said) ? [] : [{ record, said }];
   });
-  if (unpassed.length > 0) return unpassed;
-  const uncited = uncitedOf(project, unit).length + uncitedSharedOf(project, unit).length;
-  const unshared = unsharedOf(project, unit).length;
+  if (unpassed.length > 0) return { ...none, unpassed };
+  return { ...none, uncited: uncitedOf(project, unit).length + uncitedSharedOf(project, unit).length, unshared: unsharedOf(project, unit).length };
+}
+
+/**
+ * What a unit's records wait on (`waitingOn`), in words, for the carry's
+ * refusal: each record not passed and where it stands, else how many
+ * sections no record cites and contradictions go unnamed, and where the
+ * check names each.
+ * @param {Unit} unit @param {Waiting} on @returns {string[]}
+ */
+function waitsSaid(unit, { unpassed, uncited, unshared }) {
   return [
+    ...unpassed.map(({ record: { unit: of, topic }, said }) => `${of.name}'s ${topic ?? 'own record'} ${said}`),
     ...(uncited === 0 ? [] : [`${uncited === 1 ? 'a section' : `${uncited} sections`} of ${unit.name}'s approved specs, discovery sessions and walked assets ${uncited === 1 ? 'holds' : 'hold'} text no record cites — \`migrate check ${DIRECTIVE}\` names each where it is named`]),
     ...(unshared === 0 ? [] : [`${unshared === 1 ? 'a contradiction' : `${unshared} contradictions`} a record of ${unit.name} names ${unshared === 1 ? 'goes' : 'go'} unnamed on another record citing a side of ${unshared === 1 ? 'it' : 'them'} — \`migrate check ${DIRECTIVE}\` names each where it is named`]),
   ];
 }
 
 /**
- * What a unit's records wait on before any of them is carried (`waitsOf`),
- * by the unit waited on: its own, and those of each unit a topic of it was
- * promoted from, whose discovery sessions the topic walks; a unit waiting
- * on nothing left out.
+ * What a unit's records wait on before any of them is carried, by the unit
+ * waited on: its own, and each unit a topic of it was promoted from, whose
+ * discovery sessions the topic walks; a unit waiting on nothing left out.
+ * @param {Project} project @param {Unit} unit @returns {{unit: Unit, on: Waiting}[]}
+ */
+function unitsWaitedOn(project, unit) {
+  const homes = new Set(topicsOf(unit.manifest).flatMap((topic) => homesOf(project, unit, topic).filter((home) => home !== unit.name)));
+  return [unit, ...[...homes].map((home) => unitOf(project, home))].map((each) => ({ unit: each, on: waitingOn(project, each) }))
+    .filter(({ on: { unpassed, uncited, unshared } }) => unpassed.length > 0 || uncited > 0 || unshared > 0);
+}
+
+/**
+ * What a unit's records wait on before any of them is carried, in words
+ * (`waitsSaid`), by the unit waited on (`unitsWaitedOn`).
  * @param {Project} project @param {Unit} unit @returns {{unit: string, waits: string[]}[]}
  */
-function unitWaits(project, unit) {
-  const homes = new Set(topicsOf(unit.manifest).flatMap((topic) => homesOf(project, unit, topic).filter((home) => home !== unit.name)));
-  return [unit, ...[...homes].map((home) => unitOf(project, home))].map((each) => ({ unit: each.name, waits: waitsOf(project, each) })).filter(({ waits }) => waits.length > 0);
-}
+const unitWaits = (project, unit) => unitsWaitedOn(project, unit).map(({ unit: each, on }) => ({ unit: each.name, waits: waitsSaid(each, on) }));
 
 /** What an uncited section is, by the kind of source it is in, and who carries what it holds. */
 const UNCITED_SAYS = new Map([
@@ -1448,10 +1504,11 @@ const UNCITED_SAYS = new Map([
   ['asset', { what: 'an asset', carried: 'a current point it makes, which no topic\'s own files hold word for word, is carried by the record its subject belongs to' }],
 ]);
 
-/** What a section no record cites lacks, as the records it is named on are told it. @param {Unit} unit @param {Uncited} uncited */
-function uncitedProblem(unit, { path: at, part, section, mark, kind }) {
+/** What a section no record cites lacks, as the record it is named on, `topic`'s, is told it. @param {Project} project @param {Unit} unit @param {string|null} topic @param {Uncited} uncited */
+function uncitedProblem(project, unit, topic, { path: at, part, section, mark, kind }) {
   const { what, carried } = /** @type {{what: string, carried: string}} */ (UNCITED_SAYS.get(kind));
-  return `"${section}" in ${at}, ${what}, holds text no record of ${unit.name} cites — ${carried}; a section holding none, or only what a later answer replaced or a cancelled unit alone decided, is marked in ${sectionsMarked(unit.name)} as ${markOf(at, part, mark)}`;
+  const { settled, findings } = settledIn(project, unit, topic);
+  return `"${section}" in ${path.join(project.stateDir, at)}, ${what}, holds text no record of ${unit.name} cites — ${carried}: where it is this record's, a line in ${settled} naming the section and what of it the record misses, and into ${findings} \`Settled: ${section}, amend to agree\`; a section holding none, or only what a later answer replaced or a cancelled unit alone decided, is marked, once read, in ${path.join(project.stateDir, sectionsMarked(unit.name))} as ${markOf(at, part, mark)}`;
 }
 
 /** A record its verifier has passed, waiting for the carry. */
@@ -1460,6 +1517,12 @@ const PASSED = 'has passed its verifier, and waits to be carried';
 const SETTLED = 'was settled by the session, and waits to be carried';
 /** Where a record waits for the carry alone. */
 const WAITING = [PASSED, SETTLED];
+
+/** The carry's refusal kept beside a record, absolute; null where none stands. @param {Project} project @param {Unit} unit @param {string|null} topic */
+function refusalOf(project, unit, topic) {
+  const file = path.join(project.stateDir, refusedPath(unit.name, topic));
+  return isFile(file) ? file : null;
+}
 
 /**
  * Where a record not yet carried stands: none composed; what the carry
@@ -1491,9 +1554,171 @@ function topicProblems(project, ids, unit, topic) {
   return problemsOf(project, unit, topic, carried.phase, carried.record.entries, carried.record.description);
 }
 
+/**
+ * A record composed and not carried, as its verifier's round leaves it: its
+ * entries' refs; the note its last verifier's brief was issued on, or
+ * null; its findings file's text, or null where none stands; and whether it
+ * changed since that brief.
+ * @typedef {{refs: string[], note: {hash: string, settled?: boolean}|null, findings: string|null, changed: boolean}} Round
+ */
+
+/** A record's round (`Round`), null where it has none composed. @param {Project} project @param {Unit} unit @param {string|null} topic @returns {Round|null} */
+function roundOf(project, unit, topic) {
+  const record = recordOf(project, unit, topic);
+  if (record === null) return null;
+  const note = briefedOn(project.stateDir, unit.name, topic);
+  return {
+    refs: record.map(({ ref }) => String(ref)),
+    note,
+    findings: readText(path.join(project.stateDir, findingsPath(unit.name, topic))),
+    changed: note !== null && note.hash !== recordHash(project.stateDir, unit.name, topic),
+  };
+}
+
+/**
+ * What stops a record before the session or an agent can take it on: none
+ * composed; findings its composer handed back; its last verifier's
+ * verdicts missing an entry its brief asked of it, or naming one the record
+ * it read does not hold (`verdictGaps`); its verifier yet to report. Else
+ * null.
+ * @param {Project} project @param {Unit} unit @param {string|null} topic @param {Round|null} round @returns {string|null}
+ */
+function heldStep(project, unit, topic, round) {
+  if (round === null) return 'compose its record: brief a per-topic agent';
+  const root = project.stateDir;
+  if (handedBack(root, unit.name, topic) !== null) return `settle each finding its composer handed back, then remove ${path.join(root, handbackPath(unit.name, topic))}`;
+  const { refs, note, findings, changed } = round;
+  if (findings !== null && (note !== null || findings.trim() === '')) {
+    const { missing, unknown } = verdictGaps(root, unit.name, topic, refs);
+    const gaps = [
+      ...(missing.length > 0 ? [`gave no verdict on ${missing.join(', ')}`] : []),
+      ...(unknown.length > 0 ? [`gave a verdict on ${unknown.join(', ')}, which the record it read does not hold`] : []),
+    ];
+    if (gaps.length > 0) return `its verifier ${gaps.join(' and ')}: remove ${inWords(verdictlessFiles(root, unit.name, topic))}, and brief a fresh verifier`;
+  }
+  return findings === null && note !== null && note.settled !== true && !changed ? 'its verifier has not reported yet: wait for it; once it has returned without writing its findings, brief a fresh verifier' : null;
+}
+
+/**
+ * What the session reads or removes on a record before it goes on: each
+ * file an agent left beside it; else the sections no record cites and the
+ * contradictions the check names on it. Else null.
+ * @param {string[]} strays @param {number} uncited @param {number} unshared @returns {string|null}
+ */
+function sessionStep(strays, uncited, unshared) {
+  if (strays.length > 0) return `remove what an agent left beside its record: ${inWords(strays)}`;
+  const reads = [
+    ...(uncited === 0 ? [] : [`${uncited === 1 ? 'an uncited section' : `${uncited} uncited sections`} to read`]),
+    ...(unshared === 0 ? [] : [`${unshared === 1 ? 'a contradiction' : `${unshared} contradictions`} another record names to judge`]),
+  ];
+  return reads.length === 0 ? null : `${inWords(reads)}: settle each into this record, or mark it`;
+}
+
+/**
+ * What a record needs of its verifiers before the carry, null where one
+ * passed it unchanged since, or the session settled its round: a verifier
+ * briefed on it; its findings answered — by a fresh per-topic agent, or by
+ * the session where one reverses a ruling or the round is the third or
+ * later — and the record read again once amended.
+ * @param {Project} project @param {Unit} unit @param {string|null} topic @param {Round} round @returns {string|null}
+ */
+function verifierStep(project, unit, topic, { note, findings, changed }) {
+  const place = recordPlace(unit, topic);
+  const reread = `check it with \`ledger carry ${place} --dry-run\`, then brief a fresh verifier`;
+  if (findings === null || findings.trim() === '') {
+    if (findings === null && note === null) return `check it with \`ledger carry ${place} --dry-run\`, then brief its verifier`;
+    return changed ? `it changed since its verifier was briefed: ${reread}` : null;
+  }
+  const items = findingItems(findings);
+  if (!items.every((item) => item.startsWith('Settled:'))) {
+    const round = roundsKept(path.join(project.stateDir, roundsPath(unit.name, topic))) + 1;
+    if (round >= SETTLED_FROM) return `round ${round}'s findings are yours to settle: settle each, then pass it with \`ledger settle ${place}\``;
+    if (items.some((item) => item.startsWith('Reverses '))) return 'a finding reverses an earlier ruling or the session: settle it from the record\'s sources, or ask the person';
+  }
+  if (changed) return `it was amended since its verifier read it: ${reread}`;
+  return 'a fresh per-topic agent amends it, its brief carrying the findings; once it returns, a fresh verifier reads it';
+}
+
+/**
+ * What a record passed waits on before the carry, by each unit waited on
+ * (`unitsWaitedOn`): its records not yet passed, by their places, else how
+ * many sections no record cites and contradictions the check names on
+ * them; null where it waits on nothing.
+ * @param {{unit: Unit, on: Waiting}[]} waited @returns {string|null}
+ */
+function waitStep(waited) {
+  if (waited.length === 0) return null;
+  const on = waited.flatMap(({ unit, on: { unpassed, uncited, unshared } }) => [
+    ...(unpassed.length === 0 ? [] : [`${unit.name}'s ${unpassed.length === 1 ? 'record' : 'records'} ${inWords(unpassed.map(({ record }) => recordPlace(record.unit, record.topic)))}, until ${unpassed.length === 1 ? 'it passes' : 'each passes'}`]),
+    ...(uncited === 0 ? [] : [`${uncited === 1 ? 'a section' : `${uncited} sections`} of ${unit.name}'s sources no record cites`]),
+    ...(unshared === 0 ? [] : [`${unshared === 1 ? 'a contradiction' : `${unshared} contradictions`} on ${unit.name}'s records`]),
+  ]);
+  return `passed, and its carry waits on ${inWords(on)}`;
+}
+
+/**
+ * Whether the session has settled into a record what `names` names, the
+ * record not yet amended to it: each a `Settled:` finding standing beside
+ * the record names — a section no record cited, or the sections of a
+ * contradiction — so the record's next step is its amend, never reading
+ * them again.
+ * @param {Project} project @param {Unit} unit @param {string|null} topic @returns {(names: string[]) => boolean}
+ */
+function settledForAmend(project, unit, topic) {
+  const findings = readText(path.join(project.stateDir, findingsPath(unit.name, topic)));
+  const items = findings === null || findings.trim() === '' ? [] : findingItems(findings).filter((item) => item.startsWith('Settled:'));
+  return (names) => items.length > 0 && names.every((name) => items.some((item) => namesWhole(item, name)));
+}
+
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+/**
+ * Whether `text` names `name` whole: at the text's edge or a character no
+ * word holds on each side, and never as the start of a deeper heading's
+ * path, `{name} > …`.
+ * @param {string} text @param {string} name
+ */
+function namesWhole(text, name) {
+  const bounded = (/** @type {number} */ at) => at < 0 || at >= text.length || !WORD_CHAR.test(text[at]);
+  for (let at = text.indexOf(name); at !== -1; at = text.indexOf(name, at + 1)) {
+    const end = at + name.length;
+    if (bounded(at - 1) && bounded(end) && !text.startsWith(PATH_JOIN, end)) return true;
+  }
+  return false;
+}
+
+/**
+ * The one step the session takes next on a record not done, in the
+ * directive's terms: what stops it (`heldStep`), what the session reads or
+ * removes on it (`sessionStep`), its amend where the carry refused it,
+ * what its verifiers still owe (`verifierStep`), what its carry waits on
+ * (`waitStep`), else the carry.
+ * A carried record never in the ledger is carried again.
+ * @param {Project} project @param {Set<string>} ids @param {Unit} unit @param {string|null} topic
+ * @param {{strays: string[], uncited: number, unshared: number, waited: () => {unit: Unit, on: Waiting}[]}} on
+ * @returns {string}
+ */
+function nextStep(project, ids, unit, topic, { strays, uncited, unshared, waited }) {
+  const place = recordPlace(unit, topic);
+  const carried = carriedOf(project, unit, topic);
+  if (carried !== null) {
+    if (!carried.entries.every(({ id }) => ids.has(id))) return `carry it again: \`ledger carry ${place}\``;
+    return sessionStep(strays, uncited, unshared) ?? 'mend what its problems name';
+  }
+  const round = roundOf(project, unit, topic);
+  const refusal = refusalOf(project, unit, topic);
+  return heldStep(project, unit, topic, round)
+    ?? sessionStep(strays, uncited, unshared)
+    ?? (refusal === null ? null : `the carry refused it: a fresh per-topic agent amends it, its brief carrying the refusal in ${refusal}`)
+    ?? verifierStep(project, unit, topic, /** @type {Round} */ (round))
+    ?? waitStep(waited())
+    ?? `ready to carry: \`ledger carry ${place}\``;
+}
+
 module.exports = {
+  does: 'This step writes a record of what each piece of past work decided, and checks each one against its documents.',
   counts: { one: 'record', many: 'records' },
-  done: 'are carried',
+  done: 'carried',
   partWay: 'A record it was in the middle of is amended from where it stood.',
   /** @param {{projectDir: string, stateDir: string}} dirs */
   check({ projectDir, stateDir }) {
@@ -1503,18 +1728,31 @@ module.exports = {
       const uncited = [...uncitedOf(project, unit), ...uncitedSharedOf(project, unit)];
       const hasOwn = hasOwnRecord(stateDir, unit.name, unit.manifest);
       const strays = strayRecordFiles(project, unit);
-      const strayOn = (/** @type {string|null} */ topic) => strays.filter((stray) => stray.topic === topic || (stray.topic === null && !hasOwn))
-        .map(({ at }) => `${at} is no file a record is kept in — an agent left it: remove it`);
       const unshared = unsharedOf(project, unit);
-      const sentOn = (/** @type {string|null} */ topic) => [
-        ...uncited.filter(({ topics }) => topics.includes(topic)).map((each) => uncitedProblem(unit, each)),
-        ...unshared.filter((each) => each.topic === topic).map((each) => unsharedProblem(unit, each)),
-      ];
-      const own = hasOwn ? [{ name: recordPlace(unit, null), problems: [...topicProblems(project, ids, unit, null), ...sentOn(null), ...strayOn(null)] }] : [];
-      return [...topicsOf(unit.manifest).map((topic) => ({
-        name: recordPlace(unit, topic),
-        problems: [...topicProblems(project, ids, unit, topic), ...sentOn(topic), ...strayOn(topic)],
-      })), ...own];
+      /** @type {{unit: Unit, on: Waiting}[]|undefined} */
+      let waited;
+      const piece = (/** @type {string|null} */ topic) => {
+        const strayed = strays.filter((stray) => stray.topic === topic || (stray.topic === null && !hasOwn)).map(({ at }) => path.join(stateDir, at));
+        const sent = uncited.filter(({ topics }) => topics.includes(topic));
+        const odds = unshared.filter((each) => each.topic === topic);
+        const settled = settledForAmend(project, unit, topic);
+        const problems = [
+          ...topicProblems(project, ids, unit, topic),
+          ...sent.map((each) => uncitedProblem(project, unit, topic, each)),
+          ...odds.map((each) => unsharedProblem(project, unit, each)),
+          ...strayed.map((at) => `${at} is no file a record is kept in — an agent left it: remove it`),
+        ];
+        const name = recordPlace(unit, topic);
+        if (problems.length === 0) return { name, problems };
+        const next = nextStep(project, ids, unit, topic, {
+          strays: strayed,
+          uncited: sent.filter(({ section }) => !settled([section])).length,
+          unshared: odds.filter(({ sides }) => !settled(sides.map(({ section }) => section))).length,
+          waited: () => (waited ??= unitsWaitedOn(project, unit)),
+        });
+        return { name, problems, next };
+      };
+      return [...topicsOf(unit.manifest).map(piece), ...(hasOwn ? [piece(null)] : [])];
     });
   },
   /**
@@ -1634,6 +1872,23 @@ module.exports = {
       later: own ? [] : laterOf(project, unit, topic),
       cancelled: own ? [] : cancelledOf(project, unit),
     };
+  },
+  /**
+   * Each of `files`, state-relative, holding a heading with text its own
+   * words name none of alone, with those headings, each by the name a cite
+   * gives it (`citeNameOf`), which every reader of a cite takes: what a
+   * record's brief lists of its sources.
+   * @param {{stateDir: string, unit: string, files: string[]}} at
+   * @returns {{path: string, names: string[]}[]}
+   */
+  heldTwice({ stateDir, unit, files }) {
+    return files.flatMap((at) => {
+      const text = at.endsWith('.md') ? readText(path.join(stateDir, at)) : null;
+      if (text === null) return [];
+      const headings = outlineOf(text, at === `${unit}/${JOINED_SPEC}`);
+      const names = headings.filter((heading) => heading.text && citedSection(headings, /** @type {string} */ (heading.trail.at(-1))) !== heading).map((heading) => citeNameOf(headings, heading));
+      return names.length === 0 ? [] : [{ path: at, names }];
+    });
   },
   /**
    * A record laid against its sources for its verifier's walk (`sheetOf`).

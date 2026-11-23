@@ -130,7 +130,7 @@ const { codeRoot } = require('../kernel/code-root.cjs');
 const { directiveOf } = require('./directives.cjs');
 const {
   carriedPath, composedPath, findingsPath, refusedPath, rulingsPath, handbackPath, checkedPath, verifyingPath, roundsPath, settledPath,
-  linesOf, recordHash, verdictRef, handedBack, unchecked, unsettledRound, briefedOn: briefedNote,
+  linesOf, roundsKept, recordHash, verdictRef, handedBack, unchecked, unsettledRound, briefedOn: briefedNote,
 } = require('../../../ledger-migrate/scripts/record-files.cjs');
 
 /** The record the last verifier was briefed on, as a later round reads it, or null where none was. @type {(root: string, unit: string, topic: string|null) => import('./later-rounds.cjs').Note|null} */
@@ -146,6 +146,9 @@ const EVENT_WRITES = Object.freeze({ asked: 'ask', found: 'find', decided: 'deci
 
 /** The kind of entry each event writes, as the write's own checks name it. @type {Readonly<Record<string, import('./ledger-events.cjs').EntryKind>>} */
 const EVENT_KINDS = Object.freeze({ asked: 'question', found: 'finding', decided: 'decision' });
+
+/** What a carried entry never holds: the migration's record is carried as it stands, never asked as a point from before. */
+const CARRIED_WITHOUT = Object.freeze(['from_before']);
 
 /** What a record holds: its entries, and the line saying what its topic is about. */
 const RECORD_FIELDS = Object.freeze(['entries', 'description']);
@@ -186,17 +189,11 @@ const RECORDS_DIRECTIVE = '079-records';
  */
 const recordsRules = () => require(directiveOf(RECORDS_DIRECTIVE).check);
 
-/** The heading a verifier's round is kept under. */
-const ROUND = /^## Round (\d+)$/gm;
-
 /** What a record's verifier writes beside its findings, kept with them in its round, each under its heading, in this order. */
 const BESIDE_FINDINGS = Object.freeze([
   Object.freeze({ heading: '### Rulings', rel: rulingsPath }),
   Object.freeze({ heading: '### Checked', rel: checkedPath }),
 ]);
-
-/** How many rounds are kept at `rounds`. @param {string} rounds */
-const roundsKept = (rounds) => (fs.existsSync(rounds) ? [...fs.readFileSync(rounds, 'utf8').matchAll(ROUND)].length : 0);
 
 /**
  * The last verifier's findings, at `findings`, as the round after those kept
@@ -331,10 +328,10 @@ function argsOf(args) {
  * @param {Place} place @param {string} [said] @returns {Composed}
  */
 function readRecord({ root, unit, topic }, said = SAID) {
-  const file = composedPath(unit, topic);
+  const file = path.join(root, composedPath(unit, topic));
   let record;
   try {
-    record = JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'));
+    record = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (err) {
     throw new Error(`${said}: the record could not be read from ${file}: ${messageOf(err)}`);
   }
@@ -393,6 +390,11 @@ function assetLines(fault, place, assets, entry, tags) {
       fault(`an asset is {path, status}, its status ${ASSET_STATUSES.join(' or ')}`);
       return [];
     }
+    const within = withinState(place.root, asset.path);
+    if (within !== null) {
+      fault(`the asset ${asset.path} is a whole path — an asset's path is from the state's folder: ${within}`);
+      return [];
+    }
     const plain = asset.path.split('/').every((part) => part !== '' && part !== '.' && part !== '..');
     if (!plain || !fs.statSync(path.join(place.root, asset.path), { throwIfNoEntry: false })?.isFile()) {
       fault(`the asset ${asset.path} is no file the state holds — an asset's path is from the state root`);
@@ -427,7 +429,7 @@ function markFaults(entry, event, fault) {
  */
 function entryContent(faults, said, event, entry) {
   const given = Object.fromEntries(Object.entries(entry).filter(([key]) => !RECORD_KEYS.includes(key)));
-  const read = contentFaults(said, WRITES[EVENT_WRITES[event]], { ...given, who_moved_whom: 'none' }, null, ['who_moved_whom']);
+  const read = contentFaults(said, WRITES[EVENT_WRITES[event]], { ...given, who_moved_whom: 'none' }, null, ['who_moved_whom'], CARRIED_WITHOUT);
   const all = [...read.faults, ...unsealedFaults(said, read.content), ...saidFaults(said, EVENT_KINDS[event], read.content)];
   faults.push(...all);
   return all.length === 0 ? read.content : null;
@@ -462,12 +464,26 @@ function entryLines(place, entry, at, before, tags) {
     relies_on: linked(fault, 'relies_on', reliesOn, REFS, before, null),
     task: null,
   };
-  const content = entryContent(faults, said, event, entry);
+  const content = entryContent(faults, said, event, citedFromState(place.root, entry));
   const id = newId();
   if (named && !before.has(ref)) before.set(ref, { id, event, raised: raise === true });
   const assetLinks = assetLines(fault, place, assets, id, tags);
   if (faults.length > 0) return { lines: [], faults };
   return { lines: [{ fields: { event, ...tags, ...content, ...links, ...(event === 'decided' ? decisionGiven(null, true) : {}) }, id }, ...assetLinks], faults };
+}
+
+/** A path in the state given whole, from the state's folder; else null. @param {string} root @param {unknown} at */
+const withinState = (root, at) => (typeof at === 'string' && at.startsWith(`${root}${path.sep}`) ? at.slice(root.length + 1) : null);
+
+/**
+ * The entry with each cite given by a whole path in the state named from the
+ * state's folder, for its write's shape alone: the records' rules refuse such
+ * a cite once, naming the path it takes (079's check).
+ * @param {string} root @param {Record<string, any>} entry
+ */
+function citedFromState(root, entry) {
+  if (!Array.isArray(entry.cites)) return entry;
+  return { ...entry, cites: entry.cites.map((cite) => (isObject(cite) && withinState(root, cite.path) !== null ? { ...cite, path: withinState(root, cite.path) } : cite)) };
 }
 
 /** The fields of an entry that say what it holds, in words. */

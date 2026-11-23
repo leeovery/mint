@@ -27,15 +27,16 @@
 //   to fit: one the trust log cannot key refuses the answer
 //   (trust-events.cjs). A typed row's key is its label's words, lowercase,
 //   joined by hyphens: `comment`, `tell-me-what-to-change`.
-// - An answer is a row picked by its key; a typed row, by its key; or free
-//   text, naming no row, the person's words given with it. The separate
-//   call reads the words against the gate's question and its rows, as the
-//   person saw them, its typed rows never among them (answer-reader.cjs),
-//   for the one they pick, and they are dropped: the event says only that the
-//   answer was free text, and its reading, the row read from it, null where
-//   they pick none or the call cannot read them (16.13.3, 16.19.1,
-//   16.19.8). A reading leads nowhere: free text sets the gate aside
-//   whatever it reads (6.6.2).
+// - An answer is a row picked by its key or by its word — the name the gate
+//   mod draws on the row and sends when it is pressed — and recorded by its
+//   key; a typed row, by its key; or free text, naming no row, the person's
+//   words given with it. The separate call reads the words against the
+//   gate's question and its rows, as the person saw them, its typed rows
+//   never among them (answer-reader.cjs), for the one they pick, and they
+//   are dropped: the event says only that the answer was free text, and its
+//   reading, the row read from it, null where they pick none or the call
+//   cannot read them (16.13.3, 16.19.1, 16.19.8). A reading leads nowhere:
+//   free text sets the gate aside whatever it reads (6.6.2).
 // - An answer was pressed where the gate mod announced itself to the
 //   command and its record of the last press, `pressed.json`, names this
 //   gate and this row, sent after the gate was shown — so a press that
@@ -77,7 +78,10 @@
 //   it.
 // - `gate` refuses, logging nothing, with no session, no gate shown,
 //   another gate's name, a key the gate lacks, free text with no words, and
-//   a gate already answered; each before the words are read. It writes no
+//   a gate already answered by a pick that left it, and, at a gate set
+//   aside, anything but a row picked — which answers it where it waits,
+//   with no draw again, its event the showing's, as a pick after a draw
+//   again would log it (6.6.16); each before the words are read. It writes no
 //   state: the trust log under the trust log's lock (trust-log.cjs), and
 //   the record, marked answered, a learned gate's hold ended before it.
 //   The event's id is drawn from the gate and when its showing opened, with
@@ -247,18 +251,22 @@ function readJson(file) {
   }
 }
 
+/** A row as the text menu draws it: its key, then its word where it has one. @param {ShownOption} option */
+const drawn = (option) => (option.word === null ? option.key : `${option.key}/${option.word}`);
+
 /**
- * The row `answer` names on the gate `shown` — null for free text — or a
- * refusal naming the rows it has, or free text with no words.
+ * The row `answer` names on the gate `shown` — by its key, else by its word;
+ * null for free text — or a refusal naming the rows it has as drawn, or free
+ * text with no words.
  * @param {ShownRecord} shown @param {Answer} answer
  * @returns {ShownOption|ShownTypedRow|null}
  */
 function rowAnswered(shown, answer) {
   if ('pick' in answer) {
-    const row = shown.options.find((o) => o.key === answer.pick);
+    const row = shown.options.find((o) => o.key === answer.pick) ?? shown.options.find((o) => o.word === answer.pick);
     if (row) return row;
     const typed = shown.typed.some((t) => t.key === answer.pick) ? ` — ${answer.pick} is typed: --typed ${answer.pick}` : '';
-    throw new Error(`gate: "${shown.gate}" has no row ${answer.pick} to pick — its rows: ${shown.options.map((o) => o.key).join(', ')}${typed}`);
+    throw new Error(`gate: "${shown.gate}" has no row ${answer.pick} to pick — its rows: ${shown.options.map(drawn).join(', ')}${typed}`);
   }
   if ('words' in answer) {
     if (answer.words.trim() === '') throw new Error(`gate: free text at "${shown.gate}" comes with the person's words on stdin, read for the row they pick and dropped`);
@@ -320,7 +328,8 @@ function answerGate(cwd, named, answer) {
   if (!isObject(read)) throw new Error('gate: no gate has been shown in this conversation — render the gate, then answer it');
   const shown = /** @type {ShownRecord} */ (read);
   if (shown.gate !== name) throw new Error(`gate: the gate shown is "${shown.gate}", not "${name}"`);
-  if (shown.answered !== null) throw new Error(`gate: "${name}" is answered — render it again to answer it again`);
+  if (shown.answered !== null && leaves(shown, shown.answered.picked)) throw new Error(`gate: "${name}" is answered — render it again to answer it again`);
+  if (shown.answered !== null && !('pick' in answer)) throw new Error(`gate: "${name}" is set aside — a row picked answers it, and anything else said is talk`);
   const row = rowAnswered(shown, answer);
   const via = 'pick' in answer && pressedOnGate(session, shown, /** @type {ShownOption} */ (row)) ? 'pressed' : 'typed';
   const recommended = shown.options.find((o) => o.recommended)?.key ?? null;
