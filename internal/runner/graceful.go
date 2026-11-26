@@ -12,44 +12,55 @@ import (
 // gracefulStop is how a graceful ExecRunner stops a command whose context ends: SIGTERM,
 // so the command can stop what it runs and clean up, then SIGKILL once grace has passed
 // or killStopping is called, whichever comes first. The command stays in mint's process
-// group and on its terminal, so the terminal's Ctrl-C reaches it directly; the SIGTERM
-// is for a run only mint was signalled to stop (`kill <mint>`, a closed terminal), and
-// the backstop.
+// group and on its terminal, so the terminal's Ctrl-C reaches it directly, as SIGINT;
+// that Ctrl-C ends the run's context too, so a command still running when mint acts on
+// it gets the SIGTERM as well. Where only mint was signalled (`kill <mint>`, a closed
+// terminal), the SIGTERM is all it gets.
 type gracefulStop struct {
 	grace time.Duration
 	mu    sync.Mutex
-	// stopping is the commands sent SIGTERM whose runs have yet to return.
-	stopping map[*stoppingCommand]struct{}
+	// running is the commands started whose runs have yet to return.
+	running map[*runningCommand]struct{}
 }
 
-// stoppingCommand is a command sent SIGTERM, and its output.
-type stoppingCommand struct {
+// runningCommand is a started command whose run has yet to return: its process, its
+// output, and the end of its run's context.
+type runningCommand struct {
 	process *os.Process
 	out     *output
+	ended   <-chan struct{}
+}
+
+// stopping reports whether the command's run's context has ended.
+func (c *runningCommand) stopping() bool {
+	select {
+	case <-c.ended:
+		return true
+	default:
+		return false
+	}
 }
 
 func newGracefulStop(grace time.Duration) *gracefulStop {
-	return &gracefulStop{grace: grace, stopping: make(map[*stoppingCommand]struct{})}
+	return &gracefulStop{grace: grace, running: make(map[*runningCommand]struct{})}
 }
 
 // run runs cmd to its end, stopping it gracefully when ctx ends first, and calling the
 // stop notice ctx carries once the SIGTERM is sent. Past grace, WaitDelay kills the
-// command. Its output is then read for no longer than grace from the SIGTERM, or from
-// its exit where it exited before ctx ended, since something it left running can hold
-// the output open; an exit before ctx ended stops that read when ctx ends.
+// command. Its output is then read to the end, for no longer than grace from the
+// SIGTERM, or from its exit where it got none, since something it left running can
+// hold the output open; only killStopping cuts that read short.
 func (g *gracefulStop) run(ctx context.Context, cmd *exec.Cmd) error {
 	out, err := ownOutput(cmd)
 	if err != nil {
 		return err
 	}
-	stopping := &stoppingCommand{out: out}
 	var terminated time.Time
 	cmd.Cancel = func() error {
 		if err := terminate(cmd.Process); err != nil {
 			return err
 		}
 		terminated = time.Now()
-		g.track(stopping, cmd.Process)
 		NoticeStop(ctx)
 		return nil
 	}
@@ -57,43 +68,50 @@ func (g *gracefulStop) run(ctx context.Context, cmd *exec.Cmd) error {
 	startErr := cmd.Start()
 	out.started()
 	if startErr != nil {
-		out.drain(time.Now(), nil)
+		out.drain(time.Now())
 		return startErr
 	}
-	defer g.untrack(stopping)
+	defer g.untrack(g.track(&runningCommand{process: cmd.Process, out: out, ended: ctx.Done()}))
 	err = cmd.Wait()
 	// Wait has had Cancel's result, so terminated is set where Cancel ran.
-	until, interrupted := time.Now().Add(g.grace), ctx.Done()
-	if !terminated.IsZero() {
-		until, interrupted = terminated.Add(g.grace), nil
+	from := terminated
+	if from.IsZero() {
+		from = time.Now()
 	}
-	out.drain(until, interrupted)
+	out.drain(from.Add(g.grace))
 	return err
 }
 
-func (g *gracefulStop) track(c *stoppingCommand, p *os.Process) {
+func (g *gracefulStop) track(c *runningCommand) *runningCommand {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	c.process = p
-	g.stopping[c] = struct{}{}
+	g.running[c] = struct{}{}
+	return c
 }
 
-func (g *gracefulStop) untrack(c *stoppingCommand) {
+func (g *gracefulStop) untrack(c *runningCommand) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	delete(g.stopping, c)
+	delete(g.running, c)
 }
 
-// killStopping kills every command sent SIGTERM whose run has yet to return and stops
-// reading its output, so the run returns at once, reporting whether there were any.
+// killStopping kills every command whose run's context has ended and whose run has yet
+// to return, whether it is stopping on its SIGTERM or its output is still being read,
+// and stops reading its output, so each run returns at once. It reports whether there
+// were any.
 func (g *gracefulStop) killStopping() bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	for c := range g.stopping {
+	killed := false
+	for c := range g.running {
+		if !c.stopping() {
+			continue
+		}
 		_ = c.process.Kill()
 		c.out.abandon()
+		killed = true
 	}
-	return len(g.stopping) > 0
+	return killed
 }
 
 // output is a command's stdout and stderr where they are writers of mint's, read
@@ -149,15 +167,14 @@ func (o *output) abandon() {
 }
 
 // drain waits for the copies to reach the end of the output, until it is past until
-// or interrupted ends, then abandons what is left, so the writers are no longer
+// or the output is abandoned, then abandons what is left, so the writers are no longer
 // written to once it returns.
-func (o *output) drain(until time.Time, interrupted <-chan struct{}) {
+func (o *output) drain(until time.Time) {
 	timer := time.NewTimer(time.Until(until))
 	defer timer.Stop()
 	select {
 	case <-o.copied:
 	case <-timer.C:
-	case <-interrupted:
 	}
 	o.abandon()
 	<-o.copied

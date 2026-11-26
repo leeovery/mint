@@ -65,7 +65,7 @@ func run(args []string) int {
 	// The hooks' runner is built here, ahead of the verb, so the run's signal handling
 	// can reach a hook it is stopping.
 	hooks := runner.NewGracefulExecRunner(hookStopGrace)
-	ctx, stopCatching := runContext(hooks.KillStopping)
+	ctx, stopCatching := runContext(foldWindow, hooks.KillStopping)
 	defer stopCatching()
 
 	// `regenerate` is a subcommand of `release` (`mint release regenerate …`), not a

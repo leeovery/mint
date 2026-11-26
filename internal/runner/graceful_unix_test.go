@@ -287,7 +287,8 @@ func waitForExit(t *testing.T, dir, name string) {
 	t.Fatalf("the hook never exited")
 }
 
-// With no command sent SIGTERM, KillStopping has nothing to kill and says so.
+// With nothing stopping, KillStopping has nothing to kill and says so: a command that
+// has returned is not stopping, nor is one running whose run's context goes on.
 func TestExecRunner_KillStoppingWithNothingStoppingReportsNone(t *testing.T) {
 	t.Parallel()
 
@@ -295,6 +296,10 @@ func TestExecRunner_KillStoppingWithNothingStoppingReportsNone(t *testing.T) {
 	if _, err := r.Run(t.Context(), "true"); err != nil {
 		t.Fatalf("Run returned unexpected error: %v", err)
 	}
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := startHook(t, ctx, r, dir, "trap")
+	waitForMark(t, dir, "ready")
 
 	if r.KillStopping() {
 		t.Error("a graceful runner with nothing stopping reported a command killed")
@@ -302,11 +307,16 @@ func TestExecRunner_KillStoppingWithNothingStoppingReportsNone(t *testing.T) {
 	if runner.NewExecRunner().KillStopping() {
 		t.Error("a runner that kills at once reported a command killed")
 	}
+	cancel()
+	await(t, done, 30*time.Second, "the hook's run returning")
+	if !marked(dir, "stopped") {
+		t.Error("KillStopping killed a hook whose run had not been interrupted")
+	}
 }
 
 // The stop notice is only for a hook sent SIGTERM: a hook that never started, or that
 // had exited when the run's context ended, gets none. A cancel while mint still reads
-// the output of a hook that has exited ends that read at once.
+// the output of a hook that has exited leaves that read to go on; KillStopping ends it.
 func TestGracefulExecRunner_NoStopNoticeForAHookNotRunning(t *testing.T) {
 	t.Parallel()
 
@@ -332,11 +342,15 @@ func TestGracefulExecRunner_NoStopNoticeForAHookNotRunning(t *testing.T) {
 		dir := t.TempDir()
 		ctx, cancel := context.WithCancel(t.Context())
 		ctx, noticed := noticing(ctx)
-		done := startRun(ctx, runner.NewGracefulExecRunner(helperLife), dir, nil, "sh", "-c", "sleep 60 & echo $! > grandchild; echo $$ > hook")
+		r := runner.NewGracefulExecRunner(helperLife)
+		done := startRun(ctx, r, dir, nil, "sh", "-c", "sleep 60 & echo $! > grandchild; echo $$ > hook")
 		t.Cleanup(func() { killGrandchild(dir) })
 		waitForExit(t, dir, "hook")
 
 		cancel()
+		if !r.KillStopping() {
+			t.Error("KillStopping found nothing stopping while mint read the hook's output")
+		}
 		got := await(t, done, time.Second, "the hook's run returning")
 
 		if got.err != nil {
@@ -346,6 +360,37 @@ func TestGracefulExecRunner_NoStopNoticeForAHookNotRunning(t *testing.T) {
 			t.Error("a hook that had exited got a stop notice")
 		}
 	})
+}
+
+// A hook the terminal's Ctrl-C killed before mint acted on it got no SIGTERM, and its
+// output is read to the end: what is still in the pipe, and what it left running
+// prints, reach mint.
+func TestGracefulExecRunner_AHookThatDiedBeforeItsSIGTERMHasItsOutputReadToTheEnd(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
+	ctx, noticed := noticing(ctx)
+	done := startRun(ctx, runner.NewGracefulExecRunner(helperLife), dir, nil, "sh", "-c",
+		`(while [ ! -e go ]; do sleep 0.01; done; echo late) & echo $! > grandchild; echo early; echo $$ > hook; kill -INT $$`)
+	t.Cleanup(func() { killGrandchild(dir) })
+	waitForExit(t, dir, "hook")
+
+	cancel()
+	// Time for a read the cancel cut short to have ended before the late output.
+	time.Sleep(100 * time.Millisecond)
+	mark(filepath.Join(dir, "go"))
+	got := await(t, done, 30*time.Second, "the hook's run returning")
+
+	if got.res.Stdout != "early\nlate\n" {
+		t.Errorf("Stdout = %q, want %q: all the hook's output", got.res.Stdout, "early\nlate\n")
+	}
+	if !errors.Is(got.err, context.Canceled) {
+		t.Errorf("error = %v, want it to match context.Canceled", got.err)
+	}
+	if isClosed(noticed) {
+		t.Error("a hook sent no SIGTERM got a stop notice")
+	}
 }
 
 // However the hook ends once the run's context does, on its SIGTERM or killed past

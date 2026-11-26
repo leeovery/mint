@@ -13,7 +13,7 @@ import (
 // its lock and say so.
 const hookStopGrace = 60 * time.Second
 
-// foldWindow is how soon after the first press a Ctrl-C or SIGTERM is folded into it.
+// foldWindow is how soon after the first press mint folds a Ctrl-C or SIGTERM into it.
 // A hook that signals its own process group as it stops (`trap 'kill 0' TERM`) reaches
 // mint, in that group, within a millisecond of the first press; a person pressing
 // Ctrl-C again takes far longer.
@@ -30,10 +30,11 @@ const foldWindow = 500 * time.Millisecond
 // time to stop (the hooks runner, hookStopGrace).
 //
 // Ctrl-C and SIGTERM stay caught for the whole run, so no second press ever meets
-// their default by chance. One within foldWindow of the first is folded into it. The
-// press after that is the second: where a hook is being stopped, killStopping kills it
-// and the run's unwind goes on; where none is, and for any press after it, mint ends at
-// once (die), the escape hatch for any wait the cancellation cannot reach.
+// their default by chance. One within fold of the first (mint's is foldWindow) is
+// folded into it. The press after that is the second: where a hook is being stopped,
+// killStopping kills it and the run's unwind goes on; where none is, and for any press
+// after it, mint ends at once (die), the escape hatch for any wait the cancellation
+// cannot reach.
 //
 // SIGHUP and SIGPIPE stay caught too, so a closed terminal stops the run the same way
 // and doesn't kill mint mid-cleanup: a later SIGHUP (a closing terminal can send two)
@@ -42,7 +43,7 @@ const foldWindow = 500 * time.Millisecond
 // ignored, because an ignored signal stays ignored in a hook across exec, where a
 // caught one is reset to its default. A SIGHUP ignored when mint started (nohup) is
 // left ignored, for mint and its hooks alike.
-func runContext(killStopping func() bool) (ctx context.Context, stopCatching func()) {
+func runContext(fold time.Duration, killStopping func() bool) (ctx context.Context, stopCatching func()) {
 	caught := []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGPIPE}
 	if !signal.Ignored(syscall.SIGHUP) {
 		caught = append(caught, syscall.SIGHUP)
@@ -51,7 +52,7 @@ func runContext(killStopping func() bool) (ctx context.Context, stopCatching fun
 	signal.Notify(signals, caught...)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	go watchSignals(signals, done, cancel, killStopping)
+	go watchSignals(signals, done, cancel, fold, killStopping)
 	return ctx, func() {
 		signal.Stop(signals)
 		close(done)
@@ -60,7 +61,7 @@ func runContext(killStopping func() bool) (ctx context.Context, stopCatching fun
 }
 
 // watchSignals acts on the run's signals until done, as runContext says.
-func watchSignals(signals <-chan os.Signal, done <-chan struct{}, cancel func(), killStopping func() bool) {
+func watchSignals(signals <-chan os.Signal, done <-chan struct{}, cancel func(), fold time.Duration, killStopping func() bool) {
 	var first time.Time
 	secondPressed := false
 	for {
@@ -75,7 +76,7 @@ func watchSignals(signals <-chan os.Signal, done <-chan struct{}, cancel func(),
 		case first.IsZero():
 			first = time.Now()
 			cancel()
-		case sig == syscall.SIGHUP, time.Since(first) < foldWindow:
+		case sig == syscall.SIGHUP, time.Since(first) < fold:
 		case !secondPressed && killStopping():
 			secondPressed = true
 		default:

@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -35,9 +37,10 @@ func NewGracefulExecRunner(grace time.Duration) *ExecRunner {
 	return &ExecRunner{graceful: newGracefulStop(grace)}
 }
 
-// KillStopping ends r's wait for every command it has sent SIGTERM and is waiting on:
-// it kills them and stops reading their output, so their runs return at once. It
-// reports whether there were any, which a runner that kills at once never has.
+// KillStopping ends r's wait for every command it is stopping, whose run's context has
+// ended but whose run has yet to return: sent SIGTERM, or exited with its output still
+// being read. It kills them and stops reading their output, so their runs return at
+// once. It reports whether there were any, which a runner that kills at once never has.
 func (r *ExecRunner) KillStopping() bool {
 	return r.graceful != nil && r.graceful.killStopping()
 }
@@ -70,24 +73,41 @@ func (r *ExecRunner) RunWith(ctx context.Context, stdin io.Reader, name string, 
 }
 
 // RunInDir executes name with args from working directory dir, with env (a slice
-// of "KEY=VALUE" entries) layered on top of the inherited environment. It is the
-// seam hooks use: each entry runs as `sh -c "<entry>"` from the repo root with
-// mint's MINT_* variables injected. Stdout/stderr are captured separately and the
-// exit is translated exactly as RunWith does (missing binary → ErrCommandNotFound;
-// non-zero exit → populated Result + non-nil error; clean → populated Result + nil
-// error).
+// of "KEY=VALUE" entries, and Unset ones) layered on top of the inherited
+// environment. It is the seam hooks use: each entry runs as `sh -c "<entry>"` from
+// the repo root with mint's MINT_* variables injected. Stdout/stderr are captured
+// separately and the exit is translated exactly as RunWith does (missing binary →
+// ErrCommandNotFound; non-zero exit → populated Result + non-nil error; clean →
+// populated Result + nil error).
 func (r *ExecRunner) RunInDir(ctx context.Context, dir string, env []string, name string, args ...string) (Result, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	// Layer the extra entries on top of the inherited environment so MINT_* is
 	// injected without dropping the host's PATH etc.
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = layerEnv(os.Environ(), env)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	return translateRun(ctx, r.run(ctx, cmd), &stdout, &stderr, cmd, name)
+}
+
+// layerEnv is inherited with env on top: a KEY=VALUE entry sets KEY, later entries
+// winning, and an Unset one takes KEY out.
+func layerEnv(inherited, env []string) []string {
+	layered := slices.Clone(inherited)
+	for _, entry := range env {
+		if _, _, sets := strings.Cut(entry, "="); sets {
+			layered = append(layered, entry)
+			continue
+		}
+		layered = slices.DeleteFunc(layered, func(kv string) bool {
+			key, _, _ := strings.Cut(kv, "=")
+			return key == entry
+		})
+	}
+	return layered
 }
 
 // run runs cmd to its end, stopped as r stops a command whose context, ctx, ends.
