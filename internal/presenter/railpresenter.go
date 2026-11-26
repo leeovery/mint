@@ -260,6 +260,19 @@ func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 	p.redraw()
 }
 
+// StageStopping sets the running node's detail to what mint is waiting on, its spinner
+// and its clock going on. A node no longer running draws nothing new.
+func (p *RailPresenter) StageStopping(s StageStop) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	pt := p.run.find(s.Key)
+	if pt == nil || !pt.running() {
+		return
+	}
+	pt.node.Detail = s.Text + "…"
+	p.redraw()
+}
+
 // StageFailed marks the stage failed with its message, the command's output verbatim
 // under it behind a gutter of its own and any saved part notes' path on a line of
 // its own, and writes the one-line summary to err. A failure is always drawn, an

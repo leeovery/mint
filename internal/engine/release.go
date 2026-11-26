@@ -170,6 +170,10 @@ type ReleaseDeps struct {
 	// preflight, record reads, notes) issue git through unchanged — read-only git
 	// calls do NOT go through the lock wrapper.
 	Runner runner.CommandRunner
+	// Hooks is the seam the project's hooks run through, Runner where nil. Production
+	// gives it a graceful runner: a hook the run's interrupt stops is sent SIGTERM and
+	// given time to stop, where Runner's short commands are killed at once.
+	Hooks runner.CommandRunner
 	// Mutator is the lock-resilient git MUTATION wrapper. Every git mutation the engine
 	// drives — the record bookkeeping/artifact commits and the unwind's reset/tag-delete
 	// — flows through it (retry on a contended lock, clear a provably-stale one). It is
@@ -238,6 +242,14 @@ func (d ReleaseDeps) clock() func() time.Time {
 		return d.Clock
 	}
 	return time.Now
+}
+
+// hookRunner is the runner the project's hooks run through: Hooks, or Runner.
+func (d ReleaseDeps) hookRunner() runner.CommandRunner {
+	if d.Hooks != nil {
+		return d.Hooks
+	}
+	return d.Runner
 }
 
 // header is the run's header line for command over root.
@@ -482,6 +494,8 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// Stage 1 (the version is resolved) so RunStarted can lead the run; resolveBody later
 	// reuses it to recompute the dry-run cache key for the real-run reuse lookup.
 	versionKey := next.String("")
+	// Every hook point gets the same MINT_* env, which Stage 1 has every fact for.
+	env := buildHookEnv(current, next, tag, bumpKind, opts.DryRun, notesPath)
 
 	// RunStarted OPENS the run: the brand header renders first, with every stage line
 	// beneath it (the spec worked example, the presenter golden transcript). Its payload
@@ -586,7 +600,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// entry) aborts the whole release cleanly: it is surfaced as a "preflight"
 	// StageFailed. Because this precedes all mutation there is nothing to unwind — a
 	// plain surface, not the auto-unwind path.
-	hookSkipped, err := runPreflightHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun)
+	hookSkipped, err := runPreflightHook(ctx, deps, cfg, root, env)
 	if err != nil {
 		return surface(p, "preflight", err)
 	}
@@ -650,7 +664,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// folded into made.Commits the moment the artifact commit lands, so it is tracked
 	// even if a LATER stage fails.
 	made.hookRan = made.hookRan || hookRuns(cfg.Release.Hooks.PreTag, opts.DryRun)
-	artifactCommitted, err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun, keepOut)
+	artifactCommitted, err := runPreTagHook(ctx, deps, cfg, root, env, keepOut)
 	if artifactCommitted {
 		made.Commits++
 	}
@@ -741,7 +755,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		review := gateForKind(kind)
 		review.Quiet = true
 		p.PreviewGate(review)
-		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind)
+		return finishDryRun(ctx, deps, cfg, root, versionKey, env)
 	}
 
 	// The review gate is the FINAL gate of a real release: accepting it proceeds straight
@@ -930,7 +944,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// run still reaches RunFinished and returns nil. This is the ONLY hook point whose
 	// failure is non-fatal (preflight and pre_tag abort); the array stop-on-first-
 	// failure SEQUENCING is identical across points — only the CONSEQUENCE differs.
-	if err := runPostReleaseHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun); err != nil {
+	if err := runPostReleaseHook(ctx, deps, cfg, root, env); err != nil {
 		warnPostReleaseFailed(p, err)
 		outcome = presenter.OutcomeReleasedWithWarning
 	}
@@ -1072,6 +1086,21 @@ func notesExclusion(ctx context.Context, r runner.CommandRunner, root, path stri
 // through symlinks first, since git reports root by its real path; the file itself is
 // not, as git tracks a symlink by its own path.
 func repoRelativePath(root, path string) string {
+	file := resolvedPath(path)
+	if file == "" {
+		return ""
+	}
+	rel, err := filepath.Rel(realPath(root), file)
+	if err != nil || !filepath.IsLocal(rel) {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
+// resolvedPath is path made absolute, its directory resolved through symlinks, as git
+// reports the repo root by its real path, but the file itself not, as git tracks a
+// symlink by its own path; empty for an empty path or one with no absolute form.
+func resolvedPath(path string) string {
 	if path == "" {
 		return ""
 	}
@@ -1079,12 +1108,7 @@ func repoRelativePath(root, path string) string {
 	if err != nil {
 		return ""
 	}
-	file := filepath.Join(realPath(filepath.Dir(abs)), filepath.Base(abs))
-	rel, err := filepath.Rel(realPath(root), file)
-	if err != nil || !filepath.IsLocal(rel) {
-		return ""
-	}
-	return filepath.ToSlash(rel)
+	return filepath.Join(realPath(filepath.Dir(abs)), filepath.Base(abs))
 }
 
 func realPath(p string) string {
@@ -1755,31 +1779,39 @@ func hookRuns(value config.HookValue, dryRun bool) bool {
 	return hooks.HasEntries(value) && !dryRun
 }
 
-// runPreflightHook runs the project's optional preflight hook through the shared
-// hooks runner. It assembles the MINT_* env from the run's computed versions
-// (NewVersion = the bare version being released, PreviousVersion = the bare prior
-// latest, VersionTag = the full prefixed tag), the bump kind, and the dryRun mode,
-// then runs the configured [release.hooks].preflight value from the repo root. An
-// absent or empty value (nil, "", []) is a silent no-op: no run, no report. A
-// non-zero exit (the first non-zero entry for an array) returns a non-nil error the
-// caller surfaces and aborts on.
+// runPreflightHook runs the project's optional preflight hook, the configured
+// [release.hooks].preflight value, from the repo root through the shared hooks runner
+// with env, the run's MINT_* env (buildHookEnv). An absent or empty value (nil, "",
+// []) is a silent no-op: no run, no report. A non-zero exit (the first non-zero entry
+// for an array) returns a non-nil error the caller surfaces and aborts on.
 //
-// DRY-RUN: when dryRun is active AND the hook is configured, the hook is NOT
+// DRY-RUN: when env.DryRun is set AND the hook is configured, the hook is NOT
 // invoked — no `sh -c …` reaches the runner; instead the skip is REPORTED via the
 // presenter and its message returned, for the preflight row to hang: the hook has no
 // node of its own. Once the hook runs the run's close says only that nothing was
 // pushed: what the hook did is unknown to mint.
-func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) (skipped string, err error) {
+func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, env hooks.HookEnv) (skipped string, err error) {
 	if !hooks.HasEntries(cfg.Release.Hooks.Preflight) {
 		return "", nil
 	}
-	if dryRun {
+	if env.DryRun {
 		return reportHookSkipped(deps.Presenter, "preflight"), nil
 	}
-	env := buildHookEnv(current, next, tag, bump, dryRun)
 	deps.run.Left(nothingPushed)
 	showRunning(deps.Presenter, stagePreflight, preflightHookText)
-	return "", hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.Preflight, root, env)
+	return "", runHook(ctx, deps, stagePreflight, cfg.Release.Hooks.Preflight, root, env)
+}
+
+// runHook runs value, the hook configured at point, from root with env, through the
+// hook runner. Once the run is interrupted and the runner has sent a hook still running
+// SIGTERM, giving it time to stop, point's stage, which the hook runs on, says mint is
+// waiting for it; the runner returns only after that, so the line comes before the
+// stage's failure.
+func runHook(ctx context.Context, deps ReleaseDeps, point string, value config.HookValue, root string, env hooks.HookEnv) error {
+	ctx = runner.WithStopNotice(ctx, func() {
+		deps.Presenter.StageStopping(presenter.StageStop{Name: point, Key: point, Text: "waiting for the " + point + " hook to stop"})
+	})
+	return hooks.NewRunner(deps.hookRunner()).Run(ctx, value, root, env)
 }
 
 // runPreTagHook runs the project's optional Stage-3 pre_tag hook and then applies
@@ -1813,12 +1845,12 @@ func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, 
 //
 // A failed artifact commit after its stage is a *record.UncommittedError in the chain:
 // the hook's changes are left staged.
-func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool, keepOut git.Exclusion) (bool, error) {
+func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, env hooks.HookEnv, keepOut git.Exclusion) (bool, error) {
 	if !hooks.HasEntries(cfg.Release.Hooks.PreTag) {
 		return false, nil
 	}
 
-	if dryRun {
+	if env.DryRun {
 		// Report the skip and return BEFORE the porcelain probe / artifact commit: the
 		// hook did not run, so the tree carries no mint-made changes to commit.
 		//
@@ -1839,11 +1871,10 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	// land. The events fire ONLY here — when a hook is configured and actually runs —
 	// so a hookless run (returned above) narrates no pre_tag stage.
 	stage := startBlockingStage(deps.Presenter, deps.clock(), stagePreTag, "running pre_tag hook…")
-	env := buildHookEnv(current, next, tag, bump, dryRun)
-	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
+	if err := runHook(ctx, deps, stagePreTag, cfg.Release.Hooks.PreTag, root, env); err != nil {
 		return false, &stageError{stage: stage, err: err}
 	}
-	subject := pretagArtifactSubject(tag)
+	subject := pretagArtifactSubject(env.VersionTag)
 	committed, err := record.CommitDirtyTree(ctx, deps.Mutator, root, subject, keepOut)
 	if err = warnIndexBehind(deps.Presenter, root, stagePreTag, err); err != nil {
 		return committed, &stageError{stage: stage, err: err}
@@ -1878,22 +1909,22 @@ func failedStage(name string, cause error) presenter.StageFailure {
 }
 
 // runPostReleaseHook runs the project's optional Stage-7 post_release hook through
-// the shared hooks runner with the same MINT_* env as the other points (reusing
-// buildHookEnv). An absent or empty value (nil, "", []) is a silent no-op: no run,
-// no report, no stage narration. A non-zero exit (the first non-zero entry for an
-// array — the stop-on-first-failure SEQUENCING is identical to the other points)
+// the shared hooks runner with env, the same MINT_* env as the other points. An
+// absent or empty value (nil, "", []) is a silent no-op: no run, no report, no stage
+// narration. A non-zero exit (the first non-zero entry for an array — the
+// stop-on-first-failure SEQUENCING is identical to the other points)
 // returns a non-nil error. UNLIKE preflight/pre_tag, the CONSEQUENCE here is
 // warn-only: the caller does NOT abort or unwind, because by Stage 7 the push has
 // crossed the PONR and the tag is public.
 //
-// DRY-RUN: when dryRun is active AND the hook is configured, the hook is NOT invoked;
+// DRY-RUN: when env.DryRun is set AND the hook is configured, the hook is NOT invoked;
 // the skip is REPORTED via the presenter and nil is returned (the caller's warn-only
 // branch is irrelevant — there is no failure).
-func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) error {
+func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, env hooks.HookEnv) error {
 	if !hooks.HasEntries(cfg.Release.Hooks.PostRelease) {
 		return nil
 	}
-	if dryRun {
+	if env.DryRun {
 		reportHookSkipped(deps.Presenter, "post_release")
 		return nil
 	}
@@ -1903,8 +1934,7 @@ func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config
 	// skips the success line; the caller's Warn stops the spinner and prints the ⚠
 	// line with the hook's output in its place.
 	stage := startBlockingStage(deps.Presenter, deps.clock(), stagePostRelease, "running post_release hook…")
-	env := buildHookEnv(current, next, tag, bump, dryRun)
-	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PostRelease, root, env); err != nil {
+	if err := runHook(ctx, deps, stagePostRelease, cfg.Release.Hooks.PostRelease, root, env); err != nil {
 		return err
 	}
 	stage.succeeded(hookCompletion(cfg.Release.Hooks.PostRelease))
@@ -1927,12 +1957,17 @@ func pretagArtifactSubject(tag string) string {
 
 // buildHookEnv assembles the shared MINT_* hook environment from the run's computed
 // versions (NewVersion = the bare version being released, PreviousVersion = the bare
-// prior latest, VersionTag = the full prefixed tag), the bump kind, and the run's
-// dryRun mode. The preflight and pre_tag points share it so they inject an identical
-// env. dryRun renders to MINT_DRY_RUN=1/0; the builder stays correct even though the
-// hooks are SKIPPED (and so never consume the env) under dry-run.
-func buildHookEnv(current, next version.SemVer, tag string, bump version.Bump, dryRun bool) hooks.HookEnv {
-	return hooks.NewHookEnv(next.String(""), current.String(""), tag, hookBump(bump), dryRun)
+// prior latest, VersionTag = the full prefixed tag), the bump kind, the run's dryRun
+// mode and its --notes-file path, empty for none. The three points share it so they
+// inject an identical env. dryRun renders to MINT_DRY_RUN=1/0; the builder stays
+// correct even though the hooks are SKIPPED (and so never consume the env) under
+// dry-run. A notes file reaches the hooks as MINT_NOTES_FILE, resolved as the notes
+// exclusion resolves it, so a hook that refuses untracked files can leave it out as
+// mint does.
+func buildHookEnv(current, next version.SemVer, tag string, bump version.Bump, dryRun bool, notesFile string) hooks.HookEnv {
+	env := hooks.NewHookEnv(next.String(""), current.String(""), tag, hookBump(bump), dryRun)
+	env.NotesFile = resolvedPath(notesFile)
+	return env
 }
 
 // publishGate resolves the publishing driver and, for a driver resolved, checks gh's
@@ -2061,7 +2096,7 @@ func buildPlan(tag string, publish bool) presenter.Plan {
 // WITHOUT any mutation. No commit, tag, push, or provider release is reached, so the
 // working tree is byte-for-byte unchanged (apart from the user-level note cache). The
 // preflight and pre_tag hook skips already fired above this point.
-func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root, versionKey string, current, next version.SemVer, tag string, bumpKind version.Bump) error {
+func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root, versionKey string, env hooks.HookEnv) error {
 	// The notes were already generated-and-cached (or reused) in resolveBody, exactly as
 	// a real run does — a dry run is not a separate path. So nothing cache-related happens
 	// here; the dry run only reports the post_release hook skip and the close-out.
@@ -2069,8 +2104,8 @@ func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root
 	// Report the post_release hook skip too: in a real run it fires at Stage 7 (after
 	// the boundary the dry run stops at), so reusing the 3-11 skip-and-report path here
 	// keeps all three hook points consistently reported under the full dry run. It runs
-	// no `sh` (dryRun=true) and returns nil; an absent hook stays a silent no-op.
-	if err := runPostReleaseHook(ctx, deps, cfg, root, current, next, tag, bumpKind, true); err != nil {
+	// no `sh` (env.DryRun is set) and returns nil; an absent hook stays a silent no-op.
+	if err := runPostReleaseHook(ctx, deps, cfg, root, env); err != nil {
 		return err
 	}
 
@@ -2078,7 +2113,7 @@ func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root
 		Project: projectName(root),
 		Version: versionKey,
 		Outcome: presenter.OutcomeDryRun,
-		End:     presenter.Station{Name: tag, Detail: "dry run · nothing changed"},
+		End:     presenter.Station{Name: env.VersionTag, Detail: "dry run · nothing changed"},
 	})
 	return nil
 }

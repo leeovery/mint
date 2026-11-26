@@ -8,19 +8,41 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
+	"time"
 )
 
 // ExecRunner is the production CommandRunner. It runs commands via
 // os/exec.CommandContext so cancellation/timeout flows through ctx, captures
 // stdout and stderr into separate buffers, and derives ExitCode from the
 // process exit status.
-type ExecRunner struct{}
+type ExecRunner struct {
+	// graceful is how a command whose context ends is stopped; nil kills it at once.
+	graceful *gracefulStop
+}
 
-// NewExecRunner returns an ExecRunner. It is stateless; the constructor exists
-// so call sites depend on the CommandRunner seam rather than a bare struct
-// literal, and so future configuration has a home without churning callers.
+// NewExecRunner returns an ExecRunner that kills a command at once when its context
+// ends, as exec.CommandContext does: what a short command (git, gh, the AI call)
+// wants. The constructor exists so call sites depend on the CommandRunner seam
+// rather than a bare struct literal.
 func NewExecRunner() *ExecRunner {
 	return &ExecRunner{}
+}
+
+// NewGracefulExecRunner returns an ExecRunner that stops a command whose context ends
+// gracefully, as a project's hook needs: SIGTERM, then SIGKILL once grace has passed
+// or KillStopping is called, whichever comes first (see gracefulStop).
+func NewGracefulExecRunner(grace time.Duration) *ExecRunner {
+	return &ExecRunner{graceful: newGracefulStop(grace)}
+}
+
+// KillStopping ends r's wait for every command it is stopping, whose run's context has
+// ended but whose run has yet to return: sent SIGTERM, or exited with its output still
+// being read. It kills them and stops reading their output, so their runs return at
+// once. It reports whether there were any, which a runner that kills at once never has.
+func (r *ExecRunner) KillStopping() bool {
+	return r.graceful != nil && r.graceful.killStopping()
 }
 
 // Compile-time assertion that ExecRunner satisfies the seam.
@@ -47,28 +69,53 @@ func (r *ExecRunner) RunWith(ctx context.Context, stdin io.Reader, name string, 
 		cmd.Stdin = stdin
 	}
 
-	return translateRun(ctx, cmd.Run(), &stdout, &stderr, cmd, name)
+	return translateRun(ctx, r.run(ctx, cmd), &stdout, &stderr, cmd, name)
 }
 
 // RunInDir executes name with args from working directory dir, with env (a slice
-// of "KEY=VALUE" entries) layered on top of the inherited environment. It is the
-// seam hooks use: each entry runs as `sh -c "<entry>"` from the repo root with
-// mint's MINT_* variables injected. Stdout/stderr are captured separately and the
-// exit is translated exactly as RunWith does (missing binary → ErrCommandNotFound;
-// non-zero exit → populated Result + non-nil error; clean → populated Result + nil
-// error).
+// of "KEY=VALUE" entries, and Unset ones) layered on top of the inherited
+// environment. It is the seam hooks use: each entry runs as `sh -c "<entry>"` from
+// the repo root with mint's MINT_* variables injected. Stdout/stderr are captured
+// separately and the exit is translated exactly as RunWith does (missing binary →
+// ErrCommandNotFound; non-zero exit → populated Result + non-nil error; clean →
+// populated Result + nil error).
 func (r *ExecRunner) RunInDir(ctx context.Context, dir string, env []string, name string, args ...string) (Result, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	// Layer the extra entries on top of the inherited environment so MINT_* is
 	// injected without dropping the host's PATH etc.
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = layerEnv(os.Environ(), env)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	return translateRun(ctx, cmd.Run(), &stdout, &stderr, cmd, name)
+	return translateRun(ctx, r.run(ctx, cmd), &stdout, &stderr, cmd, name)
+}
+
+// layerEnv is inherited with env on top: a KEY=VALUE entry sets KEY, later entries
+// winning, and an Unset one takes KEY out.
+func layerEnv(inherited, env []string) []string {
+	layered := slices.Clone(inherited)
+	for _, entry := range env {
+		if _, _, sets := strings.Cut(entry, "="); sets {
+			layered = append(layered, entry)
+			continue
+		}
+		layered = slices.DeleteFunc(layered, func(kv string) bool {
+			key, _, _ := strings.Cut(kv, "=")
+			return key == entry
+		})
+	}
+	return layered
+}
+
+// run runs cmd to its end, stopped as r stops a command whose context, ctx, ends.
+func (r *ExecRunner) run(ctx context.Context, cmd *exec.Cmd) error {
+	if r.graceful == nil {
+		return cmd.Run()
+	}
+	return r.graceful.run(ctx, cmd)
 }
 
 // translateRun converts a finished exec.Cmd into the seam's Result/error contract,
@@ -96,13 +143,14 @@ func translateRun(ctx context.Context, runErr error, stdout, stderr *bytes.Buffe
 		return Result{}, fmt.Errorf("running %q: %w", name, ErrCommandNotFound)
 	}
 
-	// A context deadline/cancel makes exec.CommandContext SIGKILL the child, so
-	// cmd.Run() surfaces an *exec.ExitError ("signal: killed") that hides the real
-	// cause — errors.Is(runErr, DeadlineExceeded) is FALSE on that path. Inspect
-	// ctx.Err() first and wrap that cause so callers (the AI transport's
+	// A context deadline/cancel stops the child, SIGKILLed at once or, by a graceful
+	// runner, sent SIGTERM first, so cmd.Run() surfaces whatever the child's end was:
+	// an *exec.ExitError ("signal: killed", or the exit it chose on its SIGTERM) that
+	// hides the real cause — errors.Is(runErr, DeadlineExceeded) is FALSE on that path.
+	// Inspect ctx.Err() first and wrap that cause so callers (the AI transport's
 	// classifyFatal) can detect a timeout/cancel via errors.Is and avoid retrying a
-	// hung call. This must precede the plain ExitError branch below, otherwise a real
-	// timeout is misread as an ordinary non-zero exit.
+	// hung call, however the child ended. This must precede the plain ExitError branch
+	// below, otherwise a real timeout is misread as an ordinary non-zero exit.
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return res, fmt.Errorf("running %q: %w", name, ctxErr)
 	}
@@ -140,7 +188,7 @@ func (r *ExecRunner) RunInteractive(ctx context.Context, name string, args ...st
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	runErr := cmd.Run()
+	runErr := r.run(ctx, cmd)
 	if runErr == nil {
 		return nil
 	}

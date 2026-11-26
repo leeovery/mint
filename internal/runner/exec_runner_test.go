@@ -269,6 +269,24 @@ func TestExecRunner_RunInDir_InjectsEnvOnTopOfInherited(t *testing.T) {
 	}
 }
 
+func TestExecRunner_RunInDir_AnUnsetEntryTakesTheVariableOutOfTheInherited(t *testing.T) {
+	// No t.Parallel(): t.Setenv mutates process env and is incompatible with
+	// parallel tests.
+	r := runner.NewExecRunner()
+	t.Setenv("MINT_RUNNER_UNSET_PROBE", "from-host")
+	t.Setenv("MINT_RUNNER_INHERIT_PROBE", "from-host")
+
+	res, err := r.RunInDir(t.Context(), t.TempDir(), []string{runner.Unset("MINT_RUNNER_UNSET_PROBE")},
+		"sh", "-c", "printf '%s|%s' \"${MINT_RUNNER_UNSET_PROBE-absent}\" \"$MINT_RUNNER_INHERIT_PROBE\"")
+
+	if err != nil {
+		t.Fatalf("RunInDir returned unexpected error: %v", err)
+	}
+	if res.Stdout != "absent|from-host" {
+		t.Errorf("Stdout = %q, want %q", res.Stdout, "absent|from-host")
+	}
+}
+
 func TestExecRunner_RunInDir_CapturesStderrSeparately(t *testing.T) {
 	t.Parallel()
 

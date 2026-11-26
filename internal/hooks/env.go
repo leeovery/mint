@@ -12,6 +12,8 @@
 // rather than reading [release.hooks] itself.
 package hooks
 
+import "mint/internal/runner"
+
 // Bump is the kind of version change a release performs. It renders to MINT_BUMP
 // so a hook can branch on how the version was chosen.
 type Bump string
@@ -38,6 +40,9 @@ type HookEnv struct {
 	VersionTag      string
 	Bump            Bump
 	DryRun          bool
+	// NotesFile is the --notes-file's absolute path, empty when none was given. A hook
+	// that checks the tree, as mint's clean-tree check does, leaves it out.
+	NotesFile string
 }
 
 // NewHookEnv assembles a HookEnv from release state so the lifecycle points share
@@ -56,14 +61,20 @@ func NewHookEnv(newVersion, previousVersion, versionTag string, bump Bump, dryRu
 // Render materialises the injected variables as an ordered slice of "KEY=VALUE"
 // entries suitable for layering on the inherited environment. It is the SINGLE
 // render point for the MINT_* set, so adding a variable is one edit here.
+// MINT_NOTES_FILE is set only when a notes file was given; otherwise it is Unset, so
+// a hook never sees one inherited from a mint that ran this one, or from a shell.
 func (e HookEnv) Render() []string {
-	return []string{
+	env := []string{
 		"MINT_NEW_VERSION=" + e.NewVersion,
 		"MINT_PREVIOUS_VERSION=" + e.PreviousVersion,
 		"MINT_VERSION_TAG=" + e.VersionTag,
 		"MINT_BUMP=" + string(e.Bump),
 		"MINT_DRY_RUN=" + renderDryRun(e.DryRun),
 	}
+	if e.NotesFile == "" {
+		return append(env, runner.Unset("MINT_NOTES_FILE"))
+	}
+	return append(env, "MINT_NOTES_FILE="+e.NotesFile)
 }
 
 // renderDryRun maps the dry-run flag to the "1"/"0" form hooks expect.

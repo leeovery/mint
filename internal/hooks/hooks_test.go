@@ -295,19 +295,53 @@ func TestHookEnv_RenderProducesAllVars(t *testing.T) {
 		"MINT_VERSION_TAG=v1.4.0",
 		"MINT_BUMP=major",
 		"MINT_DRY_RUN=0",
+		runner.Unset("MINT_NOTES_FILE"),
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("Render() = %v, want %v", got, want)
 	}
 }
 
-// guard: every rendered entry is a KEY=VALUE pair.
+func TestHookEnv_RenderAddsTheNotesFileWhenGiven(t *testing.T) {
+	t.Parallel()
+
+	env := hooks.NewHookEnv("1.4.0", "1.3.2", "v1.4.0", hooks.BumpMajor, false)
+	env.NotesFile = "/repo/notes/v1.4.0.md"
+
+	got := env.Render()
+
+	if want := "MINT_NOTES_FILE=/repo/notes/v1.4.0.md"; got[len(got)-1] != want {
+		t.Errorf("Render() = %v, want it to end with %q", got, want)
+	}
+}
+
+// guard: every rendered entry is a KEY=VALUE pair, but the notes file's Unset when
+// none was given.
 func TestHookEnv_RenderEntriesAreKeyValue(t *testing.T) {
 	t.Parallel()
 
-	for _, kv := range sampleEnv().Render() {
-		if !strings.Contains(kv, "=") {
-			t.Errorf("rendered entry %q is not KEY=VALUE", kv)
+	withNotes := sampleEnv()
+	withNotes.NotesFile = "/repo/notes.md"
+	for _, env := range []hooks.HookEnv{sampleEnv(), withNotes} {
+		for _, kv := range env.Render() {
+			if !strings.Contains(kv, "=") && kv != runner.Unset("MINT_NOTES_FILE") {
+				t.Errorf("rendered entry %q is not KEY=VALUE", kv)
+			}
 		}
+	}
+}
+
+// A hook run with no notes file never sees a MINT_NOTES_FILE it inherits, from a mint
+// that ran this one or a shell that exports it.
+func TestRunner_NoNotesFile_TakesAnInheritedOneAway(t *testing.T) {
+	// No t.Parallel(): t.Setenv mutates process env and is incompatible with
+	// parallel tests.
+	t.Setenv("MINT_NOTES_FILE", "/elsewhere/notes.md")
+	r := hooks.NewRunner(runner.NewExecRunner())
+
+	err := r.Run(t.Context(), `test -z "${MINT_NOTES_FILE+set}"`, t.TempDir(), sampleEnv())
+
+	if err != nil {
+		t.Errorf("the hook saw MINT_NOTES_FILE: %v", err)
 	}
 }

@@ -19,6 +19,7 @@ func (p *nopPresenter) RunStarted(info presenter.RunInfo)                   { p.
 func (p *nopPresenter) StageStarted(presenter.StageStart)                   {}
 func (p *nopPresenter) StageSucceeded(presenter.StageSuccess)               {}
 func (p *nopPresenter) StageFailed(presenter.StageFailure)                  {}
+func (p *nopPresenter) StageStopping(presenter.StageStop)                   {}
 func (p *nopPresenter) NotesProgress(presenter.NotesProgress)               {}
 func (p *nopPresenter) NotesMerging(presenter.NotesMerge)                   {}
 func (p *nopPresenter) NotesChecking(presenter.NotesCheck)                  {}
@@ -55,6 +56,7 @@ func TestNopPresenterSatisfiesInterface(t *testing.T) {
 	p.StageStarted(presenter.StageStart{})
 	p.StageSucceeded(presenter.StageSuccess{})
 	p.StageFailed(presenter.StageFailure{})
+	p.StageStopping(presenter.StageStop{})
 	p.Warn(presenter.Warning{})
 	p.Unwound(presenter.Unwind{})
 	p.ShowPlan(presenter.Plan{})

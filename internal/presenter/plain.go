@@ -144,6 +144,12 @@ func (p *PlainPresenter) StageStarted(s StageStart) {
 	p.writef("%s: running...\n", s.Name)
 }
 
+// StageStopping writes what mint is waiting on as "{name}: {text}...", a line of its
+// own.
+func (p *PlainPresenter) StageStopping(s StageStop) {
+	p.writef("%s: %s...\n", s.Name, s.Text)
+}
+
 // SuspendSpinner and ResumeSpinner are NO-OPS in plain mode — plain never animates
 // (a stage emits exactly one terse line on its transition), so there is nothing to
 // suspend or resume around the engine's $EDITOR hand-off. They produce NO output and
