@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
@@ -31,12 +32,25 @@ func TestSignalHelper(t *testing.T) {
 }
 
 func signalHelper(mode string) int {
-	ctx, stopCatching := runContext()
+	// The hooks it runs hold none of the test's pipes, so the test sees the helper end.
+	syscall.CloseOnExec(3)
+	syscall.CloseOnExec(4)
+	hooks := runner.NewGracefulExecRunner(time.Minute)
+	ctx, stopCatching := runContext(hooks.KillStopping)
 	defer stopCatching()
 	report := os.NewFile(3, "report")
-	if mode == "hook" {
+	switch mode {
+	case "dispositions":
 		reportHookDispositions(report)
 		return 0
+	case "hook":
+		// A release interrupted at its hook: the hook's end, then the unwind, which lasts
+		// until the go-ahead, then exit 1.
+		res, _ := hooks.RunInDir(ctx, ".", nil, "sh", "-c", os.Getenv("MINT_SIGNAL_HOOK"))
+		_, _ = fmt.Fprintln(report, "hook exited", res.ExitCode)
+		_, _ = io.Copy(io.Discard, os.NewFile(4, "go-ahead"))
+		_, _ = fmt.Fprintln(report, "unwound")
+		return 1
 	}
 	_, _ = fmt.Fprintln(report, "ready")
 	<-ctx.Done()
@@ -172,8 +186,9 @@ func TestRunContext_EachEndingSignalStopsTheRun(t *testing.T) {
 	}
 }
 
-// A closed terminal doesn't kill mint mid-cleanup: a second hang-up is dropped, and
-// writes to the stdout and stderr nothing reads any more fail without raising SIGPIPE.
+// A closed terminal doesn't kill mint mid-cleanup: a later hang-up is dropped, past the
+// fold window as within it, and writes to the stdout and stderr nothing reads any more
+// fail without raising SIGPIPE.
 func TestRunContext_AClosedTerminalDoesNotKillMintMidCleanup(t *testing.T) {
 	t.Parallel()
 
@@ -189,7 +204,10 @@ func TestRunContext_AClosedTerminalDoesNotKillMintMidCleanup(t *testing.T) {
 	_ = stderrR.Close()
 
 	h.signal(t, syscall.SIGHUP)
+	hungUp := time.Now()
 	h.expect(t, "stopped")
+	h.signal(t, syscall.SIGHUP)
+	time.Sleep(time.Until(hungUp.Add(foldWindow + 100*time.Millisecond)))
 	h.signal(t, syscall.SIGHUP)
 	_ = h.goAhead.Close()
 	h.expect(t, "cleaned up")
@@ -221,7 +239,7 @@ func TestRunContext_AHookGetsTheSignalsAsMintStartedWithThem(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h := startSignalHelper(t, "hook", tt.wrap, nil)
+			h := startSignalHelper(t, "dispositions", tt.wrap, nil)
 			for _, want := range tt.want {
 				h.expect(t, want)
 			}
@@ -233,27 +251,157 @@ func TestRunContext_AHookGetsTheSignalsAsMintStartedWithThem(t *testing.T) {
 	}
 }
 
-// Once the run is stopping, a second Ctrl-C or SIGTERM ends mint at once: the escape
-// hatch from a read the cancel can't reach.
-func TestRunContext_ASecondInterruptEndsMintAtOnce(t *testing.T) {
+// With no hook to stop, a second Ctrl-C or SIGTERM ends mint at once: the escape hatch
+// from a wait the cancel can't reach. One within the fold window is the first press
+// still, and mint cleans up.
+func TestRunContext_ASecondPressWithNoHookToStopEndsMintAtOnce(t *testing.T) {
 	t.Parallel()
 
-	for _, sig := range []os.Signal{os.Interrupt, syscall.SIGTERM} {
-		t.Run(sig.String(), func(t *testing.T) {
+	tests := []struct {
+		name  string
+		sig   os.Signal
+		after time.Duration
+		dies  bool
+	}{
+		{name: "a second Ctrl-C", sig: os.Interrupt, after: foldWindow + 100*time.Millisecond, dies: true},
+		{name: "a second SIGTERM", sig: syscall.SIGTERM, after: foldWindow + 100*time.Millisecond, dies: true},
+		{name: "a Ctrl-C folded into the first", sig: os.Interrupt, after: 50 * time.Millisecond},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			h := startSignalHelper(t, "run", nil, nil)
 			h.expect(t, "ready")
-			h.signal(t, sig)
+			h.signal(t, tt.sig)
+			pressed := time.Now()
 			h.expect(t, "stopped")
 
-			h.signal(t, sig)
+			time.Sleep(time.Until(pressed.Add(tt.after)))
+			h.signal(t, tt.sig)
+			if !tt.dies {
+				_ = h.goAhead.Close()
+				h.expect(t, "cleaned up")
+			}
 			err := h.wait(t)
 
-			var exit *exec.ExitError
-			if !errors.As(err, &exit) || exit.Sys().(syscall.WaitStatus).Signal() != sig {
-				t.Errorf("the helper exited with %v, want it killed by the second %v", err, sig)
+			if tt.dies {
+				var exit *exec.ExitError
+				if !errors.As(err, &exit) || exit.Sys().(syscall.WaitStatus).Signal() != tt.sig {
+					t.Errorf("the helper exited with %v, want it killed by the second %v", err, tt.sig)
+				}
+			} else if err != nil {
+				t.Errorf("the helper exited with %v, want a clean exit after its cleanup", err)
 			}
 		})
 	}
+}
+
+// A real second press reaches a hook mint is stopping through runContext and the hooks
+// runner together. One within the fold window, a person's or the hook's own `kill 0`
+// to its process group, is the first press still: the hook gets only its SIGTERM and
+// stops in its own time. One after it kills the hook at once, and mint unwinds and
+// exits 1; a third ends mint at once, mid-unwind.
+func TestRunContext_TheSecondPressEndsAHooksStop(t *testing.T) {
+	t.Parallel()
+
+	// loop runs for no more than half a minute, so a failing test leaves no hook behind.
+	const loop = `: > ready; i=0; while [ $i -lt 600 ]; do sleep 0.05; i=$((i+1)); done`
+	tests := []struct {
+		name string
+		hook string
+		// second is when the test presses again, after the first; zero for not at all.
+		second time.Duration
+		// ownGroup runs the helper in a process group of its own, for a hook that signals
+		// its group.
+		ownGroup bool
+		wantExit string
+		// third presses a third time while mint unwinds.
+		third bool
+	}{
+		{
+			name:     "a second Ctrl-C inside the window is folded",
+			hook:     `trap 'echo TERM >> marks; sleep 0.3; exit 0' TERM; ` + loop,
+			second:   100 * time.Millisecond,
+			wantExit: "hook exited 0",
+		},
+		{
+			name:     "the hook's kill 0 is folded",
+			hook:     `trap 'trap "" TERM; kill 0; echo TERM >> marks; sleep 0.3; exit 0' TERM; ` + loop,
+			ownGroup: true,
+			wantExit: "hook exited 0",
+		},
+		{
+			name:     "a second Ctrl-C after the window kills the hook",
+			hook:     `trap 'echo TERM >> marks' TERM; ` + loop,
+			second:   foldWindow + 200*time.Millisecond,
+			wantExit: "hook exited -1",
+		},
+		{
+			name:     "a third Ctrl-C ends mint at once",
+			hook:     `trap 'echo TERM >> marks' TERM; ` + loop,
+			second:   foldWindow + 200*time.Millisecond,
+			wantExit: "hook exited -1",
+			third:    true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			h := startSignalHelper(t, "hook", nil, func(cmd *exec.Cmd) {
+				cmd.Dir = dir
+				cmd.Env = append(cmd.Env, "MINT_SIGNAL_HOOK="+tt.hook)
+				cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: tt.ownGroup}
+			})
+			waitForFile(t, filepath.Join(dir, "ready"))
+
+			h.signal(t, os.Interrupt)
+			pressed := time.Now()
+			if tt.second > 0 {
+				waitForFile(t, filepath.Join(dir, "marks"))
+				time.Sleep(time.Until(pressed.Add(tt.second)))
+				h.signal(t, os.Interrupt)
+			}
+			secondAt := time.Now()
+			h.expect(t, tt.wantExit)
+			if took := time.Since(secondAt); tt.second > foldWindow && took > time.Second {
+				t.Errorf("the hook's run returned %v after the second press, want within a second", took)
+			}
+			if tt.third {
+				h.signal(t, os.Interrupt)
+				err := h.wait(t)
+				var exit *exec.ExitError
+				if !errors.As(err, &exit) || exit.Sys().(syscall.WaitStatus).Signal() != os.Interrupt {
+					t.Errorf("the helper exited with %v, want it killed by the third press", err)
+				}
+				return
+			}
+			_ = h.goAhead.Close()
+			h.expect(t, "unwound")
+			err := h.wait(t)
+
+			var exit *exec.ExitError
+			if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+				t.Errorf("the helper exited with %v, want exit status 1 after its unwind", err)
+			}
+			if marks, _ := os.ReadFile(filepath.Join(dir, "marks")); string(marks) != "TERM\n" {
+				t.Errorf("the hook's SIGTERMs = %q, want the one", marks)
+			}
+		})
+	}
+}
+
+// waitForFile waits for path to exist.
+func waitForFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("%s never appeared", path)
 }

@@ -62,7 +62,10 @@ func run(args []string) int {
 		return 0
 	}
 
-	ctx, stopCatching := runContext()
+	// The hooks' runner is built here, ahead of the verb, so the run's signal handling
+	// can reach a hook it is stopping.
+	hooks := runner.NewGracefulExecRunner(hookStopGrace)
+	ctx, stopCatching := runContext(hooks.KillStopping)
 	defer stopCatching()
 
 	// `regenerate` is a subcommand of `release` (`mint release regenerate …`), not a
@@ -71,7 +74,7 @@ func run(args []string) int {
 	kind, rest := classifyCommand(args)
 	switch kind {
 	case commandRelease:
-		return runRelease(ctx, rest)
+		return runRelease(ctx, hooks, rest)
 	case commandRegenerate:
 		return runRegenerate(ctx, rest)
 	case commandInit:
@@ -246,8 +249,9 @@ func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.
 }
 
 // runRelease is the thin shell of `mint release`: it builds the production seams
-// from the os globals and hands them to release.
-func runRelease(ctx context.Context, rest []string) int {
+// from the os globals and hands them to release, the project's hooks to run through
+// hooks.
+func runRelease(ctx context.Context, hooks runner.CommandRunner, rest []string) int {
 	opts, err := parseReleaseFlags(rest)
 	if err != nil {
 		// -h/--help is a requested action, not a usage error: stdout, exit 0.
@@ -269,8 +273,8 @@ func runRelease(ctx context.Context, rest []string) int {
 	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin)
 	defer presenter.Close(p)
 
-	return release(ctx, p, runner.NewExecRunner(), runner.NewGracefulExecRunner(hookStopGrace), opts,
-		signals.StdinInteractive, newNoteCache(), notescache.NewUserChunkNotes(os.UserCacheDir))
+	return release(ctx, p, runner.NewExecRunner(), hooks, opts, signals.StdinInteractive,
+		newNoteCache(), notescache.NewUserChunkNotes(os.UserCacheDir))
 }
 
 // release runs a parsed `mint release` invocation over the given seams, returning

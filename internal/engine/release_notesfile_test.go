@@ -436,3 +436,45 @@ func TestRelease_NotesFile_BodyIsWhatWasReadAtStartupDespiteAPreTagRewrite(t *te
 	}
 	assertSuppliedBodyShipped(t, f, root, nextTag, "1.2.4", suppliedBody)
 }
+
+// Every hook is told the notes file, by its absolute path with its directory resolved
+// as git reports the repo root, so a hook that refuses untracked files can leave it
+// out as mint's own clean-tree check does.
+func TestRelease_NotesFile_ReachesEveryHookAsMintNotesFile(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeConfig(t, root, "[release.hooks]\npreflight = \"check.sh\"\npre_tag = \"build.sh\"\npost_release = \"upload.sh\"\n")
+	notesDir := t.TempDir()
+	path := writeNotesFile(t, notesDir, "notes.md", suppliedBody)
+	f := runner.NewFakeRunner()
+	seedPriorTagReadGates(f, root, "main")
+	f.SeedSequence("git", ScriptedOut("")) // -C root status --porcelain (post-hook: clean)
+	seedRecordTagPush(f, root)
+	f.Seed("gh", runner.Result{}, nil)
+	f.Seed("sh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), notesFileOptions(path)); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	realDir, err := filepath.EvalSymlinks(notesDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", notesDir, err)
+	}
+	want := "MINT_NOTES_FILE=" + filepath.Join(realDir, "notes.md")
+	hooksRun := 0
+	for _, inv := range f.Invocations() {
+		if inv.Name != "sh" {
+			continue
+		}
+		hooksRun++
+		if !slices.Contains(inv.Env, want) {
+			t.Errorf("hook %v env = %v, want it to hold %q", inv.Args, inv.Env, want)
+		}
+	}
+	if hooksRun != 3 {
+		t.Errorf("hooks run = %d, want 3", hooksRun)
+	}
+}

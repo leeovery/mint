@@ -30,9 +30,16 @@ func NewExecRunner() *ExecRunner {
 
 // NewGracefulExecRunner returns an ExecRunner that stops a command whose context ends
 // gracefully, as a project's hook needs: SIGTERM, then SIGKILL once grace has passed
-// or mint is interrupted again, whichever comes first (see gracefulStop).
+// or KillStopping is called, whichever comes first (see gracefulStop).
 func NewGracefulExecRunner(grace time.Duration) *ExecRunner {
-	return &ExecRunner{graceful: &gracefulStop{grace: grace, again: againSignals}}
+	return &ExecRunner{graceful: newGracefulStop(grace)}
+}
+
+// KillStopping ends r's wait for every command it has sent SIGTERM and is waiting on:
+// it kills them and stops reading their output, so their runs return at once. It
+// reports whether there were any, which a runner that kills at once never has.
+func (r *ExecRunner) KillStopping() bool {
+	return r.graceful != nil && r.graceful.killStopping()
 }
 
 // Compile-time assertion that ExecRunner satisfies the seam.
@@ -59,7 +66,7 @@ func (r *ExecRunner) RunWith(ctx context.Context, stdin io.Reader, name string, 
 		cmd.Stdin = stdin
 	}
 
-	return translateRun(ctx, r.run(cmd), &stdout, &stderr, cmd, name)
+	return translateRun(ctx, r.run(ctx, cmd), &stdout, &stderr, cmd, name)
 }
 
 // RunInDir executes name with args from working directory dir, with env (a slice
@@ -80,15 +87,15 @@ func (r *ExecRunner) RunInDir(ctx context.Context, dir string, env []string, nam
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	return translateRun(ctx, r.run(cmd), &stdout, &stderr, cmd, name)
+	return translateRun(ctx, r.run(ctx, cmd), &stdout, &stderr, cmd, name)
 }
 
-// run runs cmd to its end, stopped as r stops a command whose context ends.
-func (r *ExecRunner) run(cmd *exec.Cmd) error {
+// run runs cmd to its end, stopped as r stops a command whose context, ctx, ends.
+func (r *ExecRunner) run(ctx context.Context, cmd *exec.Cmd) error {
 	if r.graceful == nil {
 		return cmd.Run()
 	}
-	return r.graceful.run(cmd)
+	return r.graceful.run(ctx, cmd)
 }
 
 // translateRun converts a finished exec.Cmd into the seam's Result/error contract,
@@ -128,13 +135,6 @@ func translateRun(ctx context.Context, runErr error, stdout, stderr *bytes.Buffe
 		return res, fmt.Errorf("running %q: %w", name, ctxErr)
 	}
 
-	// Only a graceful runner sets a WaitDelay, past which a child that exited 0 but
-	// left something running with its output open has that output cut off. Its exit
-	// status is its verdict, so the run succeeded.
-	if errors.Is(runErr, exec.ErrWaitDelay) {
-		return res, nil
-	}
-
 	// A non-zero exit keeps the populated Result so callers can inspect
 	// Stderr/ExitCode while still branching on the error.
 	var exitErr *exec.ExitError
@@ -168,7 +168,7 @@ func (r *ExecRunner) RunInteractive(ctx context.Context, name string, args ...st
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	runErr := r.run(cmd)
+	runErr := r.run(ctx, cmd)
 	if runErr == nil {
 		return nil
 	}

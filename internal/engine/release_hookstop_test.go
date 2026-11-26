@@ -12,17 +12,41 @@ import (
 )
 
 // interruptedHook stands in for a hook the run is interrupted during: each entry
-// cancels the run, then returns the cancel, as the hook runner does once the hook it
-// sent SIGTERM has stopped.
+// cancels the run, then returns the cancel, as the hook runner does once the hook has
+// stopped. Where the hook was still running, terminated, the runner sent it SIGTERM
+// and gave the stop notice first; a hook that had exited gets none.
 type interruptedHook struct {
 	*runner.FakeRunner
-	cancel context.CancelFunc
+	cancel     context.CancelFunc
+	terminated bool
 }
 
 func (h *interruptedHook) RunInDir(ctx context.Context, dir string, env []string, name string, args ...string) (runner.Result, error) {
 	res, _ := h.FakeRunner.RunInDir(ctx, dir, env, name, args...)
 	h.cancel()
+	if h.terminated {
+		runner.NoticeStop(ctx)
+	}
 	return res, fmt.Errorf("running %q: %w", name, ctx.Err())
+}
+
+// interruptedRelease runs a release whose hook at point, through hook, is interrupted.
+func interruptedRelease(t *testing.T, point string, seedGit func(f *runner.FakeRunner, root string), terminated bool) (*presentertest.RecordingPresenter, *runner.FakeRunner, *interruptedHook) {
+	t.Helper()
+	root := t.TempDir()
+	writeConfig(t, root, "[release.hooks]\n"+point+" = \"press run\"\n")
+	f := runner.NewFakeRunner()
+	seedGit(f, root)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	hook := &interruptedHook{FakeRunner: runner.NewFakeRunner(), cancel: cancel, terminated: terminated}
+	hook.Seed("sh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+	deps := newDeps(rec, f)
+	deps.Hooks = hook
+
+	_ = engine.Release(ctx, deps, patchOptions())
+	return rec, f, hook
 }
 
 // stageEventAt is the index of the first event of kind keyed key, or -1.
@@ -42,10 +66,10 @@ func stageEventAt(rec *presentertest.RecordingPresenter, kind presentertest.Even
 	return -1
 }
 
-// A run interrupted while a hook runs says, on the hook's stage, that it waits for the
-// hook to stop, after the stage started and before the hook's failure ends it: a ✗ for
-// a hook before the push, a warning for post_release. The hook runs through the hooks
-// seam, never the runner git's reads use.
+// A run interrupted while a hook runs, once the runner has sent the hook SIGTERM, says
+// on the hook's stage that it waits for the hook to stop, after the stage started and
+// before the hook's failure ends it: a ✗ for a hook before the push, a warning for
+// post_release. The hook runs through the hooks seam, never the runner git's reads use.
 func TestRelease_InterruptedHook_SaysItWaitsForTheHookToStop(t *testing.T) {
 	t.Parallel()
 
@@ -70,19 +94,7 @@ func TestRelease_InterruptedHook_SaysItWaitsForTheHookToStop(t *testing.T) {
 		t.Run(tt.point, func(t *testing.T) {
 			t.Parallel()
 
-			root := t.TempDir()
-			writeConfig(t, root, "[release.hooks]\n"+tt.point+" = \"press run\"\n")
-			f := runner.NewFakeRunner()
-			tt.seedGit(f, root)
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			hook := &interruptedHook{FakeRunner: runner.NewFakeRunner(), cancel: cancel}
-			hook.Seed("sh", runner.Result{}, nil)
-			rec := &presentertest.RecordingPresenter{}
-			deps := newDeps(rec, f)
-			deps.Hooks = hook
-
-			_ = engine.Release(ctx, deps, patchOptions())
+			rec, f, hook := interruptedRelease(t, tt.point, tt.seedGit, true)
 
 			if n := len(hook.Invocations()); n != 1 {
 				t.Fatalf("the hooks seam ran %d commands, want the one hook entry", n)
@@ -129,5 +141,23 @@ func TestRelease_HookThatEndsOnItsOwn_SaysNothingAboutStopping(t *testing.T) {
 	}
 	if recorded(rec, presentertest.KindStageStopping) {
 		t.Errorf("a run no one interrupted said it waits for a hook to stop; kinds = %v", rec.Kinds())
+	}
+}
+
+// A hook the interrupt found already exited, which the runner sent no SIGTERM, has
+// nothing to wait for: its stage fails as interrupted and says nothing about stopping.
+func TestRelease_InterruptedHookThatHadExited_SaysNothingAboutStopping(t *testing.T) {
+	t.Parallel()
+
+	rec, _, _ := interruptedRelease(t, "preflight", func(f *runner.FakeRunner, root string) {
+		seedHappyGit(f, root, "main", "v0.0.1")
+	}, false)
+
+	if recorded(rec, presentertest.KindStageStopping) {
+		t.Errorf("a hook sent no SIGTERM was said to be stopping; kinds = %v", rec.Kinds())
+	}
+	failedAt := stageEventAt(rec, presentertest.KindStageFailed, "preflight")
+	if failedAt == -1 || !rec.Events[failedAt].StageFailed.Interrupted {
+		t.Errorf("want the preflight stage failed as interrupted; kinds = %v", rec.Kinds())
 	}
 }

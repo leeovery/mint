@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"testing"
+
+	"mint/internal/runner"
 )
 
 func TestParseReleaseFlags_NotesFileWithNoAI_IsAUsageError(t *testing.T) {
@@ -27,7 +29,7 @@ func TestParseReleaseFlags_NotesFileWithNoAI_IsAUsageError(t *testing.T) {
 func TestRunRelease_NotesFileWithNoAI_ExitsWithTheUsageCode(t *testing.T) {
 	t.Parallel()
 
-	if code := runRelease(context.Background(), []string{"--notes-file", "notes.md", "--no-ai"}); code != usageExitCode {
+	if code := runRelease(context.Background(), runner.NewFakeRunner(), []string{"--notes-file", "notes.md", "--no-ai"}); code != usageExitCode {
 		t.Errorf("mint release --notes-file notes.md --no-ai exited %d, want the usage error %d", code, usageExitCode)
 	}
 }

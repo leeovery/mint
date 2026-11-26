@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"mint/internal/runner"
 	"mint/internal/setupguide"
 )
 
@@ -50,7 +51,7 @@ func TestRunVerb_Help_ExitsZero(t *testing.T) {
 
 	ctx := context.Background()
 	runs := map[string]func() int{
-		"release":    func() int { return runRelease(ctx, []string{"--help"}) },
+		"release":    func() int { return runRelease(ctx, runner.NewFakeRunner(), []string{"--help"}) },
 		"regenerate": func() int { return runRegenerate(ctx, []string{"--help"}) },
 		"commit":     func() int { return runCommit(ctx, []string{"--help"}) },
 		"init":       func() int { return runInit(ctx, []string{"--help"}) },

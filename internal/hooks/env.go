@@ -38,6 +38,9 @@ type HookEnv struct {
 	VersionTag      string
 	Bump            Bump
 	DryRun          bool
+	// NotesFile is the --notes-file's absolute path, empty when none was given. A hook
+	// that checks the tree, as mint's clean-tree check does, leaves it out.
+	NotesFile string
 }
 
 // NewHookEnv assembles a HookEnv from release state so the lifecycle points share
@@ -56,14 +59,19 @@ func NewHookEnv(newVersion, previousVersion, versionTag string, bump Bump, dryRu
 // Render materialises the injected variables as an ordered slice of "KEY=VALUE"
 // entries suitable for layering on the inherited environment. It is the SINGLE
 // render point for the MINT_* set, so adding a variable is one edit here.
+// MINT_NOTES_FILE is there only when a notes file was given.
 func (e HookEnv) Render() []string {
-	return []string{
+	env := []string{
 		"MINT_NEW_VERSION=" + e.NewVersion,
 		"MINT_PREVIOUS_VERSION=" + e.PreviousVersion,
 		"MINT_VERSION_TAG=" + e.VersionTag,
 		"MINT_BUMP=" + string(e.Bump),
 		"MINT_DRY_RUN=" + renderDryRun(e.DryRun),
 	}
+	if e.NotesFile != "" {
+		env = append(env, "MINT_NOTES_FILE="+e.NotesFile)
+	}
+	return env
 }
 
 // renderDryRun maps the dry-run flag to the "1"/"0" form hooks expect.

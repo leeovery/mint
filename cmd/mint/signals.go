@@ -13,6 +13,12 @@ import (
 // its lock and say so.
 const hookStopGrace = 60 * time.Second
 
+// foldWindow is how soon after the first press a Ctrl-C or SIGTERM is folded into it.
+// A hook that signals its own process group as it stops (`trap 'kill 0' TERM`) reaches
+// mint, in that group, within a millisecond of the first press; a person pressing
+// Ctrl-C again takes far longer.
+const foldWindow = 500 * time.Millisecond
+
 // runContext is the ONE signal-cancellable context for the whole run, and
 // stopCatching, which stops catching the signals. The first Ctrl-C (os.Interrupt),
 // SIGTERM or SIGHUP (the terminal closing, an SSH session dropping) cancels it, which
@@ -23,45 +29,69 @@ const hookStopGrace = 60 * time.Second
 // cancellation keeps the existing warn-only contract. A hook it interrupts is given
 // time to stop (the hooks runner, hookStopGrace).
 //
-// Once the context is cancelled, Ctrl-C and SIGTERM go back to their default, so
-// another terminates mint at once: the escape hatch for any read the cancellation
-// cannot reach (the cooked-mode gate/AskLine stdin reads are not ctx-aware), without
-// which every later Ctrl-C is swallowed, observed live as an unkillable gate. While
-// mint waits for a hook to stop, the hooks runner catches that second signal itself,
-// kills the hook and lets the unwind run.
+// Ctrl-C and SIGTERM stay caught for the whole run, so no second press ever meets
+// their default by chance. One within foldWindow of the first is folded into it. The
+// press after that is the second: where a hook is being stopped, killStopping kills it
+// and the run's unwind goes on; where none is, and for any press after it, mint ends at
+// once (die), the escape hatch for any wait the cancellation cannot reach.
 //
-// SIGHUP and SIGPIPE stay caught for the whole run, so a closed terminal stops the run
-// the same way and doesn't kill mint mid-cleanup: a second SIGHUP (a closing terminal
-// can send two) is dropped, and a write to a closed stdout or stderr fails with EPIPE,
-// which the presenter discards, rather than raising SIGPIPE. They are caught, never
+// SIGHUP and SIGPIPE stay caught too, so a closed terminal stops the run the same way
+// and doesn't kill mint mid-cleanup: a later SIGHUP (a closing terminal can send two)
+// is dropped, and a write to a closed stdout or stderr fails with EPIPE, which the
+// presenter discards, rather than raising SIGPIPE. Every signal is caught, never
 // ignored, because an ignored signal stays ignored in a hook across exec, where a
 // caught one is reset to its default. A SIGHUP ignored when mint started (nohup) is
 // left ignored, for mint and its hooks alike.
-func runContext() (ctx context.Context, stopCatching func()) {
-	ending := []os.Signal{os.Interrupt, syscall.SIGTERM}
-	kept := []os.Signal{syscall.SIGPIPE}
+func runContext(killStopping func() bool) (ctx context.Context, stopCatching func()) {
+	caught := []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGPIPE}
 	if !signal.Ignored(syscall.SIGHUP) {
-		ending = append(ending, syscall.SIGHUP)
-		kept = append(kept, syscall.SIGHUP)
+		caught = append(caught, syscall.SIGHUP)
 	}
-	caught := make(chan os.Signal, 1)
-	signal.Notify(caught, kept...)
-	first := make(chan os.Signal, 1)
-	signal.Notify(first, ending...)
+	signals := make(chan os.Signal, 8)
+	signal.Notify(signals, caught...)
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		select {
-		case <-first:
-		case <-ctx.Done():
-		}
-		// Stopped before the cancel, so whatever sees the context end sees the signals
-		// back at their default already.
-		signal.Stop(first)
-		cancel()
-	}()
+	done := make(chan struct{})
+	go watchSignals(signals, done, cancel, killStopping)
 	return ctx, func() {
-		signal.Stop(first)
-		signal.Stop(caught)
+		signal.Stop(signals)
+		close(done)
 		cancel()
 	}
+}
+
+// watchSignals acts on the run's signals until done, as runContext says.
+func watchSignals(signals <-chan os.Signal, done <-chan struct{}, cancel func(), killStopping func() bool) {
+	var first time.Time
+	secondPressed := false
+	for {
+		var sig os.Signal
+		select {
+		case sig = <-signals:
+		case <-done:
+			return
+		}
+		switch {
+		case sig == syscall.SIGPIPE:
+		case first.IsZero():
+			first = time.Now()
+			cancel()
+		case sig == syscall.SIGHUP, time.Since(first) < foldWindow:
+		case !secondPressed && killStopping():
+			secondPressed = true
+		default:
+			die(sig)
+		}
+	}
+}
+
+// die ends mint at once on sig, as sig's default would, its unwind and close skipped.
+func die(sig os.Signal) {
+	signal.Reset(sig)
+	if self, err := os.FindProcess(os.Getpid()); err == nil {
+		_ = self.Signal(sig)
+	}
+	// sig ends mint within a moment, unless mint started with it ignored or it can't be
+	// sent here; then mint exits as a failed run does.
+	time.Sleep(time.Second)
+	os.Exit(1)
 }

@@ -310,8 +310,10 @@ core:
 Every hook takes a single command or an array of commands, run in order through
 sh -c from the repo root and stopping at the first failure. Each gets
 MINT_NEW_VERSION, MINT_PREVIOUS_VERSION, MINT_VERSION_TAG, MINT_BUMP (patch,
-minor, major or explicit) and MINT_DRY_RUN in its environment. A dry run runs no
-hooks.
+minor, major or explicit) and MINT_DRY_RUN in its environment, and, when
+--notes-file is given, MINT_NOTES_FILE, the notes file's absolute path: a hook
+that refuses untracked files leaves that one out, as mint's clean-tree check
+does. A dry run runs no hooks.
 
 The release shim: ` + "`./release`" + ` is the small executable wrapper mint init drops
 at the repo root alongside .mint.toml; it invokes mint release so the project

@@ -46,12 +46,12 @@ func TestBuildHookEnv_DryRunRendersMintDryRun(t *testing.T) {
 	current := version.SemVer{Major: 0, Minor: 0, Patch: 0}
 	next := version.SemVer{Major: 0, Minor: 0, Patch: 1}
 
-	dry := buildHookEnv(current, next, "v0.0.1", version.BumpPatch, true).Render()
+	dry := buildHookEnv(current, next, "v0.0.1", version.BumpPatch, true, "").Render()
 	if !slices.Contains(dry, "MINT_DRY_RUN=1") {
 		t.Errorf("dry-run env = %v, want it to contain MINT_DRY_RUN=1", dry)
 	}
 
-	wet := buildHookEnv(current, next, "v0.0.1", version.BumpPatch, false).Render()
+	wet := buildHookEnv(current, next, "v0.0.1", version.BumpPatch, false, "").Render()
 	if !slices.Contains(wet, "MINT_DRY_RUN=0") {
 		t.Errorf("non-dry-run env = %v, want it to contain MINT_DRY_RUN=0", wet)
 	}

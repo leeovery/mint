@@ -301,6 +301,19 @@ func TestHookEnv_RenderProducesAllVars(t *testing.T) {
 	}
 }
 
+func TestHookEnv_RenderAddsTheNotesFileWhenGiven(t *testing.T) {
+	t.Parallel()
+
+	env := hooks.NewHookEnv("1.4.0", "1.3.2", "v1.4.0", hooks.BumpMajor, false)
+	env.NotesFile = "/repo/notes/v1.4.0.md"
+
+	got := env.Render()
+
+	if want := "MINT_NOTES_FILE=/repo/notes/v1.4.0.md"; got[len(got)-1] != want {
+		t.Errorf("Render() = %v, want it to end with %q", got, want)
+	}
+}
+
 // guard: every rendered entry is a KEY=VALUE pair.
 func TestHookEnv_RenderEntriesAreKeyValue(t *testing.T) {
 	t.Parallel()
