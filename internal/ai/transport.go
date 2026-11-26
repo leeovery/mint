@@ -201,8 +201,8 @@ func NewTransport(r runner.CommandRunner, cfg Config) *Transport {
 // would send an empty prompt.
 //
 // Failure routing is by cause:
-//   - A caller cancellation (errors.Is context.Canceled — Ctrl-C at main's
-//     signal.NotifyContext) is reported immediately, propagated UNCHANGED (no
+//   - A caller cancellation (errors.Is context.Canceled — Ctrl-C, SIGTERM or SIGHUP
+//     at main's run context) is reported immediately, propagated UNCHANGED (no
 //     transport sentinel — a cancel is not an AI failure), and NOT retried.
 //   - A timeout (the per-attempt context expiring, errors.Is DeadlineExceeded) is
 //     reported immediately as ErrTimeout and NOT retried.
@@ -297,7 +297,7 @@ func (t *Transport) attempt(ctx context.Context, name string, args []string, pro
 func classifyFatal(err error) error {
 	switch {
 	case errors.Is(err, context.Canceled):
-		// The CALLER's context was cancelled (Ctrl-C / SIGTERM via signal.NotifyContext)
+		// The CALLER's context was cancelled (Ctrl-C / SIGTERM / SIGHUP via main's run context)
 		// — distinct from the per-attempt deadline below: the per-attempt ctx inherits
 		// the parent, so a parent cancel surfaces as Canceled, a genuine hang as
 		// DeadlineExceeded. A retry against a dead context can never succeed, and the

@@ -79,6 +79,11 @@ type Presenter interface {
 	StageSucceeded(s StageSuccess)
 	// StageFailed renders a stage's failure, including captured command output.
 	StageFailed(s StageFailure)
+	// StageStopping says mint is waiting for what a running stage runs to stop, the
+	// run having been interrupted (a hook given time to stop): the Rail shows it beside
+	// the running node's spinner, plain on a line of its own, to out only. It may be
+	// called from any goroutine, but never concurrently with another Presenter call.
+	StageStopping(s StageStop)
 	// NotesChecking narrates the exclusion check's call starting inside the blocking
 	// notes stage, and NotesChecked its end, with the call's elapsed: the Rail runs
 	// the check as its own node and settles it with what the call found; plain
@@ -663,6 +668,15 @@ type StageFailure struct {
 // is marked by it.
 func Interrupted(cause error) bool {
 	return errors.Is(cause, context.Canceled)
+}
+
+// StageStop carries the StageStopping payload: the stage that waits, by Name and Key
+// as its StageStart has them, and Text, what mint is doing, which ends in no
+// punctuation, as each mode adds its own ellipsis (plain "...", the rail "…").
+type StageStop struct {
+	Name string
+	Key  string
+	Text string
 }
 
 // NextMoves carries the NextMoves payload: the engine-authored ways forward from

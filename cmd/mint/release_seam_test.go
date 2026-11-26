@@ -49,7 +49,7 @@ func (run *releaseSeamRun) release(t *testing.T, stdinInteractive bool, args ...
 		t.Fatalf("parseReleaseFlags(%q) returned error: %v", args, err)
 	}
 	noteCache := notescache.NewStore(t.TempDir(), time.Now)
-	return release(t.Context(), run.rec, run.f, opts, stdinInteractive, noteCache, notescache.NewChunkNotes(run.chunkNotesBase))
+	return release(t.Context(), run.rec, run.f, run.f, opts, stdinInteractive, noteCache, notescache.NewChunkNotes(run.chunkNotesBase))
 }
 
 // startHead is what the start station's read reports: the sha HEAD stands on, then

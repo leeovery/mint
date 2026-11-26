@@ -170,6 +170,10 @@ type ReleaseDeps struct {
 	// preflight, record reads, notes) issue git through unchanged — read-only git
 	// calls do NOT go through the lock wrapper.
 	Runner runner.CommandRunner
+	// Hooks is the seam the project's hooks run through, Runner where nil. Production
+	// gives it a graceful runner: a hook the run's interrupt stops is sent SIGTERM and
+	// given time to stop, where Runner's short commands are killed at once.
+	Hooks runner.CommandRunner
 	// Mutator is the lock-resilient git MUTATION wrapper. Every git mutation the engine
 	// drives — the record bookkeeping/artifact commits and the unwind's reset/tag-delete
 	// — flows through it (retry on a contended lock, clear a provably-stale one). It is
@@ -238,6 +242,14 @@ func (d ReleaseDeps) clock() func() time.Time {
 		return d.Clock
 	}
 	return time.Now
+}
+
+// hookRunner is the runner the project's hooks run through: Hooks, or Runner.
+func (d ReleaseDeps) hookRunner() runner.CommandRunner {
+	if d.Hooks != nil {
+		return d.Hooks
+	}
+	return d.Runner
 }
 
 // header is the run's header line for command over root.
@@ -1779,7 +1791,24 @@ func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, 
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	deps.run.Left(nothingPushed)
 	showRunning(deps.Presenter, stagePreflight, preflightHookText)
-	return "", hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.Preflight, root, env)
+	return "", runHook(ctx, deps, stagePreflight, cfg.Release.Hooks.Preflight, root, env)
+}
+
+// runHook runs value, the hook configured at point, from root with env, through the
+// hook runner. Where the run is interrupted while the hook runs, the runner gives it
+// time to stop, and point's stage, which the hook runs on, says mint is waiting for
+// it, before the hook's error reaches the stage's failure.
+func runHook(ctx context.Context, deps ReleaseDeps, point string, value config.HookValue, root string, env hooks.HookEnv) error {
+	said := make(chan struct{})
+	stopSaying := context.AfterFunc(ctx, func() {
+		defer close(said)
+		deps.Presenter.StageStopping(presenter.StageStop{Name: point, Key: point, Text: "waiting for the " + point + " hook to stop"})
+	})
+	err := hooks.NewRunner(deps.hookRunner()).Run(ctx, value, root, env)
+	if !stopSaying() {
+		<-said
+	}
+	return err
 }
 
 // runPreTagHook runs the project's optional Stage-3 pre_tag hook and then applies
@@ -1840,7 +1869,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	// so a hookless run (returned above) narrates no pre_tag stage.
 	stage := startBlockingStage(deps.Presenter, deps.clock(), stagePreTag, "running pre_tag hook…")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
-	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
+	if err := runHook(ctx, deps, stagePreTag, cfg.Release.Hooks.PreTag, root, env); err != nil {
 		return false, &stageError{stage: stage, err: err}
 	}
 	subject := pretagArtifactSubject(tag)
@@ -1904,7 +1933,7 @@ func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config
 	// line with the hook's output in its place.
 	stage := startBlockingStage(deps.Presenter, deps.clock(), stagePostRelease, "running post_release hook…")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
-	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PostRelease, root, env); err != nil {
+	if err := runHook(ctx, deps, stagePostRelease, cfg.Release.Hooks.PostRelease, root, env); err != nil {
 		return err
 	}
 	stage.succeeded(hookCompletion(cfg.Release.Hooks.PostRelease))

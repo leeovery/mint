@@ -8,19 +8,31 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"time"
 )
 
 // ExecRunner is the production CommandRunner. It runs commands via
 // os/exec.CommandContext so cancellation/timeout flows through ctx, captures
 // stdout and stderr into separate buffers, and derives ExitCode from the
 // process exit status.
-type ExecRunner struct{}
+type ExecRunner struct {
+	// graceful is how a command whose context ends is stopped; nil kills it at once.
+	graceful *gracefulStop
+}
 
-// NewExecRunner returns an ExecRunner. It is stateless; the constructor exists
-// so call sites depend on the CommandRunner seam rather than a bare struct
-// literal, and so future configuration has a home without churning callers.
+// NewExecRunner returns an ExecRunner that kills a command at once when its context
+// ends, as exec.CommandContext does: what a short command (git, gh, the AI call)
+// wants. The constructor exists so call sites depend on the CommandRunner seam
+// rather than a bare struct literal.
 func NewExecRunner() *ExecRunner {
 	return &ExecRunner{}
+}
+
+// NewGracefulExecRunner returns an ExecRunner that stops a command whose context ends
+// gracefully, as a project's hook needs: SIGTERM, then SIGKILL once grace has passed
+// or mint is interrupted again, whichever comes first (see gracefulStop).
+func NewGracefulExecRunner(grace time.Duration) *ExecRunner {
+	return &ExecRunner{graceful: &gracefulStop{grace: grace, again: againSignals}}
 }
 
 // Compile-time assertion that ExecRunner satisfies the seam.
@@ -47,7 +59,7 @@ func (r *ExecRunner) RunWith(ctx context.Context, stdin io.Reader, name string, 
 		cmd.Stdin = stdin
 	}
 
-	return translateRun(ctx, cmd.Run(), &stdout, &stderr, cmd, name)
+	return translateRun(ctx, r.run(cmd), &stdout, &stderr, cmd, name)
 }
 
 // RunInDir executes name with args from working directory dir, with env (a slice
@@ -68,7 +80,15 @@ func (r *ExecRunner) RunInDir(ctx context.Context, dir string, env []string, nam
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	return translateRun(ctx, cmd.Run(), &stdout, &stderr, cmd, name)
+	return translateRun(ctx, r.run(cmd), &stdout, &stderr, cmd, name)
+}
+
+// run runs cmd to its end, stopped as r stops a command whose context ends.
+func (r *ExecRunner) run(cmd *exec.Cmd) error {
+	if r.graceful == nil {
+		return cmd.Run()
+	}
+	return r.graceful.run(cmd)
 }
 
 // translateRun converts a finished exec.Cmd into the seam's Result/error contract,
@@ -96,15 +116,23 @@ func translateRun(ctx context.Context, runErr error, stdout, stderr *bytes.Buffe
 		return Result{}, fmt.Errorf("running %q: %w", name, ErrCommandNotFound)
 	}
 
-	// A context deadline/cancel makes exec.CommandContext SIGKILL the child, so
-	// cmd.Run() surfaces an *exec.ExitError ("signal: killed") that hides the real
-	// cause — errors.Is(runErr, DeadlineExceeded) is FALSE on that path. Inspect
-	// ctx.Err() first and wrap that cause so callers (the AI transport's
+	// A context deadline/cancel stops the child, SIGKILLed at once or, by a graceful
+	// runner, sent SIGTERM first, so cmd.Run() surfaces whatever the child's end was:
+	// an *exec.ExitError ("signal: killed", or the exit it chose on its SIGTERM) that
+	// hides the real cause — errors.Is(runErr, DeadlineExceeded) is FALSE on that path.
+	// Inspect ctx.Err() first and wrap that cause so callers (the AI transport's
 	// classifyFatal) can detect a timeout/cancel via errors.Is and avoid retrying a
-	// hung call. This must precede the plain ExitError branch below, otherwise a real
-	// timeout is misread as an ordinary non-zero exit.
+	// hung call, however the child ended. This must precede the plain ExitError branch
+	// below, otherwise a real timeout is misread as an ordinary non-zero exit.
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return res, fmt.Errorf("running %q: %w", name, ctxErr)
+	}
+
+	// Only a graceful runner sets a WaitDelay, past which a child that exited 0 but
+	// left something running with its output open has that output cut off. Its exit
+	// status is its verdict, so the run succeeded.
+	if errors.Is(runErr, exec.ErrWaitDelay) {
+		return res, nil
 	}
 
 	// A non-zero exit keeps the populated Result so callers can inspect
@@ -140,7 +168,7 @@ func (r *ExecRunner) RunInteractive(ctx context.Context, name string, args ...st
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	runErr := cmd.Run()
+	runErr := r.run(cmd)
 	if runErr == nil {
 		return nil
 	}

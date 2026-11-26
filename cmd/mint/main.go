@@ -13,10 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
-
 	"time"
 
 	"mint/internal/buildinfo"
@@ -65,28 +62,8 @@ func run(args []string) int {
 		return 0
 	}
 
-	// Build the ONE signal-cancellable context for the whole run: a Ctrl-C
-	// (os.Interrupt) or SIGTERM cancels it, which threads down through every command's
-	// external-command seam so a long pre-PONR step (the AI call, a hook, the gap before
-	// the atomic push) is interrupted. The engine treats a pre-PONR cancellation as a
-	// failure routed through its surgical unwind (resets, tag delete, autostash pop), so
-	// the repo is left clean; a post-PONR cancellation keeps the existing warn-only
-	// contract. stop() restores the default signal handling on return.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	// FIRST Ctrl-C: graceful — the cancellation threads through every subprocess
-	// seam. SECOND Ctrl-C: fatal — once the context is cancelled, restore default
-	// signal delivery so another interrupt terminates the process immediately. This
-	// is the escape hatch for any read the cancellation cannot reach (the
-	// cooked-mode gate/AskLine stdin reads are not ctx-aware): without it,
-	// NotifyContext keeps intercepting and every subsequent Ctrl-C is swallowed —
-	// observed live as an unkillable gate. stop() is idempotent, so the deferred
-	// call above stays correct on the normal-exit path.
-	go func() {
-		<-ctx.Done()
-		stop()
-	}()
+	ctx, stopCatching := runContext()
+	defer stopCatching()
 
 	// `regenerate` is a subcommand of `release` (`mint release regenerate …`), not a
 	// top-level verb; `init` and `version` are top-level verbs; classifyCommand
@@ -292,21 +269,24 @@ func runRelease(ctx context.Context, rest []string) int {
 	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin)
 	defer presenter.Close(p)
 
-	return release(ctx, p, runner.NewExecRunner(), opts, signals.StdinInteractive,
-		newNoteCache(), notescache.NewUserChunkNotes(os.UserCacheDir))
+	return release(ctx, p, runner.NewExecRunner(), runner.NewGracefulExecRunner(hookStopGrace), opts,
+		signals.StdinInteractive, newNoteCache(), notescache.NewUserChunkNotes(os.UserCacheDir))
 }
 
 // release runs a parsed `mint release` invocation over the given seams, returning
-// the process exit code.
-func release(ctx context.Context, p presenter.Presenter, r runner.CommandRunner, opts releaseFlags, stdinInteractive bool, noteCache engine.NoteCache, chunkNotes engine.ChunkNotesSaver) int {
-	// One runner backs every external-command seam. The lock-resilient git Mutator is
-	// constructed ONCE over that runner and shared by the engine's mutation calls and
-	// the Releaser, so every git mutation (commit, tag, push, reset, tag-delete) retries
-	// a contended .git lock and clears a provably-stale one. Read-only git stays on r.
+// the process exit code. The project's hooks run through hooks, every other command
+// through r.
+func release(ctx context.Context, p presenter.Presenter, r, hooks runner.CommandRunner, opts releaseFlags, stdinInteractive bool, noteCache engine.NoteCache, chunkNotes engine.ChunkNotesSaver) int {
+	// One runner backs every external-command seam but the hooks'. The lock-resilient
+	// git Mutator is constructed ONCE over that runner and shared by the engine's
+	// mutation calls and the Releaser, so every git mutation (commit, tag, push, reset,
+	// tag-delete) retries a contended .git lock and clears a provably-stale one.
+	// Read-only git stays on r.
 	mut := git.NewMutator(r)
 	deps := engine.ReleaseDeps{
 		Presenter: p,
 		Runner:    r,
+		Hooks:     hooks,
 		Mutator:   mut,
 		Releaser:  releasing.NewReleaser(mut),
 		// The `e` review-gate choice hands the notes to the real $EDITOR resolution,

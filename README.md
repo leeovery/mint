@@ -432,6 +432,8 @@ The release-notes diff always leaves out `CHANGELOG.md`, `.mint.toml`, and `vers
 
 Each hook takes a command or an array of commands, run in order from the repo root through `sh -c`, stopping at the first that fails. Every hook gets `MINT_NEW_VERSION` (`1.4.1`), `MINT_PREVIOUS_VERSION` (`1.4.0`, or `0.0.0` on a first release), `MINT_VERSION_TAG` (`v1.4.1`), `MINT_BUMP` (`patch`, `minor`, `major` or `explicit`) and `MINT_DRY_RUN` in its environment. A `--dry-run` runs no hooks and says which it skipped.
 
+A hook runs in mint's process group, on its terminal, so a Ctrl-C there reaches the hook as it reaches mint. When the run is stopped while a hook runs (Ctrl-C, `kill`, or the terminal closing or an SSH session dropping), mint sends the hook `SIGTERM`, says it is waiting for the hook to stop, and gives it a minute before killing it; a second Ctrl-C kills it at once. A hook entry that is a single command gets the `SIGTERM` itself, as `sh` execs it; in a compound entry (`a && b`) `sh` gets it. The run then ends as any failure at that hook does.
+
 `pre_tag` runs before the notes, so the notes read the tree it leaves: its artifact commit is in the notes diff, and its subject is in the commit-subject list. It runs before the changelog and version file are updated, so it sees the previous version there (the new one is in `MINT_NEW_VERSION`). Files git ignores are never committed. A failing `pre_tag` leaves what it wrote in the tree for you to clean up.
 
 ```toml

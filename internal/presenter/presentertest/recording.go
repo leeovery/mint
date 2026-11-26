@@ -46,6 +46,7 @@ const (
 	KindExclusionSuggestions
 	KindPreviewGate
 	KindExclusionAnswersRecorded
+	KindStageStopping
 )
 
 // String renders the kind for readable test failure output.
@@ -101,6 +102,8 @@ func (k EventKind) String() string {
 		return "PreviewGate"
 	case KindExclusionAnswersRecorded:
 		return "ExclusionAnswersRecorded"
+	case KindStageStopping:
+		return "StageStopping"
 	default:
 		return "Unknown"
 	}
@@ -118,6 +121,7 @@ type Event struct {
 	StageStarted         presenter.StageStart
 	StageSucceeded       presenter.StageSuccess
 	StageFailed          presenter.StageFailure
+	StageStopping        presenter.StageStop
 	NotesProgress        presenter.NotesProgress
 	NotesMerging         presenter.NotesMerge
 	NotesHalving         presenter.NotesHalving
@@ -198,6 +202,11 @@ func (r *RecordingPresenter) StageSucceeded(s presenter.StageSuccess) {
 // StageFailed records a stage's failure.
 func (r *RecordingPresenter) StageFailed(s presenter.StageFailure) {
 	r.Events = append(r.Events, Event{Kind: KindStageFailed, StageFailed: s})
+}
+
+// StageStopping records that mint waits for a running stage's command to stop.
+func (r *RecordingPresenter) StageStopping(s presenter.StageStop) {
+	r.Events = append(r.Events, Event{Kind: KindStageStopping, StageStopping: s})
 }
 
 // ExclusionAnswersRecorded records the exclusion check's answers being recorded.
