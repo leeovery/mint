@@ -583,6 +583,17 @@ var railRuns = map[string]railRun{
 		})
 		return w.release(t, nil)
 	}},
+	// A second Ctrl-C as the pre_tag hook stops: the hook's node settles saying the
+	// second press forced the hook to stop, the hook's own output still under it.
+	"release-forced-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preTagHookConfig, "y\n", false)
+		w.readGates(false)
+		w.f.SeedSequence("sh", runner.ScriptedCall{ // the pre_tag hook, forced to stop
+			Result: runner.Result{Stderr: "ok  \tpigeon/webhooks\t0.412s\n", ExitCode: -1},
+			Err:    fmt.Errorf("running %q: %w: %w", "sh", runner.ErrForced, context.Canceled),
+		})
+		return w.release(t, nil)
+	}},
 	// gh signed out: preflight fails on its own node, before any hook, the notes or
 	// any write, so nothing changed.
 	"release-gh-signed-out-100": {aborted: true, run: func(t *testing.T) (string, error) {

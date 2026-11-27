@@ -27,6 +27,13 @@ var ErrCommandNotFound = errors.New("command not found")
 // (vim's :cq) also is.
 var ErrNotStarted = errors.New("command could not be started")
 
+// ErrForced is the sentinel a graceful runner wraps, beside the context's own error,
+// when KillStopping killed a command it was stopping: the second press forced it,
+// where one that stopped on its SIGTERM is not. The error still matches
+// context.Canceled (or context.DeadlineExceeded), so a forced command reads as
+// interrupted as any other.
+var ErrForced = errors.New("forced to stop")
+
 // Result is the outcome of running an external command. Stdout and Stderr are
 // captured separately (never interleaved) and ExitCode carries the process exit
 // status. On a non-zero exit the Result is still fully populated alongside a

@@ -1722,7 +1722,18 @@ func stageFailure(stage string, cause error) presenter.StageFailure {
 		Output:      failureOutput(cause),
 		SavedNotes:  notes.SavedChunkNotesPath(cause),
 		Interrupted: presenter.Interrupted(cause),
+		Forced:      errors.Is(cause, runner.ErrForced),
+		HookEntry:   hookEntry(cause),
 	}
+}
+
+// hookEntry is the hook entry that failed on cause, or "" where no hook did.
+func hookEntry(cause error) string {
+	var hookErr *hooks.HookError
+	if errors.As(cause, &hookErr) {
+		return hookErr.Entry
+	}
+	return ""
 }
 
 // runPreflight runs the Stage 2 gate chain in the spec's order: fetch (read-only,
@@ -1805,12 +1816,16 @@ func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, 
 // runHook runs value, the hook configured at point, from root with env, through the
 // hook runner. Once the run is interrupted and the runner has sent a hook still running
 // SIGTERM, giving it time to stop, point's stage, which the hook runs on, says mint is
-// waiting for it; the runner returns only after that, so the line comes before the
-// stage's failure.
+// waiting for it; once the second press has killed it, the stage says mint forced it.
+// The runner returns only after each, so the lines come before the stage's failure.
 func runHook(ctx context.Context, deps ReleaseDeps, point string, value config.HookValue, root string, env hooks.HookEnv) error {
-	ctx = runner.WithStopNotice(ctx, func() {
-		deps.Presenter.StageStopping(presenter.StageStop{Name: point, Key: point, Text: "waiting for the " + point + " hook to stop"})
-	})
+	stopping := func(text string) func() {
+		return func() {
+			deps.Presenter.StageStopping(presenter.StageStop{Name: point, Key: point, Text: text + " the " + point + " hook to stop"})
+		}
+	}
+	ctx = runner.WithStopNotice(ctx, stopping("waiting for"))
+	ctx = runner.WithKillNotice(ctx, stopping("forcing"))
 	return hooks.NewRunner(deps.hookRunner()).Run(ctx, value, root, env)
 }
 
@@ -2378,12 +2393,17 @@ func publishFailureOutput(cause error) string {
 // tag is public and mint must NOT unwind. It warns (the spec-fixed message) and the
 // run still finishes successfully. When the failure carries a *hooks.HookError its
 // captured output (the failing entry's stderr) is rendered beneath the warn line, as
-// warnPublishFailed does for the provider error; otherwise the Output is empty.
+// warnPublishFailed does for the provider error; otherwise the Output is empty. A hook
+// the second press forced to stop says so in place of failed.
 func warnPostReleaseFailed(p presenter.Presenter, cause error) {
+	outcome := "failed"
+	if errors.Is(cause, runner.ErrForced) {
+		outcome = "forced to stop"
+	}
 	p.Warn(presenter.Warning{
 		Key:     stagePostRelease,
 		Label:   "post_release",
-		Message: "post_release hook failed; tag is already published",
+		Message: "post_release hook " + outcome + "; tag is already published",
 		Output:  hookFailureOutput(cause),
 	})
 }

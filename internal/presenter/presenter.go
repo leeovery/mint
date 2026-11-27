@@ -79,10 +79,11 @@ type Presenter interface {
 	StageSucceeded(s StageSuccess)
 	// StageFailed renders a stage's failure, including captured command output.
 	StageFailed(s StageFailure)
-	// StageStopping says mint is waiting for what a running stage runs to stop, the
-	// run having been interrupted (a hook given time to stop): the Rail shows it beside
-	// the running node's spinner, plain on a line of its own, to out only. It may be
-	// called from any goroutine, but never concurrently with another Presenter call.
+	// StageStopping says how mint is stopping what a running stage runs, the run having
+	// been interrupted (a hook given time to stop, or forced to by the second press):
+	// the Rail shows it beside the running node's spinner, plain on a line of its own,
+	// to out only. It may be called from any goroutine, but never concurrently with
+	// another Presenter call.
 	StageStopping(s StageStop)
 	// NotesChecking narrates the exclusion check's call starting inside the blocking
 	// notes stage, and NotesChecked its end, with the call's elapsed: the Rail runs
@@ -660,7 +661,18 @@ type StageFailure struct {
 	// (Interrupted): the rail says so in place of Message, a tool's words about its
 	// cancelled context, while Output still hangs under it. Plain ignores it.
 	Interrupted bool
+	// Forced marks an Interrupted stage whose hook the second press killed rather than
+	// leaving it to stop on its SIGTERM: both modes say so (forcedText), the rail in
+	// place of interrupted, plain in place of Message, naming HookEntry where set.
+	Forced bool
+	// HookEntry is the entry of the hook whose failure this is, empty for any other
+	// stage's: what plain names for a Forced failure, its Message gone.
+	HookEntry string
 }
+
+// forcedText is a failed stage's detail where the run's second press forced its hook
+// to stop.
+const forcedText = "interrupted, hook forced to stop"
 
 // Interrupted reports whether a stage failed on cause because the run was
 // interrupted: main cancels the run's context on Ctrl-C, and the command or AI call

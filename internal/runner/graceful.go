@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -24,11 +25,13 @@ type gracefulStop struct {
 }
 
 // runningCommand is a started command whose run has yet to return: its process, its
-// output, and the end of its run's context.
+// output, the end of its run's context, and whether killStopping killed it, which
+// gracefulStop's mu guards.
 type runningCommand struct {
 	process *os.Process
 	out     *output
 	ended   <-chan struct{}
+	forced  bool
 }
 
 // stopping reports whether the command's run's context has ended.
@@ -49,8 +52,11 @@ func newGracefulStop(grace time.Duration) *gracefulStop {
 // stop notice ctx carries once the SIGTERM is sent. Past grace, WaitDelay kills the
 // command. Its output is then read to the end, for no longer than grace from the
 // SIGTERM, or from its exit where it got none, since something it left running can
-// hold the output open; only killStopping cuts that read short.
-func (g *gracefulStop) run(ctx context.Context, cmd *exec.Cmd) error {
+// hold the output open; only killStopping cuts that read short. Where killStopping
+// killed the command, run calls the kill notice ctx carries once the read is over and
+// returns an error wrapping ErrForced: on the run's own goroutine, so what the notice
+// draws comes before whatever follows the run.
+func (g *gracefulStop) run(ctx context.Context, cmd *exec.Cmd) (err error) {
 	out, err := ownOutput(cmd)
 	if err != nil {
 		return err
@@ -71,7 +77,16 @@ func (g *gracefulStop) run(ctx context.Context, cmd *exec.Cmd) error {
 		out.drain(time.Now())
 		return startErr
 	}
-	defer g.untrack(g.track(&runningCommand{process: cmd.Process, out: out, ended: ctx.Done()}))
+	c := g.track(&runningCommand{process: cmd.Process, out: out, ended: ctx.Done()})
+	defer func() {
+		// A kill that lands in the instant after the command exits, before it is
+		// reaped, succeeds, so that command reads as forced though it exited on its
+		// own; that affects only the label, and one that exited 0 keeps its success.
+		if forced := g.untrack(c); forced && err != nil {
+			NoticeKill(ctx)
+			err = fmt.Errorf("%w: %w", ErrForced, err)
+		}
+	}()
 	err = cmd.Wait()
 	// Wait has had Cancel's result, so terminated is set where Cancel ran.
 	from := terminated
@@ -89,29 +104,35 @@ func (g *gracefulStop) track(c *runningCommand) *runningCommand {
 	return c
 }
 
-func (g *gracefulStop) untrack(c *runningCommand) {
+// untrack forgets c, reporting whether killStopping killed it. Once c is untracked
+// killStopping can no longer reach it, so what it reports is final.
+func (g *gracefulStop) untrack(c *runningCommand) (forced bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	delete(g.running, c)
+	return c.forced
 }
 
 // killStopping kills every command whose run's context has ended and whose run has yet
 // to return, whether it is stopping on its SIGTERM or its output is still being read,
 // and stops reading its output, so each run returns at once. It reports whether there
-// were any.
+// were any. A command the kill reached is marked forced; one already reaped, whose
+// output alone was still being read, is not.
 func (g *gracefulStop) killStopping() bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	killed := false
+	stopped := false
 	for c := range g.running {
 		if !c.stopping() {
 			continue
 		}
-		_ = c.process.Kill()
+		if c.process.Kill() == nil {
+			c.forced = true
+		}
 		c.out.abandon()
-		killed = true
+		stopped = true
 	}
-	return killed
+	return stopped
 }
 
 // output is a command's stdout and stderr where they are writers of mint's, read

@@ -193,7 +193,8 @@ func (p *PlainPresenter) StageSucceeded(s StageSuccess) {
 
 // StageFailed renders the one-line failure summary "{stage}: FAILED - {message}"
 // to out (the narration) AND duplicates that same one-line summary to err so a
-// failure cannot silently vanish under redirection.
+// failure cannot silently vanish under redirection. A Forced failure's message is
+// that the hook was forced to stop, naming the entry killed.
 //
 // When the engine captured underlying-command output (s.Output non-empty), the
 // captured body is rendered to OUT ONLY, below the FAILED line, wrapped in the
@@ -212,8 +213,15 @@ func (p *PlainPresenter) StageSucceeded(s StageSuccess) {
 // this engine-supplied body).
 func (p *PlainPresenter) StageFailed(s StageFailure) {
 	p.terminalFailure = p.terminalFailure || !s.Recoverable
-	p.writef("%s: FAILED - %s\n", s.Name, s.Message)
-	p.errf("%s: FAILED - %s\n", s.Name, s.Message)
+	message := s.Message
+	if s.Forced {
+		message = forcedText
+		if s.HookEntry != "" {
+			message += fmt.Sprintf(" (hook entry %q)", s.HookEntry)
+		}
+	}
+	p.writef("%s: FAILED - %s\n", s.Name, message)
+	p.errf("%s: FAILED - %s\n", s.Name, message)
 	if s.Output != "" {
 		p.writef("--- output ---\n")
 		writeNotesBody(p.out, s.Output)
