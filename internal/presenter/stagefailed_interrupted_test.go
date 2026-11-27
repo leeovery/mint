@@ -53,6 +53,47 @@ func TestPlainPresenterStageFailed_Interrupted_KeepsItsLine(t *testing.T) {
 	}
 }
 
+// forcedHook is the pre_tag hook failing as the second press forced it to stop.
+func forcedHook() presenter.StageFailure {
+	failure := interruptedHook()
+	failure.Message = `hook entry "go test -race ./..." failed (exit -1): running "sh": forced to stop: context canceled`
+	failure.Forced = true
+	return failure
+}
+
+func TestStageFailed_Forced_TheRailSaysTheHookWasForcedAndKeepsTheOutput(t *testing.T) {
+	t.Parallel()
+
+	r := newRailTerm(t, 100, 24, answers())
+	r.StageFailed(forcedHook())
+	screen := r.screen(t)
+	if !slices.ContainsFunc(screen, func(ln string) bool {
+		return strings.HasPrefix(ln, " ✗  pre_tag       interrupted, hook forced to stop")
+	}) {
+		t.Errorf("the rail drew\n%s\nwant the node failed as forced", strings.Join(screen, "\n"))
+	}
+	if joined := strings.Join(screen, "\n"); !strings.Contains(joined, "pigeon/webhooks") {
+		t.Errorf("the rail dropped the hook's output:\n%s", joined)
+	}
+}
+
+func TestPlainPresenterStageFailed_Forced_SaysTheHookWasForced(t *testing.T) {
+	t.Parallel()
+
+	out, errBuf := drive(func(p *presenter.PlainPresenter) { p.StageFailed(forcedHook()) })
+
+	wantOut := "pre_tag: FAILED - interrupted, hook forced to stop\n" +
+		"--- output ---\n" +
+		"ok  \tpigeon/webhooks\t0.412s\n" +
+		"--- end output ---\n"
+	if got := out.String(); got != wantOut {
+		t.Errorf("out =\n%q\nwant\n%q", got, wantOut)
+	}
+	if got, want := errBuf.String(), "pre_tag: FAILED - interrupted, hook forced to stop\n"; got != want {
+		t.Errorf("err = %q, want %q", got, want)
+	}
+}
+
 func TestInterrupted_IsTheRunsCancelInTheChain(t *testing.T) {
 	t.Parallel()
 

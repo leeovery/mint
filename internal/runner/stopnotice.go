@@ -2,7 +2,10 @@ package runner
 
 import "context"
 
-type stopNoticeKey struct{}
+type (
+	stopNoticeKey struct{}
+	killNoticeKey struct{}
+)
 
 // WithStopNotice returns ctx carrying notice, which a graceful runner calls once it has
 // sent SIGTERM to a command still running when ctx ended, before it waits for the
@@ -15,10 +18,26 @@ func WithStopNotice(ctx context.Context, notice func()) context.Context {
 	return context.WithValue(ctx, stopNoticeKey{}, notice)
 }
 
-// NoticeStop calls the notice ctx carries, where it carries one: what a runner does once
-// it has asked a command run under ctx to stop.
-func NoticeStop(ctx context.Context) {
-	if notice, ok := ctx.Value(stopNoticeKey{}).(func()); ok {
+// WithKillNotice returns ctx carrying notice, which a graceful runner calls once
+// KillStopping has killed a command run under ctx, the second press forcing it: a
+// command that stopped on its SIGTERM, or had exited, gets none. The runner calls it
+// once, on the goroutine running the command, after the command's output is read and
+// before the run returns, never on KillStopping's, so what notice draws can't land
+// after whatever follows the run.
+func WithKillNotice(ctx context.Context, notice func()) context.Context {
+	return context.WithValue(ctx, killNoticeKey{}, notice)
+}
+
+// NoticeStop calls the stop notice ctx carries, where it carries one: what a runner
+// does once it has asked a command run under ctx to stop.
+func NoticeStop(ctx context.Context) { notify(ctx, stopNoticeKey{}) }
+
+// NoticeKill calls the kill notice ctx carries, where it carries one: what a runner
+// does once a command run under ctx was killed while it stopped.
+func NoticeKill(ctx context.Context) { notify(ctx, killNoticeKey{}) }
+
+func notify(ctx context.Context, key any) {
+	if notice, ok := ctx.Value(key).(func()); ok {
 		notice()
 	}
 }

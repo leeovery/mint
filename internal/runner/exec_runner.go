@@ -41,6 +41,8 @@ func NewGracefulExecRunner(grace time.Duration) *ExecRunner {
 // ended but whose run has yet to return: sent SIGTERM, or exited with its output still
 // being read. It kills them and stops reading their output, so their runs return at
 // once. It reports whether there were any, which a runner that kills at once never has.
+// A run whose command the kill reached calls its kill notice (WithKillNotice) and
+// returns an error matching ErrForced.
 func (r *ExecRunner) KillStopping() bool {
 	return r.graceful != nil && r.graceful.killStopping()
 }
@@ -149,9 +151,13 @@ func translateRun(ctx context.Context, runErr error, stdout, stderr *bytes.Buffe
 	// hides the real cause — errors.Is(runErr, DeadlineExceeded) is FALSE on that path.
 	// Inspect ctx.Err() first and wrap that cause so callers (the AI transport's
 	// classifyFatal) can detect a timeout/cancel via errors.Is and avoid retrying a
-	// hung call, however the child ended. This must precede the plain ExitError branch
-	// below, otherwise a real timeout is misread as an ordinary non-zero exit.
+	// hung call, however the child ended; a child KillStopping forced keeps ErrForced
+	// beside it. This must precede the plain ExitError branch below, otherwise a real
+	// timeout is misread as an ordinary non-zero exit.
 	if ctxErr := ctx.Err(); ctxErr != nil {
+		if errors.Is(runErr, ErrForced) {
+			return res, fmt.Errorf("running %q: %w: %w", name, ErrForced, ctxErr)
+		}
 		return res, fmt.Errorf("running %q: %w", name, ctxErr)
 	}
 

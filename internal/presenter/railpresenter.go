@@ -285,7 +285,10 @@ func (p *RailPresenter) StageFailed(s StageFailure) {
 	pt.ongoing = false
 	p.run.ended(s.Key, true)
 	n.State, n.Detail, n.Time, n.Progress = rail.Failed, s.Message, "", nil
-	if s.Interrupted {
+	switch {
+	case s.Forced:
+		n.Detail = forcedText
+	case s.Interrupted:
 		n.Detail = interrupted
 	}
 	if s.Elapsed > 0 {
