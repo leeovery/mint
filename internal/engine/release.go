@@ -1723,7 +1723,17 @@ func stageFailure(stage string, cause error) presenter.StageFailure {
 		SavedNotes:  notes.SavedChunkNotesPath(cause),
 		Interrupted: presenter.Interrupted(cause),
 		Forced:      errors.Is(cause, runner.ErrForced),
+		HookEntry:   hookEntry(cause),
 	}
+}
+
+// hookEntry is the hook entry that failed on cause, or "" where no hook did.
+func hookEntry(cause error) string {
+	var hookErr *hooks.HookError
+	if errors.As(cause, &hookErr) {
+		return hookErr.Entry
+	}
+	return ""
 }
 
 // runPreflight runs the Stage 2 gate chain in the spec's order: fetch (read-only,

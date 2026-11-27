@@ -663,8 +663,11 @@ type StageFailure struct {
 	Interrupted bool
 	// Forced marks an Interrupted stage whose hook the second press killed rather than
 	// leaving it to stop on its SIGTERM: both modes say so (forcedText), the rail in
-	// place of interrupted, plain in place of Message.
+	// place of interrupted, plain in place of Message, naming HookEntry where set.
 	Forced bool
+	// HookEntry is the entry of the hook whose failure this is, empty for any other
+	// stage's: what plain names for a Forced failure, its Message gone.
+	HookEntry string
 }
 
 // forcedText is a failed stage's detail where the run's second press forced its hook

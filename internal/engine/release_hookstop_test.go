@@ -240,15 +240,15 @@ func TestRelease_ForcedHook_SaysTheSecondPressForcedIt(t *testing.T) {
 					assertPostReleaseWarned(t, rec, e.forced)
 					return
 				}
-				assertFailedForced(t, rec, pt.point, e.forced)
+				assertFailedForced(t, rec, pt.point, "press run", e.forced)
 			})
 		}
 	}
 }
 
-// assertFailedForced fails unless point's stage failed as interrupted, after every
-// StageStopping on it, marked Forced as forced says.
-func assertFailedForced(t *testing.T, rec *presentertest.RecordingPresenter, point string, forced bool) {
+// assertFailedForced fails unless point's stage failed as interrupted on entry, after
+// every StageStopping on it, marked Forced as forced says.
+func assertFailedForced(t *testing.T, rec *presentertest.RecordingPresenter, point, entry string, forced bool) {
 	t.Helper()
 	failedAt := stageEventAt(rec, presentertest.KindStageFailed, point)
 	if failedAt == -1 {
@@ -261,6 +261,9 @@ func assertFailedForced(t *testing.T, rec *presentertest.RecordingPresenter, poi
 	}
 	if got.Forced != forced {
 		t.Errorf("the %s failure's Forced = %v, want %v", point, got.Forced, forced)
+	}
+	if got.HookEntry != entry {
+		t.Errorf("the %s failure's HookEntry = %q, want the entry that ran, %q", point, got.HookEntry, entry)
 	}
 }
 

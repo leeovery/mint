@@ -56,7 +56,7 @@ func newGracefulStop(grace time.Duration) *gracefulStop {
 // killed the command, run calls the kill notice ctx carries once the read is over and
 // returns an error wrapping ErrForced: on the run's own goroutine, so what the notice
 // draws comes before whatever follows the run.
-func (g *gracefulStop) run(ctx context.Context, cmd *exec.Cmd) error {
+func (g *gracefulStop) run(ctx context.Context, cmd *exec.Cmd) (err error) {
 	out, err := ownOutput(cmd)
 	if err != nil {
 		return err
@@ -78,6 +78,15 @@ func (g *gracefulStop) run(ctx context.Context, cmd *exec.Cmd) error {
 		return startErr
 	}
 	c := g.track(&runningCommand{process: cmd.Process, out: out, ended: ctx.Done()})
+	defer func() {
+		// A kill that lands in the instant after the command exits, before it is
+		// reaped, succeeds, so that command reads as forced though it exited on its
+		// own; that affects only the label, and one that exited 0 keeps its success.
+		if forced := g.untrack(c); forced && err != nil {
+			NoticeKill(ctx)
+			err = fmt.Errorf("%w: %w", ErrForced, err)
+		}
+	}()
 	err = cmd.Wait()
 	// Wait has had Cancel's result, so terminated is set where Cancel ran.
 	from := terminated
@@ -85,11 +94,6 @@ func (g *gracefulStop) run(ctx context.Context, cmd *exec.Cmd) error {
 		from = time.Now()
 	}
 	out.drain(from.Add(g.grace))
-	// A command that exited 0 as the kill was sent was not forced: the kill came too late.
-	if forced := g.untrack(c); forced && err != nil {
-		NoticeKill(ctx)
-		return fmt.Errorf("%w: %w", ErrForced, err)
-	}
 	return err
 }
 
@@ -112,7 +116,7 @@ func (g *gracefulStop) untrack(c *runningCommand) (forced bool) {
 // killStopping kills every command whose run's context has ended and whose run has yet
 // to return, whether it is stopping on its SIGTERM or its output is still being read,
 // and stops reading its output, so each run returns at once. It reports whether there
-// were any. A command the kill reached is marked forced; one that had exited, whose
+// were any. A command the kill reached is marked forced; one already reaped, whose
 // output alone was still being read, is not.
 func (g *gracefulStop) killStopping() bool {
 	g.mu.Lock()

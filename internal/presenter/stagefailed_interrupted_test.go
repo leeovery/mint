@@ -57,7 +57,7 @@ func TestPlainPresenterStageFailed_Interrupted_KeepsItsLine(t *testing.T) {
 func forcedHook() presenter.StageFailure {
 	failure := interruptedHook()
 	failure.Message = `hook entry "go test -race ./..." failed (exit -1): running "sh": forced to stop: context canceled`
-	failure.Forced = true
+	failure.Forced, failure.HookEntry = true, "go test -race ./..."
 	return failure
 }
 
@@ -82,14 +82,14 @@ func TestPlainPresenterStageFailed_Forced_SaysTheHookWasForced(t *testing.T) {
 
 	out, errBuf := drive(func(p *presenter.PlainPresenter) { p.StageFailed(forcedHook()) })
 
-	wantOut := "pre_tag: FAILED - interrupted, hook forced to stop\n" +
+	wantOut := "pre_tag: FAILED - interrupted, hook forced to stop (hook entry \"go test -race ./...\")\n" +
 		"--- output ---\n" +
 		"ok  \tpigeon/webhooks\t0.412s\n" +
 		"--- end output ---\n"
 	if got := out.String(); got != wantOut {
 		t.Errorf("out =\n%q\nwant\n%q", got, wantOut)
 	}
-	if got, want := errBuf.String(), "pre_tag: FAILED - interrupted, hook forced to stop\n"; got != want {
+	if got, want := errBuf.String(), "pre_tag: FAILED - interrupted, hook forced to stop (hook entry \"go test -race ./...\")\n"; got != want {
 		t.Errorf("err = %q, want %q", got, want)
 	}
 }
